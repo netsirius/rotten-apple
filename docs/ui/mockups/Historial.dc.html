@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Historial y deshacer</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:40</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), radial-gradient(45% 55% at 88% 100%, rgba(230,183,254,0.18) 0%, rgba(230,183,254,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="historial" mode="simple" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="display: flex; align-items: flex-end; gap: 16px; padding: 44px 48px 18px;">
+        <div style="flex-grow: 1;">
+          <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Historial</h1>
+          <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">Todo lo que ha hecho la app, y cómo deshacerlo.</p>
+        </div>
+        <span style="padding-bottom: 4px; font-size: 13.5px; color: rgba(255,255,255,0.6);">Próxima limpieza programada: domingo 20:00 · solo «Seguro»</span>
+      </header>
+      <div style="display: flex; gap: 28px; padding: 0 48px; height: 440px;">
+        <section aria-label="Operaciones" style="flex: 1 1 auto; min-width: 0; overflow: auto; display: flex; flex-direction: column;">
+          <sc-for list="{{ops}}" as="o" hint-placeholder-count="6">
+            <button type="button" onClick="{{o.pick}}" aria-pressed="{{o.pressed}}" style="{{o.rowStyle}}">
+              <span style="{{o.dotStyle}}" aria-hidden="true"></span>
+              <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 15.5px; font-weight: 600;">{{o.title}}</span>
+                <span style="font-size: 13px; color: rgba(255,255,255,0.6);">{{o.when}} · {{o.summary}}</span>
+              </span>
+              <span style="{{o.tagStyle}}">{{o.tag}}</span>
+            </button>
+          </sc-for>
+        </section>
+        <aside aria-labelledby="op-t" style="flex: 0 0 330px; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 18px; background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
+          <div>
+            <h2 id="op-t" style="margin: 0; font-size: 17px; font-weight: 600;">{{cur.title}}</h2>
+            <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: rgba(255,255,255,0.55);">{{cur.when}} · {{cur.origin}}</span>
+          </div>
+          <dl style="margin: 0; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 14px;"><dt style="color: rgba(255,255,255,0.65);">{{cur.sizeLabel}}</dt><dd style="margin: 0; font-family: 'Commit Mono', ui-monospace, Menlo, monospace;">{{cur.size}}</dd></div>
+            <div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 14px;"><dt style="color: rgba(255,255,255,0.65);">Elementos</dt><dd style="margin: 0; font-family: 'Commit Mono', ui-monospace, Menlo, monospace;">{{cur.count}}</dd></div>
+            <div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 14px;"><dt style="color: rgba(255,255,255,0.65);">Destino</dt><dd style="margin: 0;">{{cur.dest}}</dd></div>
+          </dl>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.82);">{{cur.status}}</p>
+          <sc-if value="{{cur.hasCmd}}" hint-placeholder-val="{{false}}">
+            <code style="display: block; padding: 10px 12px; border-radius: 10px; background: rgba(0,0,0,0.35); color: #E6B7FE; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12.5px;">{{cur.cmd}}</code>
+          </sc-if>
+          <a href="#detalle" style="font-size: 13.5px; font-weight: 600;">Ver los elementos uno a uno</a>
+        </aside>
+      </div>
+      <sc-if value="{{cur.canUndo}}" hint-placeholder-val="{{true}}">
+        <button type="button" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font: inherit; font-size: 19px; font-weight: 600; cursor: pointer;">Deshacer</button>
+      </sc-if>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.55);">{{cur.caption}}</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const active = st.active || 'hoy';
+    const mono = 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace;';
+    const tags = {
+      ok: 'background: rgba(95,237,131,0.12); color: #5FED83;',
+      none: 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.75);'
+    };
+    const dots = { ok: '#5FED83', none: 'rgba(255,255,255,0.4)' };
+    const data = [
+      { id: 'hoy', title: 'Limpieza del sistema', when: 'hoy, 10:34', summary: '9,3 GB · 1.308 elementos', tag: 'reversible', tone: 'ok',
+        size: '9,3 GB', count: '1.308', dest: 'Papelera', origin: 'manual',
+        status: 'Los 1.308 elementos siguen en la Papelera. Deshacer los devuelve a su sitio.', canUndo: true },
+      { id: 'ia', title: 'Organizar Escritorio con IA', when: 'ayer, 18:05', summary: '56 archivos en 5 carpetas', tag: 'reversible', tone: 'ok',
+        size: '—', count: '61 cambios', dest: 'Carpetas del Escritorio', origin: 'plan de IA aprobado',
+        status: 'Deshacer devuelve cada archivo a su sitio y con su nombre original. Si has movido alguno después, te avisamos antes.', canUndo: true },
+      { id: 'zoom', title: 'Desinstalar Zoom', when: '29 oct, 12:10', summary: '384 MB · app y 3 restos', tag: 'reversible', tone: 'ok',
+        size: '384 MB', count: '4', dest: 'Papelera', origin: 'Aplicaciones',
+        status: 'La app y sus restos están en la Papelera. Tus datos y grabaciones se conservaron.', canUndo: true },
+      { id: 'dev', title: 'node_modules de 4 proyectos', when: '28 oct, 09:30', summary: '7,9 GB · a la Papelera', tag: 'reversible', tone: 'ok',
+        size: '7,9 GB', count: '4 carpetas', dest: 'Papelera', origin: 'Desarrollo',
+        status: 'Se pueden devolver a su sitio o regenerar con el gestor de paquetes.', canUndo: true, cmd: 'cd <proyecto> && npm ci' },
+      { id: 'vaciar', title: 'Vaciar Papelera', when: '27 oct, 21:15', summary: '3,4 GB · permanente', tag: 'permanente', tone: 'none',
+        size: '3,4 GB', count: '2.031', dest: 'Eliminado', origin: 'manual, confirmado',
+        status: 'Operación permanente. Lo que había en la Papelera ya no se puede recuperar.', canUndo: false },
+      { id: 'prog', title: 'Limpieza programada', when: '26 oct, 20:00', summary: '2,1 GB · solo «Seguro»', tag: 'ya no reversible', tone: 'none',
+        size: '2,1 GB', count: '904', dest: 'Papelera', origin: 'programada',
+        status: 'Fue a la Papelera, pero la Papelera se vació el 27 oct.', canUndo: false }
+    ];
+    const ops = data.map((o) => ({
+      title: o.title, when: o.when, summary: o.summary, tag: o.tag,
+      pressed: o.id === active ? 'true' : 'false',
+      rowStyle: 'display: flex; align-items: center; gap: 14px; min-height: 66px; padding: 8px 14px; border: 0; border-radius: 14px; font: inherit; color: inherit; text-align: left; cursor: pointer; ' + (o.id === active ? 'background: rgba(255,255,255,0.08);' : 'background: transparent;'),
+      dotStyle: 'flex-shrink: 0; width: 9px; height: 9px; border-radius: 50%; background: ' + dots[o.tone] + ';',
+      tagStyle: 'flex-shrink: 0; padding: 2px 9px; border-radius: 999px; font-size: 11px; ' + mono + ' ' + tags[o.tone],
+      pick: () => this.setState({ active: o.id })
+    }));
+    const c = data.find((o) => o.id === active) || data[0];
+    return {
+      ops: ops,
+      cur: {
+        title: c.title, when: c.when, size: c.size, count: c.count, dest: c.dest, origin: c.origin,
+        sizeLabel: c.dest === 'Papelera' ? 'Movido a la Papelera' : (c.dest === 'Eliminado' ? 'Liberado' : 'Espacio'),
+        status: c.status, canUndo: c.canUndo, hasCmd: !!c.cmd, cmd: c.cmd || '',
+        caption: c.canUndo ? 'Deshacer devuelve todo a su sitio · puedes elegir solo algunos elementos' : 'Esta operación ya no se puede deshacer'
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

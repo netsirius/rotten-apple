@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mantenimiento</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:52</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), radial-gradient(40% 50% at 30% 100%, rgba(155,234,245,0.12) 0%, rgba(155,234,245,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="mantenimiento" mode="simple" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="padding: 44px 48px 18px;">
+        <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Mantenimiento</h1>
+        <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">Qué arranca con tu Mac y tareas puntuales. Ninguna promete «acelerar»: cada una dice cuándo sirve.</p>
+      </header>
+      <div style="display: flex; gap: 28px; padding: 0 48px; height: 440px;">
+        <section aria-labelledby="arr-t" style="flex: 1 1 50%; min-width: 0; overflow: auto; display: flex; flex-direction: column;">
+          <h2 id="arr-t" style="margin: 0; padding: 0 12px 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: rgba(255,255,255,0.55);">Al iniciar sesión · 9 elementos</h2>
+          <sc-for list="{{items}}" as="i" hint-placeholder-count="6">
+            <label style="display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 6px 12px; border-radius: 14px; cursor: pointer;">
+              <input type="checkbox" checked="{{i.on}}" onChange="{{i.toggle}}" aria-label="Desactivar {{i.name}}" style="width: 17px; height: 17px; margin: 0; accent-color: #574EFF;">
+              <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 15px; font-weight: 600;">{{i.name}}</span>
+                <span style="font-size: 12.5px; color: rgba(255,255,255,0.6);">{{i.detail}}</span>
+              </span>
+              <span style="{{i.pillStyle}}">{{i.tag}}</span>
+            </label>
+          </sc-for>
+        </section>
+        <section aria-labelledby="tar-t" style="flex: 1 1 50%; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding: 18px; border-radius: 18px; background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
+          <h2 id="tar-t" style="margin: 0 0 6px; font-size: 17px; font-weight: 600;">Tareas</h2>
+          <sc-for list="{{tasks}}" as="t" hint-placeholder-count="6">
+            <div style="display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+              <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
+                <span style="font-size: 14.5px; font-weight: 600;">{{t.name}}</span>
+                <span style="font-size: 12.5px; line-height: 1.45; color: rgba(255,255,255,0.65);">{{t.when}}</span>
+                <span style="font-size: 11.5px; color: rgba(255,255,255,0.45);">{{t.meta}}</span>
+              </span>
+              <button type="button" style="flex-shrink: 0; min-height: 30px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.25); border-radius: 999px; background: transparent; color: #FFFFFF; font: inherit; font-size: 12.5px; cursor: pointer;">Ejecutar</button>
+            </div>
+          </sc-for>
+        </section>
+      </div>
+      <a href="Revision.dc.html" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font-size: 19px; font-weight: 600; text-decoration: none;">Aplicar</a>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.6);"><span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; color: #FFFFFF;">{{count}}</span> elementos de inicio a desactivar · sus ficheros van a la Papelera, se puede deshacer</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const checks = st.checks || {};
+    const mono = 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace;';
+    const tags = {
+      resto: { label: 'app desinstalada', style: 'background: rgba(255,194,122,0.14); color: #FFC27A;' },
+      nuevo: { label: 'nuevo', style: 'background: rgba(230,183,254,0.16); color: #E6B7FE;' },
+      normal: { label: 'tuyo', style: 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);' }
+    };
+    const defs = [
+      { id: 'zoom', name: 'Servicio de Zoom', detail: 'us.zoom.ZoomDaemon · la app ya no está instalada', kind: 'resto' },
+      { id: 'teams', name: 'Actualizador de Teams (clásico)', detail: 'com.microsoft.teams.TeamsUpdaterDaemon · app desinstalada', kind: 'resto' },
+      { id: 'cc', name: 'Adobe Creative Cloud', detail: 'Se abre al iniciar sesión · nuevo desde el último análisis', kind: 'nuevo' },
+      { id: 'gk', name: 'Actualizador de Google', detail: 'com.google.keystone.agent · revisa actualizaciones cada hora', kind: 'nuevo' },
+      { id: 'docker', name: 'Docker Desktop', detail: 'Arranca la máquina virtual al iniciar sesión', kind: 'nuevo' },
+      { id: 'spotify', name: 'Spotify', detail: 'Se abre al iniciar sesión', kind: 'normal' }
+    ];
+    let count = 0;
+    const items = defs.map((d) => {
+      const on = checks[d.id] === undefined ? false : checks[d.id];
+      if (on) count += 1;
+      return {
+        name: d.name, detail: d.detail, on: on, tag: tags[d.kind].label,
+        pillStyle: 'flex-shrink: 0; padding: 2px 9px; border-radius: 999px; font-size: 11px; ' + mono + ' ' + tags[d.kind].style,
+        toggle: () => { const n = Object.assign({}, checks); n[d.id] = !on; this.setState({ checks: n }); }
+      };
+    });
+    const tasks = [
+      { name: 'Reconstruir miniaturas e iconos', when: 'Si Finder muestra iconos en blanco o miniaturas viejas.', meta: 'Última vez: nunca · 1 min' },
+      { name: 'Reparar «Abrir con…»', when: 'Si aparecen apps duplicadas o desaparecidas en ese menú (base de datos de Launch Services).', meta: 'Última vez: nunca · 30 s' },
+      { name: 'Vaciar caché DNS', when: 'Si una web no carga tras cambiar de red o de DNS. También en Privacidad.', meta: 'Pide contraseña · instantáneo' },
+      { name: 'Verificar el disco', when: 'Comprueba el sistema de archivos sin modificarlo. Útil si hay errores al copiar.', meta: 'Última vez: hace 6 días · 2 min' },
+      { name: 'Reindexar Spotlight', when: 'Solo si las búsquedas no encuentran archivos que existen. Tarda y gasta batería.', meta: 'Pide contraseña · 30–60 min' },
+      { name: 'Compactar bases de datos de Mail', when: 'Si Mail va lento con buzones grandes. Hay que cerrar Mail.', meta: 'Mail abierto: se pedirá cerrarlo' }
+    ];
+    return { items: items, tasks: tasks, count: String(count) };
+  }
+}
+</script>
+</body>
+</html>

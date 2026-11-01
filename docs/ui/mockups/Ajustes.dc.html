@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Ajustes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:58</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.36) 0%, rgba(87,78,255,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="ajustes" mode="dev" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="padding: 44px 48px 18px;">
+        <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Ajustes</h1>
+      </header>
+      <div style="display: flex; gap: 28px; padding: 0 48px; height: 640px;">
+        <nav aria-label="Secciones de ajustes" style="flex: 0 0 200px; display: flex; flex-direction: column; gap: 2px;">
+          <sc-for list="{{tabs}}" as="t" hint-placeholder-count="8">
+            <button type="button" aria-current="{{t.current}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+          </sc-for>
+        </nav>
+        <section aria-label="{{tabLabel}}" style="flex: 1 1 auto; min-width: 0; overflow: auto; align-self: flex-start; display: flex; flex-direction: column; padding: 6px 22px; border-radius: 18px; background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+            <div style="display: flex; align-items: center; gap: 16px; min-height: 62px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+              <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
+                <span style="font-size: 15px; font-weight: 600;">{{r.label}} <span style="{{r.phaseStyle}}">{{r.phase}}</span></span>
+                <span style="font-size: 13px; line-height: 1.4; color: rgba(255,255,255,0.62);">{{r.detail}}</span>
+              </span>
+              <sc-if value="{{r.isSwitch}}" hint-placeholder-val="{{false}}">
+                <button type="button" role="switch" aria-checked="{{r.checked}}" aria-label="{{r.label}}" onClick="{{r.toggle}}" style="{{r.trackStyle}}"><span style="{{r.knobStyle}}"></span></button>
+              </sc-if>
+              <sc-if value="{{r.isValue}}" hint-placeholder-val="{{false}}">
+                <span style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: rgba(255,255,255,0.8);">{{r.value}}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10l4 4 4-4"></path></svg></span>
+              </sc-if>
+              <sc-if value="{{r.isButton}}" hint-placeholder-val="{{false}}">
+                <button type="button" style="min-height: 32px; padding: 0 14px; border: 1px solid rgba(255,255,255,0.25); border-radius: 999px; background: transparent; color: #FFFFFF; font: inherit; font-size: 13px; cursor: pointer;">{{r.value}}</button>
+              </sc-if>
+              <sc-if value="{{r.isStatus}}" hint-placeholder-val="{{false}}">
+                <span style="{{r.statusStyle}}">{{r.value}}</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"startTab":{"editor":"enum","options":["general","permisos","exclusiones","programacion","ia","privacidad","cli","avanzado"],"default":"general"},"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const tab = st.tab || this.props.startTab || 'general';
+    const sw = st.sw || {};
+    const mono = 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace;';
+    const S = (id, label, detail, on, phase) => ({ id: id, type: 'switch', label: label, detail: detail, on: on, phase: phase });
+    const V = (label, detail, value, phase) => ({ type: 'value', label: label, detail: detail, value: value, phase: phase });
+    const B = (label, detail, value, phase) => ({ type: 'button', label: label, detail: detail, value: value, phase: phase });
+    const T = (label, detail, value, ok, phase) => ({ type: 'status', label: label, detail: detail, value: value, ok: ok, phase: phase });
+    const data = {
+      general: { label: 'General', rows: [
+        V('Idioma', 'Español e inglés desde el primer día.', 'Español'),
+        V('Apariencia', 'Sigue la del sistema; también fuerza oscuro o claro.', 'Sistema'),
+        S('dev', 'Modo desarrollador', 'Muestra Proyectos y cachés, Dependencias y Secretos.', true),
+        S('menubar', 'Manzana en la barra de menús', 'Estado del Mac y accesos rápidos.', true, 'v1'),
+        S('free', 'Liberar tras cada limpieza', 'Vacía de la Papelera solo lo de esa limpieza. Ya no se podrá deshacer.', false)
+      ] },
+      permisos: { label: 'Permisos', rows: [
+        T('Acceso total al disco', 'Necesario para la Biblioteca, Mail, Safari y restos de apps.', 'Concedido', true),
+        T('Gestión de apps', 'Puede hacer falta para desinstalar apps de otros desarrolladores.', 'No concedido · Abrir Ajustes', false),
+        T('Notificaciones', 'Avisos de limpiezas programadas y alertas del Monitor.', 'Concedido', true),
+        B('Ayudante con privilegios', 'Para tareas de administrador sin pedir contraseña cada vez. Solo un conjunto cerrado de acciones.', 'Instalar…', 'v1'),
+        B('Comprobar todo', 'Lo mismo que «rotten doctor».', 'Comprobar')
+      ] },
+      exclusiones: { label: 'Exclusiones', rows: [
+        B('~/Library/Caches/JetBrains', 'Añadida por ti el 12 oct', 'Quitar'),
+        B('~/Projects/cliente-x', 'Nunca se analiza esta carpeta', 'Quitar'),
+        B('*.sparsebundle', 'Regla: nunca proponer imágenes de disco', 'Quitar'),
+        B('Añadir carpeta o regla', 'Si el fichero de exclusiones se corrompe, la app no limpia nada hasta repararlo.', 'Añadir…')
+      ] },
+      programacion: { label: 'Programación', rows: [
+        S('weekly', 'Limpieza semanal', 'Domingo a las 20:00 · solo «Seguro» · con el Mac enchufado · aviso 10 min antes.', true, 'v1'),
+        S('vulns', 'Revisar dependencias cada semana', 'Pide permiso de red la primera vez.', false, 'v1'),
+        S('lowdisk', 'Avisar si queda menos del 10 % de disco', 'Notificación discreta, como mucho una al día.', true, 'v1')
+      ] },
+      ia: { label: 'IA (opcional)', rows: [
+        S('ai', 'Activar funciones de IA', 'Apagado por defecto. La app funciona igual sin IA.', false, 'v1'),
+        V('Proveedor', 'Local primero: nada sale de tu Mac.', 'Ollama (local)', 'v1'),
+        B('Claude (Anthropic)', 'Más calidad con tu propia clave; se guarda en el Llavero.', 'Añadir clave…', 'v1'),
+        V('Límite de gasto mensual', 'Si se alcanza, la IA se desactiva hasta el mes siguiente.', '5 US$', 'v1'),
+        S('ai-log', 'Guardar registro de lo enviado', 'Para revisar qué datos salieron y cuándo.', true, 'v1')
+      ] },
+      privacidad: { label: 'Privacidad', rows: [
+        T('Telemetría', 'No se envían estadísticas de uso. Nunca.', 'Ninguna', true),
+        S('updates', 'Buscar actualizaciones', 'Única conexión automática; se puede apagar.', true),
+        S('osv', 'Consultas a OSV.dev', 'Solo nombre y versión de paquetes públicos. Se pregunta la primera vez.', false, 'v1'),
+        V('Conservar historial', 'Necesario para deshacer.', '180 días'),
+        B('Atribuciones de datos', 'GitHub Advisory Database (CC‑BY‑4.0), OSV, CISA KEV.', 'Ver', 'v1')
+      ] },
+      cli: { label: 'Línea de comandos', rows: [
+        B('Instalar el comando rotten', 'En ~/.local/bin para no pedir contraseña al actualizar.', 'Instalar'),
+        B('Autocompletado', 'zsh, bash y fish (rotten completion).', 'Configurar'),
+        B('Lanzadores de Raycast y Alfred', 'Limpieza, Aplicaciones, Espacio, Monitor y Mantenimiento.', 'Instalar', 'v1'),
+        B('Skill para agentes de IA', 'Solo comandos de lectura y --dry-run sin confirmación.', 'Instalar', 'v1')
+      ] },
+      avanzado: { label: 'Avanzado', rows: [
+        V('Canal de actualizaciones', 'Equivale a «rotten update --channel».', 'Estable'),
+        B('Touch ID para sudo', 'Te enseña el cambio en /etc/pam.d/sudo_local antes de aplicarlo.', 'Configurar…', 'v2'),
+        B('Exportar diagnóstico', 'Informe local para adjuntar a una incidencia. Se revisa antes de enviarlo.', 'Exportar'),
+        B('Desinstalar Rotten Apple', 'Quita la app, el comando, los agentes y, si quieres, tus datos (rotten remove).', 'Desinstalar…', 'v1')
+      ] }
+    };
+    const keys = ['general', 'permisos', 'exclusiones', 'programacion', 'ia', 'privacidad', 'cli', 'avanzado'];
+    const tabs = keys.map((k) => ({
+      label: data[k].label,
+      current: k === tab ? 'page' : 'false',
+      style: 'min-height: 38px; padding: 0 14px; border: 0; border-radius: 10px; font: inherit; font-size: 14.5px; text-align: left; cursor: pointer; ' + (k === tab ? 'background: rgba(255,255,255,0.10); color: #FFFFFF; font-weight: 600;' : 'background: transparent; color: rgba(255,255,255,0.75);'),
+      pick: () => this.setState({ tab: k })
+    }));
+    const rows = data[tab].rows.map((r) => {
+      const on = r.type === 'switch' ? (sw[r.id] === undefined ? r.on : sw[r.id]) : false;
+      return {
+        label: r.label, detail: r.detail, value: r.value || '', phase: r.phase || '',
+        phaseStyle: r.phase ? 'margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,0.1); font-size: 10.5px; font-weight: 400; color: rgba(255,255,255,0.65); ' + mono : 'display: none;',
+        isSwitch: r.type === 'switch', isValue: r.type === 'value', isButton: r.type === 'button', isStatus: r.type === 'status',
+        checked: on ? 'true' : 'false',
+        trackStyle: 'position: relative; flex-shrink: 0; width: 42px; height: 24px; border: 0; padding: 0; border-radius: 999px; cursor: pointer; ' + (on ? 'background: #574EFF;' : 'background: rgba(255,255,255,0.18);'),
+        knobStyle: 'position: absolute; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF; ' + (on ? 'left: 20px;' : 'left: 2px;'),
+        statusStyle: 'font-size: 13.5px; ' + (r.ok ? 'color: #5FED83;' : 'color: #FFC27A;'),
+        toggle: () => { const n = Object.assign({}, sw); n[r.id] = !on; this.setState({ sw: n }); }
+      };
+    });
+    return { tabs: tabs, rows: rows, tabLabel: data[tab].label };
+  }
+}
+</script>
+</body>
+</html>

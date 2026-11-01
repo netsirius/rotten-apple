@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Barra de menús</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 30% 40%, rgba(87,78,255,0.40), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 80% 90%, rgba(230,183,254,0.20), rgba(230,183,254,0) 70%), linear-gradient(160deg, #000240 0%, #05051A 70%); font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div style="height: 28px; display: flex; align-items: center; gap: 20px; padding: 0 14px 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Finder</span><span aria-hidden="true">Archivo</span><span aria-hidden="true">Edición</span><span aria-hidden="true">Ver</span><span aria-hidden="true">Ir</span><span aria-hidden="true">Ventana</span><span aria-hidden="true">Ayuda</span>
+    <span style="margin-left: auto; display: flex; align-items: center; gap: 14px;">
+      <button type="button" aria-expanded="true" aria-label="Rotten Apple: a medias" style="display: flex; align-items: center; justify-content: center; width: 30px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: rgba(255,255,255,0.22); cursor: pointer;">
+        <dc-import name="Apple" estado="regular" size="20" hint-size="20px,20px"></dc-import>
+      </button>
+      <span aria-hidden="true">Wi‑Fi</span>
+      <span aria-hidden="true">87 %</span>
+      <span aria-hidden="true">dom 1 nov · 11:02</span>
+    </span>
+  </div>
+  <section aria-label="Rotten Apple en la barra de menús" style="position: absolute; right: 150px; top: 34px; width: 360px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.16); background: linear-gradient(180deg, rgba(28,24,88,0.96), rgba(10,9,44,0.96)); box-shadow: 0 30px 80px -20px rgba(0,0,0,0.9);">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <dc-import name="Apple" estado="regular" size="56" hint-size="56px,56px"></dc-import>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 16px; font-weight: 600;">Rotten Apple</span>
+        <span style="font-size: 13px; color: #FFC27A;">A medias · 3 cosas por revisar</span>
+      </div>
+    </div>
+    <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+      <div style="padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06);"><dt style="font-size: 12px; color: rgba(255,255,255,0.6);">Disco</dt><dd style="margin: 2px 0 0; font-size: 15px; font-weight: 600;">142 GB libres</dd></div>
+      <div style="padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06);"><dt style="font-size: 12px; color: rgba(255,255,255,0.6);">Memoria</dt><dd style="margin: 2px 0 0; font-size: 15px; font-weight: 600;">Presión normal</dd></div>
+      <div style="padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06);"><dt style="font-size: 12px; color: rgba(255,255,255,0.6);">CPU</dt><dd style="margin: 2px 0 0; font-size: 15px; font-weight: 600;">23 %</dd></div>
+      <div style="padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06);"><dt style="font-size: 12px; color: rgba(255,255,255,0.6);">Batería</dt><dd style="margin: 2px 0 0; font-size: 15px; font-weight: 600;">87 % · salud 92 %</dd></div>
+    </dl>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 12px; background: rgba(87,78,255,0.18);">
+      <span style="flex-grow: 1; font-size: 14px;"><span style="font-weight: 600;">1,6 GB</span> listos para limpiar</span>
+      <a href="Main.dc.html" style="padding: 6px 12px; border-radius: 999px; background: #574EFF; color: #FFFFFF; font-size: 13px; font-weight: 600; text-decoration: none;">Revisar…</a>
+    </div>
+    <p style="margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(255,194,122,0.10); font-size: 13px; line-height: 1.45; color: #FFD9A8;"><strong>node</strong> lleva 12 min al 98 % de CPU.</p>
+    <p style="margin: 0; font-size: 12.5px; color: rgba(255,255,255,0.6);">Próxima limpieza programada: domingo 20:00 · solo «Seguro»</p>
+    <div style="display: flex; gap: 16px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 13.5px;">
+      <a href="Main.dc.html" style="font-weight: 600;">Abrir Rotten Apple</a>
+      <a href="Ajustes.dc.html">Ajustes</a>
+      <a href="#salir" style="margin-left: auto;">Salir</a>
+    </div>
+  </section>
+  <p style="position: absolute; left: 60px; bottom: 50px; margin: 0; max-width: 560px; font-size: 15px; line-height: 1.5; color: rgba(255,255,255,0.7);">La manzana de la barra de menús cambia de aspecto según el estado del Mac: <span style="color: #5FED83;">sana</span>, <span style="color: #FFC27A;">a medias</span> o <span style="color: #D9B98A;">podrida</span>. Avisa como mucho una vez al día y nunca para «venderte» una limpieza.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
