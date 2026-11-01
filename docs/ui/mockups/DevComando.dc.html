@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Desarrollo · Comando oficial</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:43</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;" aria-hidden="true">
+      <dc-import name="Sidebar" current="dev" mode="dev" hint-size="100%,800px"></dc-import>
+    </div>
+    <div style="flex: 1 1 auto; padding: 44px 48px;" aria-hidden="true">
+      <div style="font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Desarrollo</div>
+    </div>
+    <div style="position: absolute; inset: 0; background: rgba(3,3,24,0.62);"></div>
+    <section role="dialog" aria-modal="true" aria-labelledby="cmd-t" style="position: absolute; left: 50%; top: 40px; transform: translateX(-50%); width: 720px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; padding: 28px 30px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.14); background: linear-gradient(180deg, rgba(30,26,96,0.97), rgba(12,10,52,0.97)); box-shadow: 0 40px 100px -30px rgba(0,0,0,0.9), 0 0 0 1px rgba(87,78,255,0.25);">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <h1 id="cmd-t" style="margin: 0; font-size: 24px; font-weight: 500; letter-spacing: -0.02em;">Ejecutar el comando oficial de Homebrew</h1>
+        <p style="margin: 0; font-size: 15px; color: rgba(255,255,255,0.75);">Homebrew sabe qué puede quitar sin romper nada. Primero lo hemos simulado:</p>
+      </div>
+      <pre style="margin: 0; padding: 14px 16px; border-radius: 12px; background: rgba(0,0,0,0.45); font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.6; color: rgba(255,255,255,0.85); white-space: pre-wrap;"><span style="color: #E6B7FE;">$ brew cleanup --prune=all --dry-run</span>
+Would remove: /opt/homebrew/Cellar/node/22.9.0 (2,415 files, 98.6MB)
+Would remove: /opt/homebrew/Cellar/python@3.12/3.12.5 (3,201 files, 64.1MB)
+Would remove: /opt/homebrew/Cellar/openssl@3/3.3.1 (6,912 files, 28.4MB)
+… y 20 versiones antiguas más
+Would remove: ~/Library/Caches/Homebrew/downloads (1.2GB)
+<span style="color: #5FED83;">==&gt; This operation would free approximately 1.9GB of disk space.</span></pre>
+      <p role="note" style="margin: 0; padding: 12px 14px; border-radius: 12px; background: rgba(255,194,122,0.10); font-size: 13.5px; line-height: 1.5; color: #FFD9A8;">Este comando lo ejecuta Homebrew y borra directamente: <strong>no pasa por la Papelera</strong>. Lo que quita son versiones antiguas y descargas que se vuelven a obtener con <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace;">brew install</span>. Quedará anotado en Historial como «regenerable».</p>
+      <div style="display: flex; align-items: center; gap: 10px; padding-top: 4px;">
+        <a href="#copiar" style="font-size: 14px; font-weight: 600;">Copiar el comando</a>
+        <a href="Dev.dc.html" style="margin-left: auto; display: flex; align-items: center; min-height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none;">Cancelar</a>
+        <a href="Historial.dc.html" style="display: flex; align-items: center; min-height: 38px; padding: 0 18px; border-radius: 10px; background: #574EFF; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none;">Ejecutar comando</a>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

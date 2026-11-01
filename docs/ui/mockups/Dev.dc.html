@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Desarrollo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:42</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.48) 0%, rgba(87,78,255,0) 70%), radial-gradient(40% 50% at 30% 100%, rgba(185,180,255,0.14) 0%, rgba(185,180,255,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="dev" mode="dev" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="padding: 44px 48px 14px;">
+        <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Desarrollo</h1>
+        <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">42 proyectos en <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 14px;">~/code</span> y <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 14px;">~/workspace</span>. Nada con cambios sin guardar ni actividad reciente viene marcado. <a href="DevComando.dc.html" style="font-weight: 600;">Así se ejecuta un comando oficial</a></p>
+      </header>
+      <div role="tablist" aria-label="Categorías" style="display: flex; gap: 4px; margin: 0 48px; padding: 4px; width: max-content; border-radius: 12px; background: rgba(255,255,255,0.07);">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+          <button type="button" role="tab" aria-selected="{{t.selected}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+        </sc-for>
+      </div>
+      <section role="tabpanel" aria-label="{{tabLabel}}" style="height: 380px; overflow: auto; margin-top: 14px; padding: 0 48px; display: flex; flex-direction: column;">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+          <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 14px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; align-items: center; gap: 14px;">
+              <input type="checkbox" checked="{{r.on}}" onChange="{{r.toggle}}" aria-label="Incluir {{r.name}}" style="width: 17px; height: 17px; margin: 0; flex-shrink: 0; accent-color: #574EFF;">
+              <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 15.5px; font-weight: 600;">{{r.name}}</span>
+                <span style="font-size: 13px; color: rgba(255,255,255,0.62);">{{r.detail}}</span>
+              </span>
+              <span style="{{r.pillStyle}}">{{r.state}}</span>
+              <span style="width: 72px; text-align: right; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 14px;">{{r.size}}</span>
+            </div>
+            <sc-if value="{{r.hasCmd}}" hint-placeholder-val="{{false}}">
+              <code style="margin-left: 31px; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: #E6B7FE;">$ {{r.cmd}}</code>
+            </sc-if>
+          </div>
+        </sc-for>
+      </section>
+      <a href="Revision.dc.html" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font-size: 19px; font-weight: 600; text-decoration: none;">Limpiar</a>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.6);"><span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; color: #FFFFFF;">{{selTotal}}</span> · primero el comando oficial en simulación; si no hay, a la Papelera</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const tab = st.tab || 'proyectos';
+    const mono = 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace;';
+    const tones = {
+      ok: 'background: rgba(95,237,131,0.12); color: #5FED83;',
+      busy: 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.75);',
+      warn: 'background: rgba(255,194,122,0.14); color: #FFC27A;',
+      review: 'background: rgba(230,183,254,0.16); color: #E6B7FE;'
+    };
+    const data = {
+      proyectos: { label: 'Proyectos', rows: [
+        { id: 'p1', name: 'old-landing', detail: 'node_modules y .next · sin commits desde hace 14 meses', state: 'Seguro', tone: 'ok', gb: 1.4, on: true },
+        { id: 'p2', name: 'tauri-demo', detail: 'target/ · sin commits desde hace 5 meses', state: 'Seguro', tone: 'ok', gb: 5.1, on: true, cmd: 'cargo clean' },
+        { id: 'p3', name: 'legacy-reports', detail: 'target/ de Maven · sin commits desde hace 11 meses', state: 'Seguro', tone: 'ok', gb: 2.4, on: true, cmd: 'mvn clean' },
+        { id: 'p4', name: 'portfolio-2023', detail: 'node_modules · sin commits desde hace 2 años', state: 'Seguro', tone: 'ok', gb: 0.6, on: true },
+        { id: 'p5', name: 'ml-experiments', detail: '.venv · hay cambios locales sin commitear', state: 'Precaución', tone: 'warn', gb: 2.8, on: false },
+        { id: 'p6', name: 'payments-api', detail: 'target/ · último commit hace 2 días', state: 'En uso', tone: 'busy', gb: 3.4, on: false }
+      ] },
+      toolchains: { label: 'Toolchains', rows: [
+        { id: 't1', name: 'Node 16.20.2', detail: 'Ningún proyecto escaneado lo pide', state: 'Precaución', tone: 'warn', gb: 0.2, on: false, cmd: 'nvm uninstall 16.20.2' },
+        { id: 't2', name: 'Node 18.19.0', detail: 'Lo piden 3 proyectos', state: 'En uso', tone: 'busy', gb: 0.2, on: false },
+        { id: 't3', name: 'Rust nightly-2025-03-01', detail: 'Ningún rust-toolchain.toml escaneado lo fija', state: 'Precaución', tone: 'warn', gb: 1.3, on: false, cmd: 'rustup toolchain uninstall nightly-2025-03-01' },
+        { id: 't5', name: 'Homebrew · 23 versiones antiguas', detail: 'Versiones ya reemplazadas', state: 'Seguro', tone: 'ok', gb: 1.9, on: true, cmd: 'brew cleanup --prune=all' },
+        { id: 't6', name: 'Homebrew · 5 dependencias huérfanas', detail: 'Ninguna fórmula instalada las necesita', state: 'Precaución', tone: 'warn', gb: 0.3, on: false, cmd: 'brew autoremove' }
+      ] },
+      caches: { label: 'Cachés', rows: [
+        { id: 'c1', name: 'npm', detail: 'Se vuelve a descargar al instalar', state: 'Seguro', tone: 'ok', gb: 2.1, on: true, cmd: 'npm cache clean --force' },
+        { id: 'c2', name: 'pnpm store', detail: 'Solo paquetes que ningún proyecto usa', state: 'Seguro', tone: 'ok', gb: 3.4, on: true, cmd: 'pnpm store prune' },
+        { id: 'c3', name: 'Cargo registry', detail: 'Crates descargados', state: 'Seguro', tone: 'ok', gb: 1.8, on: true },
+        { id: 'c4', name: 'uv', detail: 'Paquetes de Python sin uso', state: 'Seguro', tone: 'ok', gb: 0.9, on: true, cmd: 'uv cache prune' },
+        { id: 'c5', name: 'Modelos de Hugging Face', detail: '4 modelos · el más reciente descargado hace 3 meses', state: 'Revisar', tone: 'review', gb: 7.8, on: false }
+      ] },
+      contenedores: { label: 'Contenedores', rows: [
+        { id: 'd1', name: 'Imágenes colgantes', detail: 'Sin etiqueta ni contenedor', state: 'Seguro', tone: 'ok', gb: 4.7, on: true, cmd: 'docker image prune' },
+        { id: 'd2', name: 'Caché de build', detail: 'Capas intermedias', state: 'Seguro', tone: 'ok', gb: 2.2, on: true, cmd: 'docker builder prune' },
+        { id: 'd3', name: 'Volúmenes sin usar', detail: 'Pueden contener bases de datos', state: 'Revisar', tone: 'review', gb: 1.3, on: false, cmd: 'docker volume prune' }
+      ] },
+      xcode: { label: 'Xcode', rows: [
+        { id: 'x1', name: 'DerivedData', detail: 'Compilaciones intermedias', state: 'Seguro', tone: 'ok', gb: 6.4, on: true },
+        { id: 'x2', name: 'iOS DeviceSupport (16 y 17)', detail: 'Ningún dispositivo conectado recientemente las usa', state: 'Precaución', tone: 'warn', gb: 8.2, on: false },
+        { id: 'x3', name: '6 simuladores no disponibles', detail: 'Sus runtimes ya no están instalados', state: 'Seguro', tone: 'ok', gb: 3.9, on: true, cmd: 'xcrun simctl delete unavailable' },
+        { id: 'x4', name: 'Archives', detail: 'Necesarios para símbolos de apps publicadas', state: 'Revisar', tone: 'review', gb: 2.1, on: false }
+      ] }
+    };
+    const sel = st.sel || (() => { const s = {}; Object.keys(data).forEach((k) => data[k].rows.forEach((r) => { s[r.id] = r.on; })); return s; })();
+    const fmt = (n) => n.toFixed(1).replace('.', ',') + ' GB';
+    let total = 0;
+    Object.keys(data).forEach((k) => data[k].rows.forEach((r) => { if (sel[r.id]) total += r.gb; }));
+    const tabs = Object.keys(data).map((k) => ({
+      label: data[k].label,
+      selected: k === tab ? 'true' : 'false',
+      style: 'min-height: 32px; padding: 0 16px; border: 0; border-radius: 9px; font: inherit; font-size: 14px; cursor: pointer; ' + (k === tab ? 'background: #574EFF; color: #FFFFFF; font-weight: 600;' : 'background: transparent; color: rgba(255,255,255,0.75);'),
+      pick: () => this.setState({ tab: k, sel: sel })
+    }));
+    const rows = data[tab].rows.map((r) => ({
+      name: r.name, detail: r.detail, state: r.state, size: fmt(r.gb),
+      on: !!sel[r.id], hasCmd: !!r.cmd, cmd: r.cmd || '',
+      pillStyle: 'flex-shrink: 0; padding: 2px 9px; border-radius: 999px; font-size: 11px; ' + mono + ' ' + tones[r.tone],
+      toggle: () => { const n = Object.assign({}, sel); n[r.id] = !sel[r.id]; this.setState({ sel: n }); }
+    }));
+    return { tabs: tabs, rows: rows, tabLabel: data[tab].label, selTotal: fmt(total) + ' seleccionados' };
+  }
+}
+</script>
+</body>
+</html>

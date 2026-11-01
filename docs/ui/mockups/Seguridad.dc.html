@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Dependencias</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:44</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), radial-gradient(40% 50% at 85% 100%, rgba(255,130,150,0.12) 0%, rgba(255,130,150,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="vul" mode="dev" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="display: flex; align-items: flex-end; gap: 28px; padding: 44px 48px 22px;">
+        <div style="flex-grow: 1;">
+          <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Dependencias</h1>
+          <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">2.418 paquetes revisados en proyectos, Homebrew y globales.</p>
+        </div>
+        <dl style="margin: 0; display: flex; gap: 28px;">
+          <div style="text-align: right;"><dt style="font-size: 12.5px; color: rgba(255,255,255,0.6);">Urgente · P0</dt><dd style="margin: 2px 0 0; font-size: 30px; font-weight: 400; color: #FF9AAA;">1</dd></div>
+          <div style="text-align: right;"><dt style="font-size: 12.5px; color: rgba(255,255,255,0.6);">Pronto · P1</dt><dd style="margin: 2px 0 0; font-size: 30px; font-weight: 400; color: #FFC27A;">2</dd></div>
+          <div style="text-align: right;"><dt style="font-size: 12.5px; color: rgba(255,255,255,0.6);">Planificar · P2</dt><dd style="margin: 2px 0 0; font-size: 30px; font-weight: 400; color: #C9C6FF;">3</dd></div>
+        </dl>
+      </header>
+      <div style="display: flex; gap: 28px; padding: 0 48px; height: 530px;">
+        <section aria-label="Hallazgos" style="flex: 1 1 auto; min-width: 0; overflow: auto; display: flex; flex-direction: column;">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+            <button type="button" onClick="{{r.pick}}" aria-pressed="{{r.pressed}}" style="{{r.rowStyle}}">
+              <span style="{{r.priStyle}}">{{r.pri}}</span>
+              <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 15.5px; font-weight: 600;">{{r.pkg}} <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 13px; font-weight: 400; color: rgba(255,255,255,0.7);">{{r.ver}}</span></span>
+                <span style="font-size: 13px; color: rgba(255,255,255,0.6);">{{r.where}}</span>
+              </span>
+              <span style="font-size: 12.5px; color: #5FED83;">{{r.fixShort}}</span>
+            </button>
+          </sc-for>
+        </section>
+        <aside aria-labelledby="f-t" style="flex: 0 0 360px; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 18px; background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
+          <div>
+            <h2 id="f-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{cur.pkg}} <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 14px; font-weight: 400; color: rgba(255,255,255,0.7);">{{cur.ver}}</span></h2>
+            <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: rgba(255,255,255,0.6);">{{cur.ids}}</span>
+          </div>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.85);">{{cur.what}}</p>
+          <sc-if value="{{cur.hasWhy}}" hint-placeholder-val="{{true}}">
+            <p style="margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(255,130,150,0.10); font-size: 13px; line-height: 1.45; color: #FFC2CC;">{{cur.why}}</p>
+          </sc-if>
+          <p style="margin: 0; font-size: 13.5px; color: rgba(255,255,255,0.7);">{{cur.where}} · corregido en <span style="color: #5FED83;">{{cur.fix}}</span></p>
+          <code style="display: block; padding: 12px; border-radius: 12px; background: rgba(0,0,0,0.35); color: #E6B7FE; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; white-space: pre-wrap;">{{cur.cmd}}</code>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px;">
+            <button type="button" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: #574EFF; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Copiar arreglo</button>
+            <a href="#abrir" style="font-size: 13.5px; font-weight: 600;">Abrir proyecto</a>
+            <a href="#ignorar" style="font-size: 13.5px; font-weight: 600;">Ignorar con motivo…</a>
+          </div>
+        </aside>
+      </div>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.55);">Consulta en línea a OSV.dev: solo salen nombre y versión de paquetes públicos, nunca rutas ni nombres de proyecto</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const active = st.active || 'log4j';
+    const mono = 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace;';
+    const priS = {
+      'P0': 'background: rgba(255,130,150,0.18); color: #FF9AAA;',
+      'P1': 'background: rgba(255,194,122,0.14); color: #FFC27A;',
+      'P2': 'background: rgba(167,162,255,0.16); color: #C9C6FF;'
+    };
+    const data = [
+      { id: 'log4j', pri: 'P0', pkg: 'log4j-core', ver: '2.14.1', where: 'legacy-reports · Maven · directa · CVSS 10', ids: 'CVE-2021-44228 · GHSA-jfh8-c2jp-5v3q',
+        what: 'Log4Shell: si la app registra texto que controla un atacante, este puede ejecutar código en el equipo o servidor.',
+        why: 'Urgente: está en el catálogo KEV de CISA, es decir, se está explotando.',
+        fix: '2.17.1', cmd: '<!-- legacy-reports/pom.xml -->\n<version>2.17.1</version>' },
+      { id: 'lodash', pri: 'P1', pkg: 'lodash', ver: '4.17.15', where: 'portfolio-2023 · npm · directa · CVSS 7,4', ids: 'CVE-2020-8203',
+        what: 'Contaminación de prototipo en zipObjectDeep: permite alterar objetos de la aplicación.',
+        fix: '4.17.19', cmd: 'cd ~/code/portfolio-2023\nnpm install lodash@^4.17.21' },
+      { id: 'openssl', pri: 'P1', pkg: 'openssl@1.1', ver: '1.1.1w', where: 'Homebrew · sin mantenimiento desde sept. 2023', ids: 'Fin de soporte',
+        what: 'Esta rama ya no recibe parches de seguridad. Cualquier fallo nuevo quedará sin corregir.',
+        fix: 'openssl@3', cmd: 'brew uses --installed openssl@1.1\nbrew uninstall openssl@1.1' },
+      { id: 'requests', pri: 'P2', pkg: 'requests', ver: '2.25.1', where: 'ml-experiments · PyPI · directa · CVSS 6,1', ids: 'CVE-2023-32681',
+        what: 'Puede reenviar la cabecera Proxy-Authorization a otro destino tras una redirección.',
+        fix: '2.31.0', cmd: 'pip install "requests>=2.31.0"' },
+      { id: 'time', pri: 'P2', pkg: 'time', ver: '0.1.45', where: 'tauri-demo · crates.io · transitiva · CVSS 6,2', ids: 'RUSTSEC-2020-0071 · CVE-2020-26235',
+        what: 'Posible fallo de segmentación al consultar la hora local mientras otro hilo cambia variables de entorno.',
+        fix: '0.2.23', cmd: 'cargo tree -i time@0.1.45\ncargo update' },
+      { id: 'axios', pri: 'P2', pkg: 'axios', ver: '0.21.0', where: 'old-landing · npm · directa · CVSS 5,9', ids: 'CVE-2020-28168',
+        what: 'Falsificación de peticiones del lado del servidor (SSRF) al seguir redirecciones con proxy.',
+        fix: '0.21.1', cmd: 'cd ~/code/old-landing\nnpm install axios@^0.21.1' }
+    ];
+    const rows = data.map((d) => ({
+      pri: d.pri, pkg: d.pkg, ver: d.ver, where: d.where, fixShort: 'arreglo: ' + d.fix,
+      pressed: d.id === active ? 'true' : 'false',
+      priStyle: 'flex-shrink: 0; min-width: 34px; text-align: center; padding: 3px 8px; border-radius: 999px; font-size: 11.5px; ' + mono + ' ' + priS[d.pri],
+      rowStyle: 'display: flex; align-items: center; gap: 14px; min-height: 66px; padding: 8px 14px; border: 0; border-radius: 14px; font: inherit; color: inherit; text-align: left; cursor: pointer; ' + (d.id === active ? 'background: rgba(255,255,255,0.08);' : 'background: transparent;'),
+      pick: () => this.setState({ active: d.id })
+    }));
+    const c = data.find((d) => d.id === active) || data[0];
+    return {
+      rows: rows,
+      cur: { pkg: c.pkg, ver: c.ver, ids: c.ids, what: c.what, hasWhy: !!c.why, why: c.why || '', where: c.where, fix: c.fix, cmd: c.cmd }
+    };
+  }
+}
+</script>
+</body>
+</html>

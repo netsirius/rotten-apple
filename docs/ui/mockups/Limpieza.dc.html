@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Limpieza</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:32</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), radial-gradient(40% 50% at 30% 100%, rgba(95,237,131,0.10) 0%, rgba(95,237,131,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="limpieza" mode="simple" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="display: flex; align-items: flex-end; gap: 16px; padding: 44px 48px 18px;">
+        <div style="flex-grow: 1;">
+          <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Limpieza</h1>
+          <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">Solo viene marcado lo que se regenera solo. Lo demás, en «Más opciones».</p>
+        </div>
+        <div role="tablist" aria-label="Tipo de limpieza" style="display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.07);">
+          <span role="tab" aria-selected="true" style="display: flex; align-items: center; min-height: 32px; padding: 0 16px; border-radius: 9px; background: #574EFF; color: #FFFFFF; font-size: 14px; font-weight: 600;">Sistema</span>
+          <a href="Instaladores.dc.html" role="tab" aria-selected="false" style="display: flex; align-items: center; min-height: 32px; padding: 0 16px; border-radius: 9px; color: rgba(255,255,255,0.75); font-size: 14px; text-decoration: none;">Instaladores</a>
+        </div>
+      </header>
+      <div style="display: flex; gap: 28px; padding: 0 48px; height: 440px;">
+        <section aria-label="Categorías" style="flex: 1 1 auto; min-width: 0; overflow: auto; display: flex; flex-direction: column;">
+          <sc-for list="{{cats}}" as="c" hint-placeholder-count="5">
+            <div style="{{c.rowStyle}}">
+              <input type="checkbox" checked="{{c.checked}}" disabled="{{c.locked}}" onChange="{{c.toggle}}" aria-label="Incluir {{c.name}}" style="width: 17px; height: 17px; margin: 0; flex-shrink: 0; accent-color: #574EFF;">
+              <button type="button" onClick="{{c.pick}}" aria-expanded="{{c.expanded}}" style="flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer;">
+                <span style="{{c.tile}}" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="{{c.d}}"></path></svg></span>
+                <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                  <span style="font-size: 15.5px; font-weight: 600;">{{c.name}}</span>
+                  <span style="font-size: 13px; color: rgba(255,255,255,0.6);">{{c.desc}}</span>
+                </span>
+                <sc-if value="{{c.hasPill}}" hint-placeholder-val="{{false}}">
+                  <span style="{{c.pillStyle}}">{{c.risk}}</span>
+                </sc-if>
+                <span style="width: 78px; text-align: right; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 14px;">{{c.label}}</span>
+              </button>
+            </div>
+          </sc-for>
+          <button type="button" onClick="{{toggleMore}}" aria-expanded="{{moreExpanded}}" style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px; border: 0; background: transparent; color: #C9C6FF; font: inherit; font-size: 14.5px; font-weight: 600; text-align: left; cursor: pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{moreIcon}}"></path></svg>
+            {{moreLabel}}
+          </button>
+        </section>
+        <aside aria-labelledby="det-t" style="flex: 0 0 330px; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 18px; background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+            <h2 id="det-t" style="margin: 0; font-size: 17px; font-weight: 600;">{{act.name}}</h2>
+            <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 14px; color: rgba(255,255,255,0.8);">{{act.label}}</span>
+          </div>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.82);">{{act.what}}</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.82);"><strong style="color: #FFFFFF;">Si lo limpias:</strong> {{act.effect}}</p>
+          <sc-if value="{{act.hasNotice}}" hint-placeholder-val="{{true}}">
+            <p role="note" style="margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(255,194,122,0.10); font-size: 13px; line-height: 1.45; color: #FFD9A8;">{{act.notice}}</p>
+          </sc-if>
+          <div style="display: flex; flex-direction: column;">
+            <sc-for list="{{act.items}}" as="it" hint-placeholder-count="4">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+                <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                  <span style="{{it.nameStyle}}">{{it.name}}</span>
+                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: rgba(255,255,255,0.5);">{{it.path}}</span>
+                </span>
+                <span style="white-space: nowrap; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: rgba(255,255,255,0.8);">{{it.size}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; gap: 16px; font-size: 13.5px;">
+            <a href="#finder" style="font-weight: 600;">Mostrar en Finder</a>
+            <a href="#excluir" style="font-weight: 600;">Excluir siempre…</a>
+          </div>
+        </aside>
+      </div>
+      <a href="Revision.dc.html" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font-size: 19px; font-weight: 600; text-decoration: none;">Limpiar</a>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.6);"><span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; color: #FFFFFF;">{{selTotal}}</span> seleccionados · verás la lista antes</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const defaults = { cache: true, logs: true, tmp: true, browser: true, updates: true, leftovers: false, mail: false, ios: false, cont: false };
+    const sel = st.sel || defaults;
+    const active = st.active || 'cache';
+    const showMore = !!st.showMore;
+    const mono = 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace;';
+    const tileG = { 'Seguro': '#8FF5AC, #1E9E52', 'Precaución': '#FFD08A, #C27612', 'Revisar': '#E6B7FE, #7A3FD0', 'Bloqueada': '#C8C8D8, #5D5D78' };
+    const pills = {
+      'Precaución': 'background: rgba(255,194,122,0.14); color: #FFC27A;',
+      'Revisar': 'background: rgba(230,183,254,0.16); color: #E6B7FE;',
+      'Bloqueada': 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.75);'
+    };
+    const I = {
+      cache: 'M12 3v4 M12 17v4 M3 12h4 M17 12h4 M6 6l2.5 2.5 M15.5 15.5L18 18 M6 18l2.5-2.5 M15.5 8.5L18 6',
+      logs: 'M6 3h9l3 3v15H6z M9 9h6 M9 13h6 M9 17h4',
+      tmp: 'M12 3a9 9 0 1 0 9 9 M12 7v5l3 2',
+      browser: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M3 12h18 M12 3c3 3 3 15 0 18 M12 3c-3 3-3 15 0 18',
+      updates: 'M12 3v12 M7 10l5 5 5-5 M4 20h16',
+      leftovers: 'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13',
+      mail: 'M3 6h18v12H3z M3 7l9 6 9-6',
+      ios: 'M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M11 18h2',
+      cont: 'M5 11h14v10H5z M8 11V7a4 4 0 0 1 8 0v4'
+    };
+    const data = [
+      { id: 'cache', name: 'Cachés de aplicaciones', desc: 'Archivos que las apps guardan para abrir más rápido', size: 5.2, label: '5,2 GB', risk: 'Seguro',
+        what: 'Copias temporales que cada app crea para no volver a descargar o calcular lo mismo. Las vuelven a crear cuando las necesitan.',
+        effect: 'algunas apps tardarán un poco más la primera vez. No pierdes datos ni ajustes.',
+        notice: 'Slack está abierto: su caché (640 MB) se omitirá.',
+        items: [
+          { name: 'Adobe Lightroom', path: '~/Library/Caches/Adobe/Lightroom', size: '1,4 GB' },
+          { name: 'Spotify', path: '~/Library/Caches/com.spotify.client', size: '1,2 GB' },
+          { name: 'Figma', path: '~/Library/Caches/com.figma.Desktop', size: '0,9 GB' },
+          { name: '215 elementos más', path: '~/Library/Caches', size: '1,7 GB' },
+          { name: 'Slack · en uso, se omite', path: '~/Library/Application Support/Slack/Cache', size: '640 MB', skipped: true }
+        ] },
+      { id: 'logs', name: 'Registros', desc: 'Historiales de diagnóstico antiguos', size: 0.7, label: '717 MB', risk: 'Seguro',
+        what: 'Textos que las apps escriben para diagnosticar problemas. Solo los mira un técnico si algo falla.',
+        effect: 'pierdes el historial de diagnóstico antiguo. Los informes de los últimos 7 días se conservan.',
+        items: [ { name: 'Registros de apps', path: '~/Library/Logs', size: '612 MB' }, { name: 'Informes de diagnóstico', path: '~/Library/Logs/DiagnosticReports', size: '105 MB' } ] },
+      { id: 'tmp', name: 'Archivos temporales', desc: 'Restos de procesos que ya terminaron', size: 1.4, label: '1,4 GB', risk: 'Seguro',
+        what: 'Archivos que las apps crean mientras trabajan y olvidan borrar. Solo los de más de 3 días que nadie tiene abiertos.',
+        effect: 'ninguno visible.',
+        items: [ { name: 'Temporales de usuario', path: '$TMPDIR', size: '1,4 GB' } ] },
+      { id: 'browser', name: 'Cachés de navegadores', desc: 'Sin tocar contraseñas, historial ni sesiones', size: 1.0, label: '1,0 GB', risk: 'Seguro',
+        what: 'Imágenes y archivos de webs visitadas guardados para cargarlas más rápido.',
+        effect: 'las webs tardarán algo más la primera vez.',
+        items: [ { name: 'Google Chrome', path: '~/Library/Caches/Google/Chrome', size: '612 MB' }, { name: 'Safari', path: '~/Library/Caches/com.apple.Safari', size: '412 MB' } ] },
+      { id: 'updates', name: 'Restos de actualizaciones', desc: 'Descargas de actualizadores ya aplicadas', size: 1.0, label: '1,0 GB', risk: 'Seguro',
+        what: 'Paquetes que los actualizadores de las apps (Sparkle, ShipIt…) descargaron y ya instalaron.',
+        effect: 'ninguno. Las actualizaciones de macOS las protege el sistema y no se tocan.',
+        items: [ { name: 'VS Code (ShipIt)', path: '~/Library/Caches/com.microsoft.VSCode.ShipIt', size: '612 MB' }, { name: 'Sparkle en 6 apps', path: '~/Library/Caches/…/org.sparkle-project.Sparkle', size: '412 MB' } ] },
+      { id: 'leftovers', name: 'Restos de apps desinstaladas', desc: 'Zoom, Notion, Loom y Teams (clásico)', size: 0.5, label: '512 MB', risk: 'Precaución',
+        what: 'Carpetas que dejaron apps que ya no están en tu Mac. Comprobamos que ninguna app instalada las use.',
+        effect: 'si reinstalas esas apps, empezarán sin tus ajustes anteriores.',
+        items: [ { name: 'Zoom', path: '~/Library/Application Support/zoom.us', size: '301 MB' }, { name: 'Notion', path: '~/Library/Application Support/Notion', size: '158 MB' } ] },
+      { id: 'mail', name: 'Adjuntos descargados de Mail', desc: 'Copias locales; el original sigue en el correo', size: 0.8, label: '820 MB', risk: 'Precaución',
+        what: 'Copias de adjuntos que abriste desde Mail. El correo y su adjunto siguen en el servidor.',
+        effect: 'si vuelves a abrir un adjunto, Mail lo descarga de nuevo.',
+        items: [ { name: 'Mail Downloads', path: '~/Library/Containers/com.apple.mail/…/Mail Downloads', size: '820 MB' } ] },
+      { id: 'ios', name: 'Copias de seguridad de iPhone', desc: '2 copias en este Mac', size: 14.7, label: '14,7 GB', risk: 'Revisar',
+        what: 'Copias completas de un iPhone o iPad hechas con el Finder. Pueden ser tu única copia si no usas iCloud.',
+        effect: 'no podrás restaurar el dispositivo desde estas copias.',
+        notice: 'La copia de «iPhone de casa» es de marzo de 2024 y no hay otra más reciente.',
+        items: [ { name: 'iPhone de casa · marzo 2024', path: '~/Library/Application Support/MobileSync/Backup/…', size: '9,1 GB' }, { name: 'iPad · enero 2025', path: '~/Library/Application Support/MobileSync/Backup/…', size: '5,6 GB' } ] },
+      { id: 'cont', name: 'Cachés de apps aisladas', desc: 'macOS no nos deja verlas sin tu permiso', size: 0, label: '—', risk: 'Bloqueada', locked: true,
+        what: 'Algunas apps guardan sus cachés en un contenedor protegido por macOS. Sin permiso no podemos ni medirlas.',
+        effect: 'nada por ahora. Si das permiso, aparecerán aquí con su tamaño y su riesgo.',
+        notice: 'Requiere permiso en Ajustes del Sistema › Privacidad y seguridad.',
+        items: [] }
+    ];
+    const total = data.reduce((a, c) => a + (sel[c.id] ? c.size : 0), 0);
+    const fmt = (n) => n.toFixed(1).replace('.', ',') + ' GB';
+    const extra = data.filter((c) => c.risk !== 'Seguro');
+    const extraGb = extra.reduce((a, c) => a + c.size, 0);
+    const cats = data.filter((c) => showMore || c.risk === 'Seguro').map((c) => {
+      const isActive = c.id === active;
+      return {
+        name: c.name, desc: c.desc, label: c.label, risk: c.risk, d: I[c.id],
+        checked: !!sel[c.id], locked: !!c.locked,
+        expanded: isActive ? 'true' : 'false',
+        hasPill: c.risk !== 'Seguro',
+        pillStyle: c.risk !== 'Seguro' ? 'flex-shrink: 0; padding: 2px 9px; border-radius: 999px; font-size: 11px; ' + mono + ' ' + pills[c.risk] : '',
+        tile: 'flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(160deg, ' + tileG[c.risk] + '); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);',
+        rowStyle: 'display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 8px 12px; border-radius: 14px; box-sizing: border-box; ' + (isActive ? 'background: rgba(255,255,255,0.08);' : 'background: transparent;'),
+        toggle: () => { const n = Object.assign({}, sel); n[c.id] = !sel[c.id]; this.setState({ sel: n }); },
+        pick: () => this.setState({ active: c.id })
+      };
+    });
+    const a = data.find((c) => c.id === active) || data[0];
+    return {
+      selTotal: fmt(total),
+      cats: cats,
+      moreExpanded: showMore ? 'true' : 'false',
+      moreIcon: showMore ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6',
+      moreLabel: showMore ? 'Mostrar menos' : 'Más opciones · ' + extra.length + ' para revisar tú (' + fmt(extraGb) + ')',
+      toggleMore: () => this.setState({ showMore: !showMore }),
+      act: {
+        name: a.name, label: a.label, what: a.what, effect: a.effect,
+        hasNotice: !!a.notice, notice: a.notice || '',
+        items: a.items.map((it) => ({ name: it.name, path: it.path, size: it.size, nameStyle: 'font-size: 13.5px; ' + (it.skipped ? 'color: #FFC27A; font-style: italic;' : 'color: #FFFFFF;') }))
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
