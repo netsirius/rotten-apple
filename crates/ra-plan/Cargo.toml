@@ -1,0 +1,24 @@
+[package]
+name = "ra-plan"
+description = "Plan inmutable con hash BLAKE3 y aprobación ligada al hash (ADR-04 §5.2)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+blake3.workspace = true
+humantime.workspace = true
+ra-catalog.workspace = true
+ra-safety.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

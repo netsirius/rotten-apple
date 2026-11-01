@@ -1,0 +1,33 @@
+# Fixture de la regla browsers.chrome.profile-caches (CAT-08).
+
+[[entry]]
+path = "Library/Application Support/Google/Chrome/Default/Code Cache/js/index"
+size = 3000
+age_days = 3
+
+[[entry]]
+path = "Library/Application Support/Google/Chrome/Default/GPUCache/data_0"
+size = 3000
+age_days = 3
+
+[[entry]] # Negativos: datos del usuario en el mismo perfil.
+path = "Library/Application Support/Google/Chrome/Default/Cookies"
+age_days = 3
+
+[[entry]]
+path = "Library/Application Support/Google/Chrome/Default/History"
+age_days = 3
+
+[[entry]]
+path = "Library/Application Support/Google/Chrome/Default/Local Storage/leveldb/x"
+age_days = 3
+
+[expect]
+candidates = [
+    "Library/Application Support/Google/Chrome/Default/Code Cache",
+    "Library/Application Support/Google/Chrome/Default/GPUCache",
+]
+preselected = [
+    "Library/Application Support/Google/Chrome/Default/Code Cache",
+    "Library/Application Support/Google/Chrome/Default/GPUCache",
+]
