@@ -653,4 +653,25 @@ mod tests {
         assert_eq!(restored_name(OsStr::new("a.log"), 1), "a (restaurado).log");
         assert_eq!(restored_name(OsStr::new("dir"), 2), "dir (restaurado 2)");
     }
+
+    #[test]
+    fn skipped_items_serialize_with_reason_and_message() {
+        let causes = [
+            SkipCause::IdentityChanged,
+            SkipCause::Flags {
+                flag: ra_safety::FlagViolation::Immutable,
+            },
+            SkipCause::Protected {
+                detail: ra_safety::ProtectionReason::Home,
+            },
+        ];
+        for cause in causes {
+            let code = cause.code();
+            let r = skipped(1, Path::new("/x"), 0, cause);
+            let v = serde_json::to_value(&r).expect("json");
+            assert_eq!(v["outcome"], "skipped");
+            assert_eq!(v["reason"], code);
+            assert!(v["message"].as_str().is_some_and(|m| !m.is_empty()));
+        }
+    }
 }

@@ -615,6 +615,7 @@ dependencies = [
  "ra-safety",
  "rustix",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]
