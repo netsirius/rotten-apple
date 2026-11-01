@@ -573,17 +573,18 @@ pub fn recover_incomplete(
     _lock: &ExecLock,
 ) -> Result<Vec<String>, ExecError> {
     let (records, _) = read_journal(ctx.history)?;
-    let mut started: Vec<&str> = Vec::new();
+    let mut started: Vec<(&str, Option<&str>)> = Vec::new();
     let mut finished: Vec<&str> = Vec::new();
     for r in &records {
-        match r.event {
-            Event::OpStarted { .. } => started.push(&r.op),
+        match &r.event {
+            Event::OpStarted { undo_of, .. } => started.push((&r.op, undo_of.as_deref())),
             Event::OpFinished { .. } => finished.push(&r.op),
             _ => {}
         }
     }
+    let mut touched: Vec<String> = Vec::new();
     let mut recovered = Vec::new();
-    for op in started.into_iter().filter(|op| !finished.contains(op)) {
+    for (op, undo_of) in started.into_iter().filter(|(op, _)| !finished.contains(op)) {
         let mut j = Journal::open(ctx.history, op, SystemTime::now())?;
         let mut resolved: Vec<u32> = Vec::new();
         for r in records.iter().filter(|r| r.op == op) {
@@ -599,8 +600,10 @@ pub fn recover_incomplete(
         for r in records.iter().filter(|r| r.op == op) {
             let Event::ItemIntent {
                 item,
+                action,
                 path,
                 identity,
+                target,
                 ..
             } = &r.event
             else {
@@ -609,21 +612,30 @@ pub fn recover_incomplete(
             if resolved.contains(item) {
                 continue;
             }
-            let state = match stat_nofollow_any(path) {
+            let (state, result_path) = match stat_nofollow_any(path) {
                 Ok((id, _)) if id.same_after_move(identity) => {
                     skipped += 1;
-                    "not_moved"
+                    ("not_moved", None)
                 }
                 _ => {
                     done += 1;
-                    "unknown"
+                    // Un deshacer interrumpido puede haber llegado a su destino
+                    // (con o sin sufijo « (restaurado)»).
+                    let restored = match (action, target) {
+                        (StepAction::Restore, Some(t)) => find_restored(t, identity),
+                        _ => None,
+                    };
+                    match restored {
+                        Some(p) => ("restored", Some(p)),
+                        None => ("unknown", None),
+                    }
                 }
             };
             j.write(
                 Event::ItemReconciled {
                     item: *item,
                     state: state.into(),
-                    result_path: None,
+                    result_path,
                 },
                 true,
             )?;
@@ -638,10 +650,32 @@ pub fn recover_incomplete(
             true,
         )?;
         recovered.push(op.to_owned());
+        touched.push(op.to_owned());
+        if let Some(of) = undo_of {
+            touched.push(of.to_owned());
+        }
     }
-    let ops: Vec<&str> = recovered.iter().map(String::as_str).collect();
+    let ops: Vec<&str> = touched.iter().map(String::as_str).collect();
     save_manifests(ctx.history, &ops)?;
     Ok(recovered)
+}
+
+/// Busca en la ruta original (y en sus variantes « (restaurado N)») el
+/// elemento que un deshacer interrumpido pudo llegar a mover.
+fn find_restored(target: &Path, identity: &ra_safety::Identity) -> Option<PathBuf> {
+    let parent = target.parent()?;
+    let name = target.file_name()?;
+    (0..20u32).find_map(|n| {
+        let candidate = if n == 0 {
+            target.to_path_buf()
+        } else {
+            parent.join(restored_name(name, n))
+        };
+        stat_nofollow_any(&candidate)
+            .ok()
+            .filter(|(id, _)| id.same_after_move(identity))
+            .map(|_| candidate)
+    })
 }
 
 #[cfg(test)]

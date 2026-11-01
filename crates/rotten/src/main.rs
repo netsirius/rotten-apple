@@ -200,10 +200,12 @@ fn scan(ui: &Ui, core: &Core, categories: Vec<String>) -> Exit {
         Err(e) => return ui.core_error("scan", &e),
     };
     if ui.json {
-        ui.emit(
-            "scan",
-            json!({ "home": core.env().home, "report": report, "scan_status": report.scan_status }),
-        );
+        // El informe va al nivel superior: `scan_status`, `categories`…
+        let mut body = serde_json::to_value(&report).unwrap_or(Value::Null);
+        if let Value::Object(m) = &mut body {
+            m.insert("home".into(), json!(core.env().home));
+        }
+        ui.emit("scan", body);
     } else {
         let status = match report.scan_status {
             ScanStatus::Complete => ui.t("completo", "complete"),
@@ -460,6 +462,7 @@ fn history(ui: &Ui, core: &Core) -> Exit {
             UndoState::Partial => ui.t("se puede deshacer en parte", "can be partly undone"),
             UndoState::Irreversible => ui.t("ya no es reversible", "no longer reversible"),
             UndoState::Restored => ui.t("restaurada", "restored"),
+            UndoState::PartlyRestored => ui.t("restaurada en parte", "partly restored"),
             UndoState::NotApplicable => "—",
         };
         let kind = match o.undo_of {

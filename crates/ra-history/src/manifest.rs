@@ -77,10 +77,17 @@ pub struct Manifest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UndoState {
+    /// Todo lo movido sigue en la Papelera.
     Restorable,
+    /// Una parte aún se puede restaurar.
     Partial,
+    /// Nada se puede restaurar ni se restauró.
     Irreversible,
+    /// Todo se restauró.
     Restored,
+    /// Se restauró una parte y el resto ya no está (CU-05: «restaurada
+    /// total o parcialmente»).
+    PartlyRestored,
     NotApplicable,
 }
 
@@ -154,6 +161,7 @@ impl Manifest {
             (r, 0, 0) if r > 0 => UndoState::Restorable,
             (0, 0, _) => UndoState::Restored,
             (r, _, _) if r > 0 => UndoState::Partial,
+            (0, _, x) if x > 0 => UndoState::PartlyRestored,
             _ => UndoState::Irreversible,
         }
     }
@@ -292,14 +300,18 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                 result_path,
             } => {
                 if let Some(i) = items.get_mut(item) {
-                    i.state = match state.as_str() {
-                        "not_moved" => ItemState::Skipped {
+                    i.state = match (state.as_str(), result_path) {
+                        ("not_moved", _) => ItemState::Skipped {
                             reason: "interrupted_before_action".into(),
                         },
-                        "trashed" => {
+                        ("trashed", _) => {
                             i.trashed_path = result_path.clone();
                             ItemState::Trashed
                         }
+                        ("restored", Some(to)) => ItemState::Restored {
+                            to: to.clone(),
+                            by: op.to_owned(),
+                        },
                         _ => ItemState::Unknown,
                     };
                 }
@@ -327,11 +339,20 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
             })
             .collect();
         for r in records.iter().filter(|r| undo_ops.contains(&r.op.as_str())) {
-            if let Event::ItemDone {
-                item,
-                result_path: Some(to),
-                ..
-            } = &r.event
+            let restored = match &r.event {
+                Event::ItemDone {
+                    item,
+                    result_path: Some(to),
+                    ..
+                } => Some((item, to)),
+                Event::ItemReconciled {
+                    item,
+                    state,
+                    result_path: Some(to),
+                } if state == "restored" => Some((item, to)),
+                _ => None,
+            };
+            if let Some((item, to)) = restored
                 && let Some(i) = items.get_mut(item)
             {
                 i.state = ItemState::Restored {
@@ -571,7 +592,7 @@ mod tests {
         fs::remove_file(trash.join("b.log")).expect("rm");
         let ops = list_ops(&recs);
         let clean = ops.iter().find(|o| o.op_id == "op-clean").expect("op");
-        assert_eq!(clean.undo_state, UndoState::Irreversible);
+        assert_eq!(clean.undo_state, UndoState::PartlyRestored);
         let plan = prepare_undo(&recs, "op-clean", None).expect("plan");
         assert!(plan.ready.is_empty());
         assert_eq!(plan.not_recoverable.len(), 2);

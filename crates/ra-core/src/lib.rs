@@ -284,6 +284,27 @@ impl Core {
         Ok(ra_exec::execute_undo(plan, &ctx, &lock)?)
     }
 
+    /// Reconciliación al arrancar (05 §5.6): cierra las operaciones que un
+    /// cierre abrupto dejó a medias. `execute` y `undo` ya la hacen antes de
+    /// actuar. Devuelve las operaciones reconciliadas.
+    pub fn recover(&self) -> Result<Vec<String>, CoreError> {
+        let lock = self.lock()?;
+        let protected = self.protected();
+        let exclusions =
+            Exclusions::compile(&Config::default(), &self.env.home).map_err(CoreError::Other)?;
+        let apps = AppProbe::snapshot(self.apps.as_ref());
+        let history = self.history_paths();
+        let ctx = ExecContext {
+            history: &history,
+            protected: &protected,
+            exclusions: &exclusions,
+            apps: &apps,
+            trash: &self.env.trash,
+            by: "recovery",
+        };
+        Ok(ra_exec::recover_incomplete(&ctx, &lock)?)
+    }
+
     pub fn doctor(&self) -> DoctorReport {
         doctor::run(self)
     }

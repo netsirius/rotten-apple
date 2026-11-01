@@ -181,7 +181,7 @@ fn json_is_automatic_when_piped() {
     assert_eq!(code, 0);
     assert_eq!(doc["schema_version"], 1);
     assert_eq!(doc["scan_status"], "complete");
-    let cats: Vec<&str> = doc["report"]["categories"]
+    let cats: Vec<&str> = doc["categories"]
         .as_array()
         .expect("categorías")
         .iter()
@@ -273,6 +273,28 @@ fn undo_by_items_and_when_trash_was_emptied() {
     assert_eq!(code, 4, "{doc:#}");
     assert_eq!(doc["report"]["done"], 1);
     assert_eq!(doc["not_recoverable"].as_array().expect("lista").len(), 2);
+    // Dos restaurados y uno ya no está: «restaurada en parte».
+    let (_, hist) = fx.run(&["history", "--json"]);
+    assert_eq!(hist["operations"][2]["undo_state"], "partly_restored");
+}
+
+#[test]
+fn emptying_the_trash_makes_an_operation_irreversible() {
+    let fx = fixture();
+    let (code, doc) = fx.run(&["clean", "--yes", "--json"]);
+    assert_eq!(code, 0);
+    for item in doc["report"]["items"].as_array().expect("items") {
+        let p = PathBuf::from(item["result_path"].as_str().expect("ruta"));
+        if p.is_dir() {
+            fs::remove_dir_all(&p).expect("rm");
+        } else {
+            fs::remove_file(&p).expect("rm");
+        }
+    }
+    let (_, hist) = fx.run(&["history", "--json"]);
+    assert_eq!(hist["operations"][0]["undo_state"], "irreversible");
+    let (code, doc) = fx.run(&["undo", "--json", "--yes"]);
+    assert_eq!(code, 1, "no queda nada que deshacer: {doc:#}");
 }
 
 #[test]
@@ -308,7 +330,8 @@ fn corrupt_exclusions_abort_with_code_5() {
     // El escaneo sigue, con aviso.
     let (code, doc) = fx.run(&["scan", "--json"]);
     assert_eq!(code, 0);
-    assert_eq!(doc["report"]["config"], "corrupt");
+    assert_eq!(doc["config"], "corrupt");
+    assert_eq!(doc["scan_status"], "complete");
     let (code, _) = fx.run(&["doctor", "--json"]);
     assert_eq!(code, 5);
 
