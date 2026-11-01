@@ -1,0 +1,28 @@
+# Fixture de la regla user-logs (CAT-03).
+
+[[entry]]
+path = "Library/Logs/old-app/app.log"
+size = 2048
+age_days = 30
+
+[[entry]]
+path = "Library/Logs/install.log"
+size = 512
+age_days = 20
+
+[[entry]] # Bloqueado: se está escribiendo.
+path = "Library/Logs/current.log"
+age_days = 0
+
+[[entry]] # Negativo: lo cubre otra regla.
+path = "Library/Logs/DiagnosticReports/a.ips"
+age_days = 30
+
+[[entry]] # Negativo: fuera de la raíz.
+path = "Library/Preferences/com.example.plist"
+age_days = 30
+
+[expect]
+candidates = ["Library/Logs/install.log", "Library/Logs/old-app"]
+blocked = ["Library/Logs/current.log"]
+preselected = ["Library/Logs/install.log", "Library/Logs/old-app"]

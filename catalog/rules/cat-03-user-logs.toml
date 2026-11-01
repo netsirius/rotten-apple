@@ -1,0 +1,38 @@
+# CAT-03 · Registros e informes de fallos (02 §5).
+#
+# Antigüedad mínima de 7 días para no tocar ficheros que se están escribiendo.
+# `DiagnosticReports` va en una regla aparte para tratar cada informe por
+# separado: un informe nuevo no bloquea a los antiguos.
+
+[[rule]]
+id = "user-logs"
+version = 1
+cat = "CAT-03"
+risk = "safe"
+regenerable = false
+preselect = true
+action = "trash"
+roots = ["~/Library/Logs"]
+include = ["*"]
+exclude = ["DiagnosticReports"]
+max_depth = 1
+min_age_days = 7
+title = { es = "Registro de app", en = "App log" }
+explain = { es = "Registros antiguos que solo sirven para diagnosticar fallos.", en = "Old logs only useful to diagnose problems." }
+evidence = "02 §5 CAT-03"
+
+[[rule]]
+id = "user-logs.diagnostic-reports"
+version = 1
+cat = "CAT-03"
+risk = "safe"
+regenerable = false
+preselect = true
+action = "trash"
+roots = ["~/Library/Logs/DiagnosticReports"]
+include = ["*"]
+max_depth = 1
+min_age_days = 7
+title = { es = "Informe de fallo", en = "Crash report" }
+explain = { es = "Informes de fallos antiguos de tus apps.", en = "Old crash reports from your apps." }
+evidence = "02 §5 CAT-03"

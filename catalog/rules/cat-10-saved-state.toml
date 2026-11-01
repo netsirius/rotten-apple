@@ -1,0 +1,24 @@
+# CAT-10 · Estado guardado de ventanas (02 §5).
+#
+# Nota: README §4 rotula CAT-10 como «restos de actualizadores», pero ningún
+# documento define esa categoría; se aplica la definición de 02 §5. Pendiente
+# de confirmar por el autor.
+#
+# Solo apps cerradas. Efecto: la app no reabre sus ventanas anteriores.
+
+[[rule]]
+id = "saved-application-state"
+version = 1
+cat = "CAT-10"
+risk = "safe"
+regenerable = true
+preselect = true
+action = "trash"
+roots = ["~/Library/Saved Application State"]
+include = ["*.savedState"]
+max_depth = 1
+app_not_running = ["{bundle_id}"]
+bundle_id_suffix = ".savedState"
+title = { es = "Ventanas guardadas", en = "Saved windows" }
+explain = { es = "La app abrirá sin restaurar sus ventanas anteriores.", en = "The app will open without restoring its previous windows." }
+evidence = "02 §5 CAT-10"

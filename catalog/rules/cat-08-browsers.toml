@@ -1,0 +1,75 @@
+# CAT-08 · Cachés de navegadores (02 §5). MVP: Safari, Chrome y Firefox.
+#
+# «Seguro» solo con el navegador cerrado: si está abierto, o no se puede
+# saber, el elemento se omite. Nunca cookies, historial, contraseñas,
+# marcadores, almacenamiento local ni sesiones (`never`). La caché de Safari
+# dentro de su contenedor queda fuera hasta cerrar V-03.
+
+[[rule]]
+id = "browsers.safari.cache"
+version = 1
+cat = "CAT-08"
+risk = "safe"
+regenerable = true
+preselect = true
+action = "trash"
+requires = ["fda"]
+roots = ["~/Library/Caches"]
+include = ["com.apple.Safari"]
+max_depth = 1
+app_not_running = ["com.apple.Safari"]
+never = ["Cookies", "History", "Login Data", "Bookmarks", "Local Storage", "IndexedDB", "Sessions", "Service Worker"]
+title = { es = "Caché de Safari", en = "Safari cache" }
+explain = { es = "Copias de páginas visitadas; se vuelven a descargar.", en = "Copies of visited pages; they are downloaded again." }
+evidence = "02 §5 CAT-08"
+
+[[rule]]
+id = "browsers.chrome.cache"
+version = 1
+cat = "CAT-08"
+risk = "safe"
+regenerable = true
+preselect = true
+action = "trash"
+roots = ["~/Library/Caches/Google/Chrome"]
+include = ["*"]
+max_depth = 1
+app_not_running = ["com.google.Chrome"]
+never = ["Cookies", "History", "Login Data", "Bookmarks", "Local Storage", "IndexedDB", "Sessions", "Service Worker"]
+title = { es = "Caché de Chrome", en = "Chrome cache" }
+explain = { es = "Copias de páginas visitadas; se vuelven a descargar.", en = "Copies of visited pages; they are downloaded again." }
+evidence = "02 §5 CAT-08"
+
+[[rule]]
+id = "browsers.chrome.profile-caches"
+version = 1
+cat = "CAT-08"
+risk = "safe"
+regenerable = true
+preselect = true
+action = "trash"
+roots = ["~/Library/Application Support/Google/Chrome"]
+include = ["*/Code Cache", "*/GPUCache"]
+max_depth = 2
+app_not_running = ["com.google.Chrome"]
+never = ["Cookies", "History", "Login Data", "Bookmarks", "Local Storage", "IndexedDB", "Sessions", "Service Worker"]
+title = { es = "Caché de código de Chrome", en = "Chrome code cache" }
+explain = { es = "Código y sombreadores compilados; Chrome los regenera.", en = "Compiled code and shaders; Chrome regenerates them." }
+evidence = "02 §5 CAT-08"
+
+[[rule]]
+id = "browsers.firefox.cache"
+version = 1
+cat = "CAT-08"
+risk = "safe"
+regenerable = true
+preselect = true
+action = "trash"
+roots = ["~/Library/Caches/Firefox/Profiles"]
+include = ["*/cache2"]
+max_depth = 2
+app_not_running = ["org.mozilla.firefox"]
+never = ["Cookies", "History", "Login Data", "Bookmarks", "Local Storage", "IndexedDB", "Sessions", "Service Worker"]
+title = { es = "Caché de Firefox", en = "Firefox cache" }
+explain = { es = "Copias de páginas visitadas; se vuelven a descargar.", en = "Copies of visited pages; they are downloaded again." }
+evidence = "02 §5 CAT-08"

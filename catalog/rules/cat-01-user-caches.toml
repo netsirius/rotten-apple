@@ -1,0 +1,56 @@
+# CAT-01 · Archivos temporales de apps (02 §5; README §4; 06 I-15).
+#
+# Todo `~/Library/Caches/*` es «Seguro», pero solo se preseleccionan los
+# bundle IDs de `preselect_names`, una lista permitida que exige validación
+# en VM (V-18: borrar cada candidata y observar efectos). Mientras V-18 no
+# esté hecha la lista está VACÍA: el resto aparece sin marcar y con una
+# antigüedad mínima de 7 días.
+
+[[rule]]
+id = "user-caches"
+version = 1
+cat = "CAT-01"
+risk = "safe"
+regenerable = true
+preselect = false
+# Añadir aquí solo bundle IDs validados (V-18), cada uno con su evidencia.
+preselect_names = []
+action = "trash"
+roots = ["~/Library/Caches"]
+include = ["*"]
+exclude = [
+    # Cachés con estado (02 §5 CAT-01; lista versionada pendiente de V-18).
+    "com.apple.bird",
+    "CloudKit",
+    "com.apple.akd",
+    "com.apple.nsurlsessiond",
+    "FamilyCircle",
+    "com.apple.HomeKit",
+    # Miniaturas de Quick Look: RF-MAN-05.
+    "com.apple.QuickLook.thumbnailcache",
+    # Navegadores: van por CAT-08, que exige el navegador cerrado.
+    "com.apple.Safari",
+    "Google",
+    "Firefox",
+    "Microsoft Edge",
+    "BraveSoftware",
+    "Arc",
+    # Zona Desarrollador (doc 03; D-03: cachés globales solo en lectura).
+    "Homebrew",
+    "pip",
+    "pypoetry",
+    "Yarn",
+    "pnpm",
+    "node-gyp",
+    "go-build",
+    "CocoaPods",
+    "org.swift.swiftpm",
+    "JetBrains",
+]
+max_depth = 1
+min_age_days = 7
+# La carpeta suele llamarse como el bundle ID de su app: si está abierta, se omite.
+app_not_running = ["{bundle_id}"]
+title = { es = "Caché de app", en = "App cache" }
+explain = { es = "Datos que la app vuelve a generar; puede tardar más la primera vez.", en = "Data the app regenerates; it may be slower the first time." }
+evidence = "02 §5 CAT-01; 06 I-15"
