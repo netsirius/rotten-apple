@@ -308,6 +308,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                             i.trashed_path = result_path.clone();
                             ItemState::Trashed
                         }
+                        ("deleted", _) => ItemState::Deleted,
                         ("restored", Some(to)) => ItemState::Restored {
                             to: to.clone(),
                             by: op.to_owned(),
@@ -546,6 +547,7 @@ mod tests {
                 done: 2,
                 skipped: 0,
                 failed: 0,
+                unknown: 0,
             },
             true,
         )

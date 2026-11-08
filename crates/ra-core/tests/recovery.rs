@@ -8,7 +8,7 @@ use std::time::SystemTime;
 
 use ra_catalog::fixture::{Entry, materialize};
 use ra_core::{Action, Core, Env, Selection, TrashBackend, UndoState};
-use ra_history::{Event, HistoryPaths, Journal, OpKind, OpMode, StepAction};
+use ra_history::{Event, HistoryPaths, Journal, OpKind, OpMode, StepAction, read_journal};
 
 struct World {
     _tmp: tempfile::TempDir,
@@ -178,4 +178,103 @@ fn interrupted_clean_before_acting_is_not_moved() {
         .expect("op");
     assert_eq!(op.items_skipped, 1);
     assert_eq!(op.items_done, 0);
+}
+
+/// Escribe el inicio y la intención de una operación de un elemento y la
+/// deja sin terminar, como tras un cierre abrupto.
+fn interrupted(w: &World, op: &str, mode: OpMode, action: StepAction) -> PathBuf {
+    let preview = w
+        .core
+        .plan(&Selection::default(), Action::Trash)
+        .expect("plan");
+    let item = preview.plan.items()[0].clone();
+    let mut j =
+        Journal::open(&HistoryPaths::new(&w.state), op, SystemTime::now()).expect("journal");
+    j.write(
+        Event::OpStarted {
+            kind: OpKind::Clean,
+            mode,
+            plan_hash: Some(preview.plan.plan_hash().into()),
+            undo_of: None,
+            items: 1,
+            bytes: 0,
+            by: "test".into(),
+            trash: "dir".into(),
+        },
+        true,
+    )
+    .expect("start");
+    j.write(
+        Event::ItemIntent {
+            item: item.item_id,
+            action,
+            path: item.path.clone(),
+            identity: item.identity,
+            target: None,
+            category: Some(item.category.clone()),
+            regenerable: item.regenerable,
+            bytes: item.bytes_allocated,
+            parent_mode: None,
+            origin: None,
+        },
+        true,
+    )
+    .expect("intent");
+    item.path
+}
+
+/// Contadores del `op_finished` que escribió la reconciliación.
+fn finished(w: &World, op: &str) -> (u64, u64, u64) {
+    let (records, _) = read_journal(&HistoryPaths::new(&w.state)).expect("journal");
+    records
+        .iter()
+        .filter(|r| r.op == op)
+        .find_map(|r| match r.event {
+            Event::OpFinished {
+                done,
+                skipped,
+                unknown,
+                ..
+            } => Some((done, skipped, unknown)),
+            _ => None,
+        })
+        .expect("op_finished")
+}
+
+/// M-3: un borrado permanente interrumpido cuyo original ya no está queda
+/// como borrado (hecho e irreversible), no como desconocido.
+#[test]
+fn interrupted_delete_whose_original_is_gone_is_deleted() {
+    let w = world();
+    let path = interrupted(&w, "op-delete-crash", OpMode::Permanent, StepAction::Delete);
+    fs::remove_file(&path).expect("borrar");
+
+    assert_eq!(
+        w.core.recover().expect("recuperar"),
+        vec!["op-delete-crash"]
+    );
+    assert_eq!(finished(&w, "op-delete-crash"), (1, 0, 0));
+    let (ops, _) = w.core.history().expect("historial");
+    let op = ops
+        .iter()
+        .find(|o| o.op_id == "op-delete-crash")
+        .expect("op");
+    assert_eq!(op.items_done, 1);
+    assert_eq!(op.undo_state, UndoState::Irreversible);
+}
+
+/// M-3: un elemento que no está en su sitio ni en la Papelera queda
+/// desconocido y no cuenta como hecho.
+#[test]
+fn interrupted_trash_not_found_anywhere_is_unknown_not_done() {
+    let w = world();
+    let path = interrupted(&w, "op-lost-crash", OpMode::Trash, StepAction::Trash);
+    fs::remove_file(&path).expect("borrar");
+
+    assert_eq!(w.core.recover().expect("recuperar"), vec!["op-lost-crash"]);
+    assert_eq!(finished(&w, "op-lost-crash"), (0, 0, 1));
+    let (ops, _) = w.core.history().expect("historial");
+    let op = ops.iter().find(|o| o.op_id == "op-lost-crash").expect("op");
+    assert_eq!(op.items_done, 0);
+    assert_eq!(op.undo_state, UndoState::Irreversible);
 }

@@ -271,6 +271,7 @@ pub fn execute(
             done: report.done,
             skipped: report.skipped,
             failed: report.failed,
+            unknown: 0,
         },
         true,
     )?;
@@ -546,6 +547,7 @@ pub fn execute_undo(
             done: report.done,
             skipped: report.skipped,
             failed: report.failed,
+            unknown: 0,
         },
         true,
     )?;
@@ -639,7 +641,7 @@ pub fn recover_incomplete(
                 _ => {}
             }
         }
-        let (mut done, mut skipped) = (0, 0);
+        let (mut done, mut skipped, mut unknown) = (0, 0, 0);
         for r in records.iter().filter(|r| r.op == op) {
             let Event::ItemIntent {
                 item,
@@ -660,8 +662,12 @@ pub fn recover_incomplete(
                     skipped += 1;
                     ("not_moved", None)
                 }
-                _ => {
+                // Un borrado permanente cuyo original ya no está se hizo.
+                _ if *action == StepAction::Delete => {
                     done += 1;
+                    ("deleted", None)
+                }
+                _ => {
                     // Un deshacer interrumpido puede haber llegado a su destino
                     // (con o sin sufijo « (restaurado)»); una limpieza, a la
                     // Papelera que anotó en `op_started`.
@@ -675,8 +681,15 @@ pub fn recover_incomplete(
                         _ => None,
                     };
                     match found {
-                        Some((state, p)) => (state, Some(p)),
-                        None => ("unknown", None),
+                        Some((state, p)) => {
+                            done += 1;
+                            (state, Some(p))
+                        }
+                        // Ni en su sitio ni en su destino: no cuenta como hecho.
+                        None => {
+                            unknown += 1;
+                            ("unknown", None)
+                        }
                     }
                 }
             };
@@ -695,6 +708,7 @@ pub fn recover_incomplete(
                 done,
                 skipped,
                 failed: 0,
+                unknown,
             },
             true,
         )?;

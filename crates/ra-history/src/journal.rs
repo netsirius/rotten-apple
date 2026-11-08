@@ -115,7 +115,15 @@ pub enum Event {
         done: u64,
         skipped: u64,
         failed: u64,
+        /// Solo en una reconciliación: elementos que ya no están en su sitio
+        /// y no se encontraron en su destino. No cuentan como hechos.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        unknown: u64,
     },
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
