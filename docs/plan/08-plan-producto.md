@@ -11,7 +11,7 @@
 
 ## 0. Cómo usar este documento
 
-**Precedencia.** Manda lo que fija `docs/README.md`: README › 06 › 02 › 03 y 05 (cada uno en su dominio) › 07 para el CLI. Cuando 02 contradice a README o a 07 (códigos de salida, `--permanent`, lista de subcomandos de RF-CLI-02, macOS mínimo de RNF-38), se aplica la fila correspondiente de README §8. Este plan no reabre esas decisiones, con una excepción: **las decisiones del autor de §2.1 (2026-11-08) mandan sobre README §3, §4 y §5 en los puntos que citan**, hasta que las ramas se fusionen y README se actualice (T-43).
+**Precedencia.** Manda lo que fija `docs/README.md`: README › 06 › 02 › 03 y 05 (cada uno en su dominio) › 07 para el CLI. Cuando 02 contradice a README o a 07 (códigos de salida, `--permanent`, lista de subcomandos de RF-CLI-02, macOS mínimo de RNF-38), se aplica la fila correspondiente de README §8. Este plan no reabre esas decisiones, Las decisiones del autor de §2.1 (2026-11-08) ya están recogidas en README §3, §4 y §5.
 
 **Fase de cada función.** La fija README §4, aunque 03 o 04 digan otra cosa:
 
@@ -210,7 +210,7 @@ Todas son del autor. La tabla dice qué desbloquea cada una y cómo cerrarla.
 
 ### 2.1 Decisiones cerradas el 2026-11-08
 
-Las ha tomado el autor. Mandan sobre README §3, §4 y §5 en lo que citan hasta que las ramas se fusionen (§0).
+Las ha tomado el autor y están recogidas en README §3 (D-01, D-05, D-08, D-11, D-13 a D-17), §4 y §5.
 
 | ID | Decisión | Qué cambia |
 |---|---|---|
@@ -389,7 +389,7 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 | T-42 | Puerta de salida y beta cerrada | H-8 | L | Todo | Pendiente |
 | T-142 | Privilegios por operación (`sudo` en el CLI, diálogo de autorización en la app) | H-3b | M | T-10 | Pendiente (§2.1) |
 | T-143 | CAT-11 · Restos de actualizadores | H-3b | S | — | Pendiente (§2.1) |
-| T-43 | Registrar este plan en `docs/README.md` | H-8 | S | PR #1 fusionado | Pendiente |
+| T-43 | Registrar este plan en `docs/README.md` | H-8 | S | PR #1 fusionado | Hecho (2026-11-08) |
 
 ### 4.1 H-0 · Columna vertebral y deuda del núcleo
 
