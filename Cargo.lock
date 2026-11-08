@@ -1219,8 +1219,10 @@ dependencies = [
  "jsonschema",
  "ra-catalog",
  "ra-core",
+ "serde",
  "serde_json",
  "tempfile",
+ "toml",
 ]
 
 [[package]]

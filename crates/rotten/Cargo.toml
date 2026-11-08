@@ -29,6 +29,9 @@ tempfile.workspace = true
 # no lo subas con `cargo update` sin revisar las licencias.
 insta = { version = "1.43", default-features = false, features = ["json"] }
 jsonschema = { version = "0.33", default-features = false }
+# Lectura de `tests/parity.toml` (T-02).
+serde.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true
