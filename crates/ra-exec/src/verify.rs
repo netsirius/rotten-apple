@@ -59,7 +59,8 @@ pub enum InUseDetail {
 }
 
 impl SkipCause {
-    /// Código estable para el journal y el JSON.
+    /// Código estable para el journal y el JSON: el mismo que la etiqueta
+    /// `reason` de la serialización.
     pub fn code(&self) -> &'static str {
         match self {
             SkipCause::Missing => "missing",
@@ -70,7 +71,7 @@ impl SkipCause {
             SkipCause::CrossesDevice => "crosses_device",
             SkipCause::Protected { .. } => "protected",
             SkipCause::Excluded { .. } => "excluded",
-            SkipCause::App { .. } => "app_running",
+            SkipCause::App { .. } => "app",
             SkipCause::Unreadable { .. } => "unreadable",
             SkipCause::ConflictExists => "conflict_exists",
             SkipCause::InUse { .. } => "in_use",
@@ -157,4 +158,48 @@ pub(crate) fn verify<'p>(item: &'p PlanItem, g: &Guards<'_>) -> Result<Verified<
         });
     }
     Ok(Verified { parent, name })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// El código del journal y la etiqueta `reason` del JSON no pueden
+    /// divergir (antes, `app_running` frente a `app`).
+    #[test]
+    fn code_matches_the_serialized_reason() {
+        let all = [
+            SkipCause::Missing,
+            SkipCause::SymlinkInPath,
+            SkipCause::IdentityChanged,
+            SkipCause::ContentsChanged,
+            SkipCause::Flags {
+                flag: FlagViolation::Immutable,
+            },
+            SkipCause::CrossesDevice,
+            SkipCause::Protected {
+                detail: ProtectionReason::Home,
+            },
+            SkipCause::Excluded {
+                detail: ExclusionMatch::Rule("r".into()),
+            },
+            SkipCause::App {
+                detail: AppBlock::Running {
+                    bundle_id: "com.example".into(),
+                },
+            },
+            SkipCause::Unreadable { detail: "x".into() },
+            SkipCause::ConflictExists,
+            SkipCause::InUse {
+                detail: InUseDetail::Held {
+                    pid: 1,
+                    process: "p".into(),
+                },
+            },
+        ];
+        for cause in all {
+            let v = serde_json::to_value(&cause).expect("serializar");
+            assert_eq!(v["reason"], cause.code(), "{cause:?}");
+        }
+    }
 }
