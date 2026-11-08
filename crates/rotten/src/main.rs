@@ -674,6 +674,16 @@ fn doctor(ui: &Ui, core: &Core) -> Exit {
         ui.t("líneas ilegibles", "unreadable lines")
     ));
     ui.say(format!("{} {}", ui.t("Papelera:", "Trash:"), r.trash));
+    if !r.trash_unreadable_ops.is_empty() {
+        ui.say(format!(
+            "  ! {} {}",
+            ui.t(
+                "Operaciones interrumpidas con elementos que no se pudieron buscar en la Papelera (falta Acceso total al disco):",
+                "Interrupted operations with items that could not be looked up in the Trash (Full Disk Access missing):"
+            ),
+            r.trash_unreadable_ops.join(", ")
+        ));
+    }
     ui.say(format!(
         "{} {}",
         ui.t("Cerrojo de ejecución libre:", "Execution lock free:"),

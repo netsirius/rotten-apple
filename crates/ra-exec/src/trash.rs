@@ -112,14 +112,46 @@ pub fn unique_name(name: &OsStr, n: u32) -> OsString {
 /// (`trash`, tal como lo escribió [`TrashBackend::describe`]) el elemento que
 /// estaba en `original`. Compara por identidad (volumen, inode y tipo), nunca
 /// por nombre, y mira solo el primer nivel de la Papelera.
-pub(crate) fn find_trashed(trash: &str, original: &Path, identity: &Identity) -> Option<PathBuf> {
+///
+/// `Err` con el motivo si no se encuentra y alguna de las Papeleras no se
+/// pudo leer por permisos: sin Acceso total al disco, `~/.Trash` no se
+/// puede listar y el elemento puede estar ahí.
+pub(crate) fn find_trashed(
+    trash: &str,
+    original: &Path,
+    identity: &Identity,
+) -> Result<Option<PathBuf>, String> {
     // Solo hace falta con la Papelera del sistema; sin ella, `~/.Trash` no
     // se considera.
     let home = std::env::home_dir().unwrap_or_default();
     let uid = rustix::process::getuid().as_raw();
-    trash_dirs(trash, original, identity.dev, &home, uid, dev_of)
-        .iter()
-        .find_map(|d| find_in_dir(d, identity))
+    let mut denied = None;
+    for d in trash_dirs(trash, original, identity.dev, &home, uid, dev_of) {
+        match find_in_dir(&d, identity) {
+            Ok(Some(p)) => return Ok(Some(p)),
+            Ok(None) => {}
+            Err(NoPermission) => denied = Some(d),
+        }
+    }
+    match denied {
+        Some(d) => Err(format!(
+            "sin permiso para leer la Papelera ({}); concede Acceso total al disco y ejecuta `rotten doctor`",
+            d.display()
+        )),
+        None => Ok(None),
+    }
+}
+
+/// La Papelera existe pero no se puede leer (`EPERM` o `EACCES`).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct NoPermission;
+
+fn permission(e: rustix::io::Errno) -> Result<Option<PathBuf>, NoPermission> {
+    if e == rustix::io::Errno::PERM || e == rustix::io::Errno::ACCESS {
+        Err(NoPermission)
+    } else {
+        Ok(None)
+    }
 }
 
 fn dev_of(p: &Path) -> Option<u64> {
@@ -164,19 +196,26 @@ fn trash_dirs(
 }
 
 /// Entrada del primer nivel de `dir` que es el mismo objeto que `identity`.
-fn find_in_dir(dir: &Path, identity: &Identity) -> Option<PathBuf> {
-    let fd = rustix::fs::open(
+fn find_in_dir(dir: &Path, identity: &Identity) -> Result<Option<PathBuf>, NoPermission> {
+    let fd = match rustix::fs::open(
         dir,
         OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW_ANY | OFlags::CLOEXEC,
         Mode::empty(),
-    )
-    .ok()?;
+    ) {
+        Ok(fd) => fd,
+        Err(e) => return permission(e),
+    };
     // Mover a la Papelera es un `rename`: si la Papelera está en otro
     // volumen, el elemento no puede estar en ella.
-    if rustix::fs::fstat(&fd).ok()?.st_dev as u64 != identity.dev {
-        return None;
+    match rustix::fs::fstat(&fd) {
+        Ok(st) if st.st_dev as u64 == identity.dev => {}
+        _ => return Ok(None),
     }
-    for e in Dir::read_from(&fd).ok()? {
+    let entries = match Dir::read_from(&fd) {
+        Ok(d) => d,
+        Err(e) => return permission(e),
+    };
+    for e in entries {
         let Ok(e) = e else { continue };
         let name = e.file_name().to_bytes();
         if name == b"." || name == b".." {
@@ -187,10 +226,10 @@ fn find_in_dir(dir: &Path, identity: &Identity) -> Option<PathBuf> {
             continue;
         };
         if Identity::from_stat(&st).same_object(identity) {
-            return Some(dir.join(name));
+            return Ok(Some(dir.join(name)));
         }
     }
-    None
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -221,12 +260,41 @@ mod tests {
         let desc = TrashBackend::Dir(trash.clone()).describe();
         assert_eq!(
             find_trashed(&desc, &original, &id),
-            Some(trash.join("a 3.log"))
+            Ok(Some(trash.join("a 3.log")))
         );
 
         // Si ya no está (Papelera vaciada), no se confunde con `a.log`.
         std::fs::remove_file(trash.join("a 3.log")).expect("rm");
-        assert_eq!(find_trashed(&desc, &original, &id), None);
+        assert_eq!(find_trashed(&desc, &original, &id), Ok(None));
+    }
+
+    /// I-2: una Papelera que no se puede leer no es «no está»: el motivo
+    /// dice que falta permiso y cómo arreglarlo.
+    #[test]
+    fn unreadable_trash_is_reported_not_silent() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(tmp.path()).expect("canon");
+        let trash = base.join("trash");
+        std::fs::create_dir(&trash).expect("mkdir");
+        let original = base.join("a.log");
+        std::fs::write(&original, b"x").expect("write");
+        let id = identity(&original);
+        std::fs::rename(&original, trash.join("a.log")).expect("mover");
+        std::fs::set_permissions(&trash, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+        let desc = TrashBackend::Dir(trash.clone()).describe();
+        let got = find_trashed(&desc, &original, &id);
+        let in_dir = find_in_dir(&trash, &id);
+        std::fs::set_permissions(&trash, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let msg = got.expect_err("sin permiso");
+        assert!(
+            msg.starts_with("sin permiso para leer la Papelera"),
+            "{msg}"
+        );
+        assert!(msg.contains("rotten doctor"), "{msg}");
+        assert_eq!(in_dir, Err(NoPermission));
+        // Que no exista no es falta de permiso.
+        assert_eq!(find_in_dir(&base.join("no-existe"), &id), Ok(None));
     }
 
     /// Una Papelera en otro volumen no se recorre, y una descripción
@@ -238,9 +306,9 @@ mod tests {
         let f = base.join("x");
         std::fs::write(&f, b"x").expect("write");
         let mut id = identity(&f);
-        assert_eq!(find_in_dir(&base, &id), Some(f.clone()));
+        assert_eq!(find_in_dir(&base, &id), Ok(Some(f.clone())));
         id.dev ^= 1;
-        assert_eq!(find_in_dir(&base, &id), None);
+        assert_eq!(find_in_dir(&base, &id), Ok(None));
         assert!(trash_dirs("otra", &f, 1, &base, 501, |_| Some(1)).is_empty());
     }
 

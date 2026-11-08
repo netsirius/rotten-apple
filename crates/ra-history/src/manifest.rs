@@ -32,7 +32,10 @@ pub enum ItemState {
         by: String,
     },
     /// Reconciliado tras un cierre abrupto sin poder saber dónde está.
-    Unknown,
+    Unknown {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -151,7 +154,7 @@ impl Manifest {
         for i in &self.items {
             match &i.state {
                 ItemState::Trashed if Self::item_restorable(i) => restorable += 1,
-                ItemState::Trashed | ItemState::Unknown => gone += 1,
+                ItemState::Trashed | ItemState::Unknown { .. } => gone += 1,
                 ItemState::Restored { .. } => restored += 1,
                 _ => {}
             }
@@ -179,7 +182,7 @@ impl Manifest {
                 }
                 ItemState::Skipped { .. } => skipped += 1,
                 ItemState::Failed { .. } => failed += 1,
-                ItemState::Pending | ItemState::Unknown => {}
+                ItemState::Pending | ItemState::Unknown { .. } => {}
             }
         }
         OpSummary {
@@ -298,6 +301,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                 item,
                 state,
                 result_path,
+                detail,
             } => {
                 if let Some(i) = items.get_mut(item) {
                     i.state = match (state.as_str(), result_path) {
@@ -313,7 +317,9 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                             to: to.clone(),
                             by: op.to_owned(),
                         },
-                        _ => ItemState::Unknown,
+                        _ => ItemState::Unknown {
+                            detail: detail.clone(),
+                        },
                     };
                 }
             }
@@ -350,6 +356,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                     item,
                     state,
                     result_path: Some(to),
+                    ..
                 } if state == "restored" => Some((item, to)),
                 _ => None,
             };
@@ -455,9 +462,12 @@ pub fn prepare_undo(
             ItemState::Restored { .. } => plan
                 .not_recoverable
                 .push((i.item_id, "ya se restauró".into())),
-            ItemState::Unknown => plan.not_recoverable.push((
+            ItemState::Unknown { detail } => plan.not_recoverable.push((
                 i.item_id,
-                "paradero desconocido tras un cierre abrupto".into(),
+                match detail {
+                    Some(d) => format!("paradero desconocido tras un cierre abrupto: {d}"),
+                    None => "paradero desconocido tras un cierre abrupto".into(),
+                },
             )),
             ItemState::Pending | ItemState::Skipped { .. } | ItemState::Failed { .. } => {
                 // No se movió: no hay nada que deshacer. Solo se informa si se pidió.

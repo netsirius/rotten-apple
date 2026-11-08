@@ -48,6 +48,11 @@
         "journal_dir": { "$ref": "#/$defs/path" },
         "journal_records": { "$ref": "#/$defs/count" },
         "journal_problems": { "type": "array", "items": { "type": "string" } },
+        "trash_unreadable_ops": {
+          "description": "Operaciones con elementos que, tras un cierre abrupto, no se pudieron buscar en la Papelera por falta de permiso. Se omite si no hay.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
         "trash": {
           "description": "«system» o «dir:<ruta>» (ROTTEN_TRASH_DIR en pruebas).",
           "type": "string",

@@ -393,7 +393,7 @@ fn check(w: &World, was_open: &[String], ctx: &str) -> usize {
             seen.insert(mi.original_path.clone());
             let ok = match (place, &mi.state) {
                 (Place::Trash(t), ItemState::Trashed) => mi.trashed_path.as_ref() == Some(t),
-                (Place::Trash(_), ItemState::Unknown) => {
+                (Place::Trash(_), ItemState::Unknown { .. }) => {
                     unknown += 1;
                     true
                 }

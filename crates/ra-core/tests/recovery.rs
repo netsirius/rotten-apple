@@ -278,3 +278,93 @@ fn interrupted_trash_not_found_anywhere_is_unknown_not_done() {
     assert_eq!(op.items_done, 0);
     assert_eq!(op.undo_state, UndoState::Irreversible);
 }
+
+/// I-2: si la Papelera de la operación no se puede leer, el elemento queda
+/// desconocido con el motivo y cómo arreglarlo, y `doctor` lo avisa.
+#[test]
+fn unreadable_trash_leaves_unknown_with_a_reason_and_doctor_warns() {
+    use std::os::unix::fs::PermissionsExt;
+    let w = world();
+    let preview = w
+        .core
+        .plan(&Selection::default(), Action::Trash)
+        .expect("plan");
+    let item = preview.plan.items()[0].clone();
+    let locked = w.home.parent().expect("raíz").join("papelera-cerrada");
+    fs::create_dir(&locked).expect("mkdir");
+    let mut j = Journal::open(
+        &HistoryPaths::new(&w.state),
+        "op-fda-crash",
+        SystemTime::now(),
+    )
+    .expect("journal");
+    j.write(
+        Event::OpStarted {
+            kind: OpKind::Clean,
+            mode: OpMode::Trash,
+            plan_hash: Some(preview.plan.plan_hash().into()),
+            undo_of: None,
+            items: 1,
+            bytes: 0,
+            by: "test".into(),
+            trash: format!("dir:{}", locked.display()),
+        },
+        true,
+    )
+    .expect("start");
+    j.write(
+        Event::ItemIntent {
+            item: item.item_id,
+            action: StepAction::Trash,
+            path: item.path.clone(),
+            identity: item.identity,
+            target: None,
+            category: Some(item.category.clone()),
+            regenerable: item.regenerable,
+            bytes: item.bytes_allocated,
+            parent_mode: None,
+            origin: None,
+        },
+        true,
+    )
+    .expect("intent");
+    fs::rename(&item.path, locked.join("a.log")).expect("mover");
+    drop(j);
+
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("chmod");
+    let recovered = w.core.recover();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).expect("chmod");
+    assert_eq!(recovered.expect("recuperar"), vec!["op-fda-crash"]);
+
+    let (records, _) = read_journal(&HistoryPaths::new(&w.state)).expect("journal");
+    let detail = records
+        .iter()
+        .find_map(|r| match &r.event {
+            Event::ItemReconciled { state, detail, .. } if r.op == "op-fda-crash" => {
+                assert_eq!(state, "unknown");
+                detail.clone()
+            }
+            _ => None,
+        })
+        .expect("motivo");
+    assert!(
+        detail.starts_with("sin permiso para leer la Papelera"),
+        "{detail}"
+    );
+    assert!(detail.contains("Acceso total al disco"), "{detail}");
+    assert_eq!(finished(&w, "op-fda-crash"), (0, 0, 1));
+
+    // Al pedir deshacerlo, el motivo llega al usuario.
+    match w
+        .core
+        .prepare_undo(Some("op-fda-crash"), Some(&[item.item_id]))
+    {
+        Ok(u) => {
+            assert!(u.plan.ready.is_empty());
+            let why = &u.plan.not_recoverable[0].1;
+            assert!(why.contains("sin permiso"), "{why}");
+        }
+        Err(e) => assert!(e.to_string().contains("sin permiso"), "{e}"),
+    }
+    assert_eq!(w.core.doctor().trash_unreadable_ops, vec!["op-fda-crash"]);
+}

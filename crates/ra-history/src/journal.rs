@@ -109,6 +109,10 @@ pub enum Event {
         state: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         result_path: Option<PathBuf>,
+        /// Por qué no se pudo saber dónde está (p. ej. la Papelera no se
+        /// puede leer sin Acceso total al disco).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
     },
     OpFinished {
         status: OpStatus,

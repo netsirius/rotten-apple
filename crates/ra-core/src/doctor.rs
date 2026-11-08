@@ -40,6 +40,10 @@ pub struct DoctorReport {
     pub journal_dir: PathBuf,
     pub journal_records: usize,
     pub journal_problems: Vec<String>,
+    /// Operaciones con elementos que, tras un cierre abrupto, no se pudieron
+    /// buscar en la Papelera por falta de permiso (I-2).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub trash_unreadable_ops: Vec<String>,
     pub trash: String,
     pub exec_lock_free: bool,
     pub full_disk_access: FdaState,
@@ -94,9 +98,19 @@ pub(crate) fn run(core: &Core) -> DoctorReport {
     };
     let history = core.history_paths();
     let (records, problems) = match ra_history::read_journal(&history) {
-        Ok((r, p)) => (r.len(), p),
-        Err(e) => (0, vec![e.to_string()]),
+        Ok((r, p)) => (r, p),
+        Err(e) => (vec![], vec![e.to_string()]),
     };
+    let mut trash_unreadable_ops: Vec<String> = Vec::new();
+    for r in &records {
+        if let ra_history::Event::ItemReconciled {
+            detail: Some(_), ..
+        } = &r.event
+            && !trash_unreadable_ops.contains(&r.op)
+        {
+            trash_unreadable_ops.push(r.op.clone());
+        }
+    }
     let exec_lock_free = matches!(ExecLock::try_acquire(&env.state_dir), Ok(Some(_)));
     DoctorReport {
         version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -111,8 +125,9 @@ pub(crate) fn run(core: &Core) -> DoctorReport {
         config: config.into(),
         config_error,
         journal_dir: history.journal_dir,
-        journal_records: records,
+        journal_records: records.len(),
         journal_problems: problems,
+        trash_unreadable_ops,
         trash: env.trash.describe(),
         exec_lock_free,
         full_disk_access: fda_preflight(&env.home),

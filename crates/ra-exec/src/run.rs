@@ -657,15 +657,15 @@ pub fn recover_incomplete(
             if resolved.contains(item) {
                 continue;
             }
-            let (state, result_path) = match stat_nofollow_any(path) {
+            let (state, result_path, detail) = match stat_nofollow_any(path) {
                 Ok((id, _)) if id.same_after_move(identity) => {
                     skipped += 1;
-                    ("not_moved", None)
+                    ("not_moved", None, None)
                 }
                 // Un borrado permanente cuyo original ya no está se hizo.
                 _ if *action == StepAction::Delete => {
                     done += 1;
-                    ("deleted", None)
+                    ("deleted", None, None)
                 }
                 _ => {
                     // Un deshacer interrumpido puede haber llegado a su destino
@@ -673,22 +673,27 @@ pub fn recover_incomplete(
                     // Papelera que anotó en `op_started`.
                     let found = match (action, target) {
                         (StepAction::Restore, Some(t)) => {
-                            find_restored(t, identity).map(|p| ("restored", p))
+                            Ok(find_restored(t, identity).map(|p| ("restored", p)))
                         }
                         (StepAction::Trash, _) => {
-                            find_trashed(trash, path, identity).map(|p| ("trashed", p))
+                            find_trashed(trash, path, identity).map(|o| o.map(|p| ("trashed", p)))
                         }
-                        _ => None,
+                        _ => Ok(None),
                     };
                     match found {
-                        Some((state, p)) => {
+                        Ok(Some((state, p))) => {
                             done += 1;
-                            (state, Some(p))
+                            (state, Some(p), None)
                         }
                         // Ni en su sitio ni en su destino: no cuenta como hecho.
-                        None => {
+                        // Si la Papelera no se pudo leer, se dice por qué.
+                        Ok(None) => {
                             unknown += 1;
-                            ("unknown", None)
+                            ("unknown", None, None)
+                        }
+                        Err(why) => {
+                            unknown += 1;
+                            ("unknown", None, Some(why))
                         }
                     }
                 }
@@ -698,6 +703,7 @@ pub fn recover_incomplete(
                     item: *item,
                     state: state.into(),
                     result_path,
+                    detail,
                 },
                 true,
             )?;
