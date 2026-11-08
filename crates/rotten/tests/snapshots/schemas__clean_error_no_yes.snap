@@ -1,0 +1,12 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "clean",
+  "error": {
+    "exit_code": 2,
+    "message": "no interactive terminal: pass --yes (or --dry-run to only review)"
+  },
+  "schema_version": 1
+}

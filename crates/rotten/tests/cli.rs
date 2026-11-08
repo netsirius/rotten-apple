@@ -1,109 +1,17 @@
 //! Pruebas de integración del CLI `rotten` (07 §2 RF-CLI-20/21, README §8).
 //!
-//! Cada prueba usa una carpeta personal temporal (`ROTTEN_HOME`) y una
-//! Papelera temporal (`ROTTEN_TRASH_DIR`): nunca se toca el `~` real ni su
-//! Papelera.
+//! La carpeta personal de prueba está en `common`, que además valida cada
+//! salida JSON contra `schemas/` (T-01).
+
+mod common;
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
-use assert_cmd::Command;
-use ra_catalog::fixture::{Entry, Link, materialize};
+use common::fixture;
 use ra_core::Plan;
-use serde_json::Value;
-
-struct Fx {
-    _tmp: tempfile::TempDir,
-    home: PathBuf,
-    trash: PathBuf,
-    state: PathBuf,
-}
-
-fn e(path: &str, size: u64, age_days: u32) -> Entry {
-    Entry {
-        path: path.into(),
-        size,
-        age_days,
-        dir: false,
-    }
-}
-
-/// Carpeta personal de prueba con algo de cada categoría y datos que nunca
-/// deben tocarse.
-fn fixture() -> Fx {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let root = fs::canonicalize(tmp.path()).expect("canon");
-    let home = root.join("home");
-    let trash = root.join("trash");
-    fs::create_dir_all(&home).expect("mkdir");
-    fs::create_dir_all(&trash).expect("mkdir");
-    let entries = vec![
-        // CAT-03, preseleccionado.
-        e("Library/Logs/old-app/app.log", 3000, 30),
-        e("Library/Logs/install.log", 800, 20),
-        // CAT-03 demasiado reciente: bloqueado.
-        e("Library/Logs/current.log", 10, 0),
-        // CAT-10, preseleccionado.
-        e(
-            "Library/Saved Application State/com.example.closed.savedState/windows.plist",
-            500,
-            3,
-        ),
-        // CAT-01: «Seguro» pero sin marcar (lista permitida vacía).
-        e("Library/Caches/com.example.editor/data.bin", 9000, 30),
-        // Nunca.
-        e("Library/Caches/com.apple.bird/state", 10, 30),
-        e("Documents/tesis.docx", 100, 30),
-        e("Library/Keychains/login.keychain-db", 100, 30),
-        e("Library/Preferences/com.example.editor.plist", 100, 30),
-    ];
-    let links = vec![Link {
-        path: "Library/Caches/com.example.link".into(),
-        target: "Documents".into(),
-    }];
-    materialize(&home, &entries, &links, SystemTime::now()).expect("materializar");
-    // El estado de la app se crea antes de las instantáneas, que lo ignoran.
-    let state = home.join("Library/Application Support/io.github.netsirius.RottenApple");
-    fs::create_dir_all(&state).expect("mkdir");
-    Fx {
-        _tmp: tmp,
-        home,
-        trash,
-        state,
-    }
-}
-
-impl Fx {
-    fn cmd(&self) -> Command {
-        let mut c = Command::cargo_bin("rotten").expect("binario rotten");
-        c.env("ROTTEN_HOME", &self.home)
-            .env("ROTTEN_TRASH_DIR", &self.trash)
-            .env_remove("ROTTEN_STATE_DIR")
-            .env("LANG", "en_US.UTF-8");
-        c
-    }
-
-    /// Ejecuta y devuelve (código, JSON de stdout).
-    fn run(&self, args: &[&str]) -> (i32, Value) {
-        let out = self.cmd().args(args).output().expect("ejecutar");
-        let code = out.status.code().expect("código");
-        let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
-            panic!(
-                "salida no JSON de {args:?} ({e}):\n{}\n{}",
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            )
-        });
-        (code, json)
-    }
-
-    fn p(&self, rel: &str) -> PathBuf {
-        self.home.join(rel)
-    }
-}
 
 /// Todo lo que hay bajo `base` (sin seguir enlaces) salvo el estado de la app.
 fn snapshot(base: &Path, skip: &Path) -> BTreeMap<PathBuf, (u64, u64, i64, i64)> {

@@ -1,0 +1,12 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "undo",
+  "error": {
+    "exit_code": 1,
+    "message": "no existe la operación no-such-op"
+  },
+  "schema_version": 1
+}

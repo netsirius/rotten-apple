@@ -1,0 +1,100 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "clean",
+  "dry_run": true,
+  "plan": {
+    "action": "trash",
+    "catalog_version": "2026.11.0",
+    "created_at": "[created_at]",
+    "home": "[HOME]",
+    "items": [
+      {
+        "action": "trash",
+        "apps": [
+          "com.example.editor"
+        ],
+        "bytes_allocated": 12288,
+        "category": "CAT-01",
+        "fingerprint": {
+          "bytes_allocated": 12288,
+          "bytes_logical": 9096,
+          "crosses_device": false,
+          "digest": "[digest]",
+          "entries": 2,
+          "newest_mtime": "[newest_mtime]"
+        },
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 1,
+        "kind": "dir",
+        "path": "[HOME]/Library/Caches/com.example.editor",
+        "preselected": false,
+        "regenerable": true,
+        "reversible": true,
+        "risk": "safe",
+        "rule": {
+          "id": "user-caches",
+          "version": 1
+        }
+      }
+    ],
+    "not_selected": {},
+    "origin": "rules",
+    "plan_hash": "[plan_hash]",
+    "plan_id": "[plan_id]",
+    "schema": "rotten.plan.v1",
+    "schema_version": 1,
+    "skipped": [
+      {
+        "category": "CAT-01",
+        "path": "[HOME]/Library/Caches/com.example.link",
+        "reason": {
+          "detail": {
+            "age_days": 0,
+            "kind": "too_recent",
+            "min_age_days": 7
+          },
+          "kind": "blocked"
+        },
+        "rule": {
+          "id": "user-caches",
+          "version": 1
+        }
+      }
+    ],
+    "totals": {
+      "bytes_allocated": 12288,
+      "irreversible_items": 0,
+      "items": 1
+    }
+  },
+  "preview": {
+    "bytes_done": 0,
+    "done": 0,
+    "dry_run": true,
+    "failed": 0,
+    "items": [
+      {
+        "action": "would_trash",
+        "bytes": 12288,
+        "item_id": 1,
+        "outcome": "would",
+        "path": "[HOME]/Library/Caches/com.example.editor"
+      }
+    ],
+    "skipped": 0,
+    "would": 1
+  },
+  "schema_version": 1
+}

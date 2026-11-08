@@ -1,0 +1,190 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "clean",
+  "dry_run": false,
+  "plan": {
+    "action": "trash",
+    "catalog_version": "2026.11.0",
+    "created_at": "[created_at]",
+    "home": "[HOME]",
+    "items": [
+      {
+        "action": "trash",
+        "apps": [],
+        "bytes_allocated": 4096,
+        "category": "CAT-03",
+        "fingerprint": {
+          "bytes_allocated": 4096,
+          "bytes_logical": 800,
+          "crosses_device": false,
+          "digest": "[digest]",
+          "entries": 1,
+          "newest_mtime": "[newest_mtime]"
+        },
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "file",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 1,
+        "kind": "file",
+        "path": "[HOME]/Library/Logs/install.log",
+        "preselected": true,
+        "regenerable": false,
+        "reversible": true,
+        "risk": "safe",
+        "rule": {
+          "id": "user-logs",
+          "version": 1
+        }
+      },
+      {
+        "action": "trash",
+        "apps": [],
+        "bytes_allocated": 4096,
+        "category": "CAT-03",
+        "fingerprint": {
+          "bytes_allocated": 4096,
+          "bytes_logical": 3096,
+          "crosses_device": false,
+          "digest": "[digest]",
+          "entries": 2,
+          "newest_mtime": "[newest_mtime]"
+        },
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 2,
+        "kind": "dir",
+        "path": "[HOME]/Library/Logs/old-app",
+        "preselected": true,
+        "regenerable": false,
+        "reversible": true,
+        "risk": "safe",
+        "rule": {
+          "id": "user-logs",
+          "version": 1
+        }
+      },
+      {
+        "action": "trash",
+        "apps": [
+          "com.example.closed"
+        ],
+        "bytes_allocated": 4096,
+        "category": "CAT-10",
+        "fingerprint": {
+          "bytes_allocated": 4096,
+          "bytes_logical": 596,
+          "crosses_device": false,
+          "digest": "[digest]",
+          "entries": 2,
+          "newest_mtime": "[newest_mtime]"
+        },
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 3,
+        "kind": "dir",
+        "path": "[HOME]/Library/Saved Application State/com.example.closed.savedState",
+        "preselected": true,
+        "regenerable": true,
+        "reversible": true,
+        "risk": "safe",
+        "rule": {
+          "id": "saved-application-state",
+          "version": 1
+        }
+      }
+    ],
+    "not_selected": {
+      "CAT-01": {
+        "bytes_allocated": 12288,
+        "items": 1
+      }
+    },
+    "origin": "rules",
+    "plan_hash": "[plan_hash]",
+    "plan_id": "[plan_id]",
+    "schema": "rotten.plan.v1",
+    "schema_version": 1,
+    "skipped": [
+      {
+        "category": "CAT-03",
+        "path": "[HOME]/Library/Logs/current.log",
+        "reason": {
+          "detail": {
+            "age_days": 0,
+            "kind": "too_recent",
+            "min_age_days": 7
+          },
+          "kind": "blocked"
+        },
+        "rule": {
+          "id": "user-logs",
+          "version": 1
+        }
+      }
+    ],
+    "totals": {
+      "bytes_allocated": 12288,
+      "irreversible_items": 0,
+      "items": 3
+    }
+  },
+  "report": {
+    "bytes_done": 12288,
+    "done": 3,
+    "dry_run": false,
+    "failed": 0,
+    "items": [
+      {
+        "bytes": 4096,
+        "item_id": 1,
+        "outcome": "done",
+        "path": "[HOME]/Library/Logs/install.log",
+        "result_path": "[TRASH]/install.log"
+      },
+      {
+        "bytes": 4096,
+        "item_id": 2,
+        "outcome": "done",
+        "path": "[HOME]/Library/Logs/old-app",
+        "result_path": "[TRASH]/old-app"
+      },
+      {
+        "bytes": 4096,
+        "item_id": 3,
+        "outcome": "done",
+        "path": "[HOME]/Library/Saved Application State/com.example.closed.savedState",
+        "result_path": "[TRASH]/com.example.closed.savedState"
+      }
+    ],
+    "op_id": "[op_id]",
+    "skipped": 0,
+    "would": 0
+  },
+  "schema_version": 1
+}

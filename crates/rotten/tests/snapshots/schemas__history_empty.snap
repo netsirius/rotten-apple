@@ -1,0 +1,10 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "history",
+  "journal_problems": [],
+  "operations": [],
+  "schema_version": 1
+}

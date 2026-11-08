@@ -1,0 +1,507 @@
+# Paridad de comandos (T-02 · RF-CLI-20, RF-CLI-21).
+#
+# Un `[[command]]` por cada comando de 07 §2 (paridad con Mole) y §3
+# (nuevos), con las fases de 07 corregidas por las decisiones del autor del
+# 2026-11-08 (08 §2.1, «Paridad total en el MVP»): todos los comandos de Mole
+# son MVP; `slim` es MVP condicionado; `trash`, `trash put` y
+# `optimize startup` están aprobados como MVP.
+#
+# Lo que no es un comando (teclas, variables de entorno, ficheros de
+# configuración, instalación) sigue en 08 §1.5.
+#
+# Campos:
+#   id      nombre único de la fila.
+#   cli     cómo se escribe; las palabras antes del primer argumento o flag
+#           son el subcomando.
+#   mole    equivalente en Mole ("" si el comando es nuevo).
+#   source  fila de 07 de la que sale.
+#   phase   "mvp" | "v1" | "v2".
+#   status  "done" | "pending".
+#   task    tarea de 08 que lo implementa ("" si ya estaba hecho).
+#   run     (obligatorio si status = "done") argumentos con los que la prueba
+#           lo ejecuta sobre la carpeta personal de prueba: `--dry-run --json`
+#           si cambia algo, `--json` si es de lectura.
+#   setup   (opcional) comandos previos, p. ej. una limpieza antes de `undo`.
+#   exit    (opcional, 0 por defecto) código de salida esperado.
+#   json    (opcional, true por defecto) false si la salida no es JSON.
+#   note    (opcional) aclaración.
+#
+# Al implementar un comando: cambia `status` a "done", añade `run` y su
+# esquema en `schemas/`. La prueba falla si un comando "pending" ya existe.
+
+# ── 07 §2 · Paridad con Mole ────────────────────────────────────────────
+
+[[command]]
+id = "menu"
+cli = "rotten"
+mole = "mo"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-16"
+note = "Menú interactivo; sin --json."
+
+[[command]]
+id = "clean"
+cli = "rotten clean"
+mole = "mo clean"
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["clean", "--dry-run", "--json"]
+note = "Más categorías por paridad con `mo clean`: T-93, T-95, T-143 (08 §2.1)."
+
+[[command]]
+id = "exclude-add"
+cli = "rotten exclude add <ruta|regla>"
+mole = "mo clean --whitelist"
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["exclude", "add", "~/Library/Logs", "--dry-run", "--json"]
+
+[[command]]
+id = "exclude-list"
+cli = "rotten exclude list"
+mole = "mo clean --whitelist"
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["exclude", "list", "--json"]
+
+[[command]]
+id = "exclude-remove"
+cli = "rotten exclude remove <ruta|regla>"
+mole = "mo clean --whitelist"
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["exclude", "remove", "~/Library/Logs", "--dry-run", "--json"]
+
+[[command]]
+id = "uninstall"
+cli = "rotten uninstall <app…>"
+mole = "mo uninstall"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-22"
+note = "Referencias en shell y MCP (solo lectura) por T-96 (08 §2.1)."
+
+[[command]]
+id = "uninstall-list"
+cli = "rotten uninstall --list"
+mole = "mo uninstall --list"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-21"
+
+[[command]]
+id = "optimize"
+cli = "rotten optimize"
+mole = "mo optimize"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-98"
+note = "07 lo daba en v1; MVP por 08 §2.1. Las tareas con root, por T-142."
+
+[[command]]
+id = "optimize-startup"
+cli = "rotten optimize startup"
+mole = "mo optimize"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-23"
+note = "Arranque en solo lectura, aprobado el 2026-11-08 (08 §2.1)."
+
+[[command]]
+id = "purge"
+cli = "rotten purge"
+mole = "mo purge"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-27"
+
+[[command]]
+id = "installer"
+cli = "rotten installer"
+mole = "mo installer"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-20"
+note = "Más fuentes en v1 (T-97)."
+
+[[command]]
+id = "slim"
+cli = "rotten slim <app…>"
+mole = "mo slim"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-102"
+note = "07 lo daba en v1. MVP condicionado (08 §2.1): si la verificación de Gestión de apps (T-28) lo impide, en el MVP solo en lectura."
+
+[[command]]
+id = "analyze"
+cli = "rotten analyze [ruta]"
+mole = "mo analyze"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-19"
+note = "Lista en el MVP; el mapa es v1 (T-91)."
+
+[[command]]
+id = "analyse"
+cli = "rotten analyse [ruta]"
+mole = "mo analyse"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-19"
+note = "Alias de `analyze`, como en Mole."
+
+[[command]]
+id = "status"
+cli = "rotten status"
+mole = "mo status"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-99"
+note = "07 lo daba en v1; MVP por 08 §2.1. La manzana en la barra de menús (T-100) sigue en v1."
+
+[[command]]
+id = "history"
+cli = "rotten history"
+mole = "mo history"
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["history", "--json"]
+
+[[command]]
+id = "undo"
+cli = "rotten undo [<op-id>]"
+mole = ""
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+setup = [["clean", "--yes", "--json"]]
+run = ["undo", "--dry-run", "--json"]
+
+[[command]]
+id = "touchid"
+cli = "rotten touchid"
+mole = "mo touchid"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-120"
+note = "07 lo daba en v2; MVP por 08 §2.1, con T-142."
+
+[[command]]
+id = "completion"
+cli = "rotten completion <zsh|bash|fish>"
+mole = "mo completion"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-14"
+
+[[command]]
+id = "update"
+cli = "rotten update"
+mole = "mo update"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-15"
+
+[[command]]
+id = "remove"
+cli = "rotten remove"
+mole = "mo remove"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-108"
+note = "07 lo daba en v1; MVP reducido por 08 §2.1."
+
+[[command]]
+id = "version"
+cli = "rotten --version"
+mole = "mo --version"
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["--version"]
+json = false
+
+[[command]]
+id = "help"
+cli = "rotten --help"
+mole = "mo --help"
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["--help"]
+json = false
+
+[[command]]
+id = "help-command"
+cli = "rotten help <comando>"
+mole = "mo --help"
+source = "07 §2"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["help", "clean"]
+json = false
+
+[[command]]
+id = "launchers-install"
+cli = "rotten launchers install"
+mole = "Lanzadores de Raycast y Alfred"
+source = "07 §2"
+phase = "mvp"
+status = "pending"
+task = "T-107"
+note = "07 lo daba en v1; MVP por 08 §2.1 (parte de T-107)."
+
+[[command]]
+id = "mcp"
+cli = "rotten mcp"
+mole = "Skills para agentes"
+source = "07 §2 y §3"
+phase = "v2"
+status = "pending"
+task = "T-119"
+
+# ── 07 §3 · Comandos nuevos ─────────────────────────────────────────────
+
+[[command]]
+id = "scan"
+cli = "rotten scan"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["scan", "--json"]
+
+[[command]]
+id = "free"
+cli = "rotten free <op-id>"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "pending"
+task = "T-11"
+
+[[command]]
+id = "trash"
+cli = "rotten trash"
+mole = ""
+source = "08 §2.1"
+phase = "mvp"
+status = "pending"
+task = "T-12"
+note = "Lectura: tamaño por volumen y lo enviado por la app. Aprobado el 2026-11-08."
+
+[[command]]
+id = "trash-put"
+cli = "rotten trash put <ruta…>"
+mole = ""
+source = "08 §2.1"
+phase = "mvp"
+status = "pending"
+task = "T-10"
+note = "Con --dry-run, --json y --yes, por el mismo pipeline. Aprobado el 2026-11-08."
+
+[[command]]
+id = "trash-empty"
+cli = "rotten trash empty"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "pending"
+task = "T-12"
+
+[[command]]
+id = "doctor"
+cli = "rotten doctor"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "done"
+task = ""
+run = ["doctor", "--json"]
+
+[[command]]
+id = "dev-projects"
+cli = "rotten dev projects"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "pending"
+task = "T-27"
+note = "Solo lectura en el MVP; con acción en v1 (T-85)."
+
+[[command]]
+id = "dev-caches"
+cli = "rotten dev caches"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "pending"
+task = "T-27"
+note = "Lectura en el MVP (T-27); la limpieza de cachés globales entra en el MVP por 08 §2.1 (T-80, T-84)."
+
+[[command]]
+id = "dev-toolchains"
+cli = "rotten dev toolchains"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-85"
+
+[[command]]
+id = "dev-containers"
+cli = "rotten dev containers"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-85"
+
+[[command]]
+id = "dev-xcode"
+cli = "rotten dev xcode"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-85"
+
+[[command]]
+id = "vulns"
+cli = "rotten vulns"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-66"
+
+[[command]]
+id = "secrets"
+cli = "rotten secrets [ruta…]"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-71"
+
+[[command]]
+id = "privacy"
+cli = "rotten privacy"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-75"
+
+[[command]]
+id = "organize"
+cli = "rotten organize <carpeta>"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-53"
+
+[[command]]
+id = "explain"
+cli = "rotten explain <ruta>"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-60"
+
+[[command]]
+id = "bookmarks"
+cli = "rotten bookmarks <chrome|safari|firefox>"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-57"
+
+[[command]]
+id = "schedule-add"
+cli = "rotten schedule add"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-103"
+
+[[command]]
+id = "schedule-list"
+cli = "rotten schedule list"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-103"
+
+[[command]]
+id = "schedule-remove"
+cli = "rotten schedule remove"
+mole = ""
+source = "07 §3"
+phase = "v1"
+status = "pending"
+task = "T-103"
+
+[[command]]
+id = "config-get"
+cli = "rotten config get <clave>"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "pending"
+task = "T-13"
+
+[[command]]
+id = "config-set"
+cli = "rotten config set <clave> <valor>"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "pending"
+task = "T-13"
+
+[[command]]
+id = "config-path"
+cli = "rotten config path"
+mole = ""
+source = "07 §3"
+phase = "mvp"
+status = "pending"
+task = "T-13"

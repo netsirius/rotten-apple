@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/undo.v1.schema.json",
+  "title": "rotten undo --json (schema_version 1)",
+  "description": "Deshacer una operación, entera o por elementos (RF-HIS-04, RF-HIS-06): plan y simulación (--dry-run) o informe de ejecución. O el documento de error común.",
+  "oneOf": [
+    { "$ref": "#/$defs/dry_run" },
+    { "$ref": "#/$defs/executed" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "int": { "type": "integer" },
+    "path": { "type": "string", "minLength": 1 },
+    "op_id": { "type": "string", "minLength": 1 },
+    "file_kind": { "enum": ["file", "dir", "symlink", "other"] },
+    "flag_violation": { "enum": ["immutable", "append_only", "restricted", "no_unlink", "firmlink", "dataless"] },
+
+    "dry_run": {
+      "type": "object",
+      "required": ["schema_version", "command", "dry_run", "undo_of", "plan", "not_recoverable", "preview"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "command": { "const": "undo" },
+        "dry_run": { "const": true },
+        "undo_of": { "$ref": "#/$defs/op_id" },
+        "plan": {
+          "description": "Elementos listos para restaurar. Ojo: en `clean`, «plan» es el documento de plan entero (anotado para T-03).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/undo_item" }
+        },
+        "not_recoverable": { "$ref": "#/$defs/not_recoverable" },
+        "preview": { "$ref": "#/$defs/exec_report" }
+      }
+    },
+    "executed": {
+      "type": "object",
+      "required": ["schema_version", "command", "dry_run", "undo_of", "not_recoverable", "report"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "command": { "const": "undo" },
+        "dry_run": { "const": false },
+        "undo_of": { "$ref": "#/$defs/op_id" },
+        "not_recoverable": { "$ref": "#/$defs/not_recoverable" },
+        "report": { "$ref": "#/$defs/exec_report" }
+      }
+    },
+    "not_recoverable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["item_id", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "item_id": { "type": "integer", "minimum": 1 },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "required": ["dev", "ino", "kind", "size", "mtime", "mtime_nsec", "ctime", "ctime_nsec"],
+      "additionalProperties": false,
+      "properties": {
+        "dev": { "$ref": "#/$defs/count" },
+        "ino": { "$ref": "#/$defs/count" },
+        "kind": { "$ref": "#/$defs/file_kind" },
+        "size": { "$ref": "#/$defs/count" },
+        "mtime": { "$ref": "#/$defs/int" },
+        "mtime_nsec": { "$ref": "#/$defs/int" },
+        "ctime": { "$ref": "#/$defs/int" },
+        "ctime_nsec": { "$ref": "#/$defs/int" }
+      }
+    },
+    "undo_item": {
+      "type": "object",
+      "required": ["item_id", "from", "to", "identity", "regenerable", "bytes", "parent_mode"],
+      "additionalProperties": false,
+      "properties": {
+        "item_id": { "type": "integer", "minimum": 1 },
+        "from": { "$ref": "#/$defs/path" },
+        "to": { "$ref": "#/$defs/path" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "regenerable": { "type": "boolean" },
+        "bytes": { "$ref": "#/$defs/count" },
+        "parent_mode": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "protection_reason": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "inside_protected", "ancestor_of_protected", "user_folder", "home", "volume_root",
+            "app_state", "protected_bundle", "invalid_path"
+          ]
+        },
+        "root": { "$ref": "#/$defs/path" },
+        "detail": { "type": "string" }
+      }
+    },
+    "exclusion_match": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["path", "contains_excluded_path", "glob", "contains_glob_match", "rule", "category", "bundle_id"]
+        },
+        "value": { "type": "string" }
+      }
+    },
+    "app_block": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["running", "unknown"] },
+        "bundle_id": { "type": "string" },
+        "detail": { "type": "string" }
+      }
+    },
+
+    "exec_report": {
+      "type": "object",
+      "required": ["dry_run", "items", "done", "would", "skipped", "failed", "bytes_done"],
+      "additionalProperties": false,
+      "properties": {
+        "op_id": { "$ref": "#/$defs/op_id" },
+        "dry_run": { "type": "boolean" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item_report" } },
+        "done": { "$ref": "#/$defs/count" },
+        "would": { "$ref": "#/$defs/count" },
+        "skipped": { "$ref": "#/$defs/count" },
+        "failed": { "$ref": "#/$defs/count" },
+        "bytes_done": { "$ref": "#/$defs/count" }
+      }
+    },
+    "item_report": {
+      "type": "object",
+      "required": ["item_id", "path", "bytes", "outcome"],
+      "properties": {
+        "item_id": { "type": "integer", "minimum": 1 },
+        "path": { "$ref": "#/$defs/path" },
+        "bytes": { "$ref": "#/$defs/count" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "outcome": { "const": "done" },
+            "result_path": { "$ref": "#/$defs/path" },
+            "post_check": { "type": "string" }
+          }
+        },
+        {
+          "required": ["action"],
+          "properties": {
+            "outcome": { "const": "would" },
+            "action": { "enum": ["would_trash", "would_delete", "would_restore"] }
+          }
+        },
+        {
+          "required": ["reason", "message"],
+          "properties": {
+            "outcome": { "const": "skipped" },
+            "reason": {
+              "enum": [
+                "missing", "symlink_in_path", "identity_changed", "contents_changed", "flags",
+                "crosses_device", "protected", "excluded", "app", "unreadable", "conflict_exists"
+              ]
+            },
+            "message": { "type": "string" },
+            "flag": { "$ref": "#/$defs/flag_violation" },
+            "detail": {
+              "anyOf": [
+                { "type": "string" },
+                { "$ref": "#/$defs/protection_reason" },
+                { "$ref": "#/$defs/exclusion_match" },
+                { "$ref": "#/$defs/app_block" }
+              ]
+            }
+          }
+        },
+        {
+          "required": ["error"],
+          "properties": {
+            "outcome": { "const": "failed" },
+            "error": { "type": "string" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "error": {
+      "type": "object",
+      "required": ["schema_version", "command", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "command": { "const": "undo" },
+        "error": {
+          "type": "object",
+          "required": ["exit_code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

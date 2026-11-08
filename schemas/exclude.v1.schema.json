@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/exclude.v1.schema.json",
+  "title": "rotten exclude add|list|remove --json (schema_version 1)",
+  "description": "Exclusiones del usuario (RF-AJU-01). O el documento de error común.",
+  "oneOf": [
+    { "$ref": "#/$defs/list" },
+    { "$ref": "#/$defs/edit" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "list": {
+      "type": "object",
+      "required": ["schema_version", "command", "action", "exclusions"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "command": { "const": "exclude" },
+        "action": { "const": "list" },
+        "exclusions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "edit": {
+      "type": "object",
+      "required": ["schema_version", "command", "action", "exclusion", "changed", "dry_run"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "command": { "const": "exclude" },
+        "action": { "enum": ["add", "remove"] },
+        "exclusion": { "type": "string" },
+        "changed": { "type": "boolean" },
+        "dry_run": { "type": "boolean" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["schema_version", "command", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "command": { "const": "exclude" },
+        "error": {
+          "type": "object",
+          "required": ["exit_code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

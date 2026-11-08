@@ -1,0 +1,29 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "undo",
+  "dry_run": false,
+  "not_recoverable": [],
+  "report": {
+    "bytes_done": 4096,
+    "done": 1,
+    "dry_run": false,
+    "failed": 0,
+    "items": [
+      {
+        "bytes": 4096,
+        "item_id": 2,
+        "outcome": "done",
+        "path": "[HOME]/Library/Logs/old-app",
+        "result_path": "[HOME]/Library/Logs/old-app"
+      }
+    ],
+    "op_id": "[op_id]",
+    "skipped": 0,
+    "would": 0
+  },
+  "schema_version": 1,
+  "undo_of": "[undo_of]"
+}

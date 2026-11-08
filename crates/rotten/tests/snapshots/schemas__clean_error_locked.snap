@@ -1,0 +1,12 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "clean",
+  "error": {
+    "exit_code": 6,
+    "message": "otro proceso de Rotten Apple está ejecutando una operación"
+  },
+  "schema_version": 1
+}
