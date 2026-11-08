@@ -101,7 +101,9 @@ fn schemas_are_valid_and_match_their_file_name() {
     let commands: Vec<&str> = files.keys().map(|(c, _)| c.as_str()).collect();
     assert_eq!(
         commands,
-        ["clean", "doctor", "exclude", "history", "scan", "undo"]
+        [
+            "clean", "doctor", "exclude", "history", "scan", "trash", "undo"
+        ]
     );
     for ((command, version), (path, schema)) in &files {
         if let Err(e) = jsonschema::meta::validate(schema) {
@@ -279,6 +281,39 @@ fn undo_everything() {
 }
 
 #[test]
+fn trash_put() {
+    let fx = fixture();
+    let cache = fx.p("Library/Caches/com.example.editor");
+    let cache = cache.to_str().expect("ruta UTF-8");
+    let keychain = fx.p("Library/Keychains/login.keychain-db");
+    let keychain = keychain.to_str().expect("ruta UTF-8");
+    check(
+        &fx,
+        "trash_put_dry_run",
+        &["trash", "put", cache, "--dry-run", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "trash_put_error_protected",
+        &["trash", "put", cache, keychain, "--yes", "--json"],
+        5,
+    );
+    check(
+        &fx,
+        "trash_put_error_no_yes",
+        &["trash", "put", cache, "--json"],
+        2,
+    );
+    check(
+        &fx,
+        "trash_put_executed",
+        &["trash", "put", cache, "--yes", "--json"],
+        0,
+    );
+}
+
+#[test]
 fn doctor() {
     let fx = fixture();
     check(&fx, "doctor", &["doctor", "--json"], 0);
@@ -353,6 +388,10 @@ fn sample_documents() -> Vec<Value> {
         fx.run(&["undo", "--yes", "--json"]).1,
     ];
     docs.push(fx.run(&["undo", "no-such-op", "--json"]).1);
+    let cache = fx.p("Library/Caches/com.example.editor");
+    let cache = cache.to_str().expect("ruta UTF-8");
+    docs.push(fx.run(&["trash", "put", cache, "--dry-run", "--json"]).1);
+    docs.push(fx.run(&["trash", "put", cache, "--yes", "--json"]).1);
     docs
 }
 

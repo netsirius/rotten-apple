@@ -3,7 +3,10 @@
 //!
 //! Cada prueba usa una carpeta personal temporal (`ROTTEN_HOME`) y una
 //! Papelera temporal (`ROTTEN_TRASH_DIR`): nunca se toca el `~` real ni su
-//! Papelera.
+//! Papelera. Cada salida JSON se valida contra su esquema con
+//! `common::validate` (T-01).
+
+mod common;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -80,6 +83,12 @@ impl Fx {
                 String::from_utf8_lossy(&out.stderr)
             )
         });
+        if let Err(errors) = common::validate(&json) {
+            panic!(
+                "el JSON de {args:?} no valida contra su esquema:\n  {}\n{json:#}",
+                errors.join("\n  ")
+            );
+        }
         (code, json)
     }
 

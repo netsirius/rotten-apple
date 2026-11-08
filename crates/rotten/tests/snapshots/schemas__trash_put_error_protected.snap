@@ -1,0 +1,12 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "trash",
+  "error": {
+    "exit_code": 5,
+    "message": "~/Library/Keychains/login.keychain-db: ruta protegida ([HOME]/Library/Keychains). No se mueve nada."
+  },
+  "schema_version": 1
+}
