@@ -360,7 +360,8 @@ fn clean(
                 "Dry run: nothing was changed.",
             ));
         }
-        return Exit::Ok;
+        // Mismo código que tendría la ejecución: 4 si ya se prevén omisiones.
+        return exec_exit(&preview.dry_run);
     }
     if preview.plan.items().is_empty() {
         if ui.json {

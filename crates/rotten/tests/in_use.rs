@@ -1,10 +1,11 @@
 //! Aceptación de T-04 en el CLI (RF-SEG-08): un elemento que un proceso
 //! tiene abierto no se toca; se omite con el motivo `in_use` y el pid del
-//! proceso, y la operación termina como parcial (`4`).
+//! proceso, y la operación termina como parcial (`4`). La simulación ya lo
+//! prevé y sale con el mismo código.
 
 mod common;
 
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
@@ -75,4 +76,37 @@ fn clean_skips_an_item_held_open_by_a_process() {
     let (code, doc) = fx.run(&["clean", "--yes", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
     assert!(!held.exists(), "{doc:#}");
+}
+
+/// `--dry-run` sale con 4 si la simulación ya prevé omisiones, como la
+/// ejecución; sin omisiones, 0. No se mueve nada.
+#[test]
+fn dry_run_exits_4_when_it_foresees_an_item_in_use() {
+    let fx = fixture();
+    let held = fx.p("Library/Logs/install.log");
+    let held_str = held.to_str().expect("ruta UTF-8").to_owned();
+    let (code, doc) = fx.run(&["clean", "--dry-run", "--json"]);
+    assert_eq!(code, 0, "sin omisiones: {doc:#}");
+
+    let holder = Holder::open(&held);
+    for args in [
+        vec!["clean", "--dry-run", "--json"],
+        vec!["trash", "put", "--dry-run", "--json", &held_str],
+    ] {
+        let (code, doc) = fx.run(&args);
+        assert_eq!(code, 4, "{args:?}: {doc:#}");
+        let item = doc["preview"]["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .find(|i| i["path"] == held_str.as_str())
+            .unwrap_or_else(|| panic!("{held_str} no está en la simulación: {doc:#}"))
+            .clone();
+        assert_eq!(item["outcome"], "skipped", "{item:#}");
+        assert_eq!(item["reason"], "in_use", "{item:#}");
+        assert_eq!(item["detail"]["pid"], holder.pid(), "{item:#}");
+        assert_eq!(doc["preview"]["skipped"], 1, "{doc:#}");
+    }
+    assert!(held.exists());
+    assert!(fs::read_dir(&fx.trash).expect("trash").next().is_none());
 }

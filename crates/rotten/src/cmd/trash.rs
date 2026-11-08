@@ -60,7 +60,12 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
                 "Dry run: nothing was changed.",
             ));
         }
-        return Exit::Ok;
+        // Mismo código que tendría la ejecución: 4 si ya se prevén omisiones.
+        return if left_out {
+            Exit::Partial
+        } else {
+            exec_exit(&preview.dry_run)
+        };
     }
     if preview.plan.items().is_empty() {
         if ui.json {

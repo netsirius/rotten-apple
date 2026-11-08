@@ -265,6 +265,28 @@ fn excluded_paths_do_not_enter_the_plan() {
     assert!(Path::new(&fx.p("Downloads/guardar/a.zip")).exists());
 }
 
+/// La simulación sale con el mismo código que la ejecución: 4 si una ruta
+/// pedida queda excluida.
+#[test]
+fn dry_run_with_an_excluded_path_exits_4() {
+    let fx = fixture();
+    let (code, _) = fx.run(&["exclude", "add", "~/Downloads/guardar", "--json"]);
+    assert_eq!(code, 0);
+    let (code, doc) = fx.run(&[
+        "trash",
+        "put",
+        "--dry-run",
+        "--json",
+        &fx.p("Downloads/setup.dmg"),
+        &fx.p("Downloads/guardar/a.zip"),
+    ]);
+    assert_eq!(code, 4, "{doc:#}");
+    assert_eq!(doc["plan"]["skipped"][0]["reason"]["kind"], "excluded");
+    assert_eq!(doc["preview"]["would"], 1);
+    assert!(Path::new(&fx.p("Downloads/setup.dmg")).exists());
+    assert!(trash_is_empty(&fx));
+}
+
 #[test]
 fn repeated_or_nested_paths_are_not_omissions() {
     let fx = fixture();
