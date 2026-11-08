@@ -128,8 +128,8 @@ expression: "redact(fx, &doc)"
     "origin": "rules",
     "plan_hash": "[plan_hash]",
     "plan_id": "[plan_id]",
-    "schema": "rotten.plan.v1",
-    "schema_version": 1,
+    "schema": "rotten.plan.v2",
+    "schema_version": 2,
     "skipped": [
       {
         "category": "CAT-03",

@@ -30,8 +30,10 @@ use ra_safety::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const PLAN_SCHEMA: &str = "rotten.plan.v1";
-pub const SCHEMA_VERSION: u32 = 1;
+/// v2: el motivo `app` de un elemento bloqueado lleva su detalle en
+/// `detail` (en v1 la clave `kind` salía repetida).
+pub const PLAN_SCHEMA: &str = "rotten.plan.v2";
+pub const SCHEMA_VERSION: u32 = 2;
 /// Una revisión más antigua no se ejecuta sin regenerarla (README §8).
 pub const PREVIEW_TTL: Duration = Duration::from_secs(30 * 60);
 

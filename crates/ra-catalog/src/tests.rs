@@ -239,3 +239,22 @@ fn candidates_are_grouped_by_rule() {
         }
     }
 }
+
+/// El motivo «app» conserva su `kind` junto al detalle de la app (antes, la
+/// clave `kind` del detalle pisaba a la del motivo) y el JSON se vuelve a
+/// leer igual.
+#[test]
+fn app_block_serializes_with_its_own_kind() {
+    let b = Block::App {
+        detail: ra_safety::apps::AppBlock::Running {
+            bundle_id: "com.google.Chrome".into(),
+        },
+    };
+    let text = serde_json::to_string(&b).expect("serializar");
+    assert_eq!(
+        text,
+        r#"{"kind":"app","detail":{"kind":"running","bundle_id":"com.google.Chrome"}}"#
+    );
+    let back: Block = serde_json::from_str(&text).expect("leer");
+    assert_eq!(back, b);
+}

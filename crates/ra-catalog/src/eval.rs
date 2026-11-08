@@ -38,7 +38,12 @@ pub enum Block {
         min_age_days: u32,
         age_days: i64,
     },
-    App(AppBlock),
+    /// Una app que debe estar cerrada está abierta, o no se puede saber.
+    /// Con campo propio: `AppBlock` también lleva `kind` y, aplanado, la
+    /// clave se repetía y se perdía `"app"`.
+    App {
+        detail: AppBlock,
+    },
     Flags {
         flag: FlagViolation,
     },
@@ -275,7 +280,8 @@ fn evaluate(
             });
         }
     }
-    opts.apps.check(&c.apps).map_err(Block::App)?;
+    opts.apps.check(&c.apps)
+        .map_err(|detail| Block::App { detail })?;
     Ok(())
 }
 

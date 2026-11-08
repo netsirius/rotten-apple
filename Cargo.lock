@@ -907,6 +907,7 @@ dependencies = [
  "globset",
  "ra-safety",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "toml",
