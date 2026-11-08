@@ -88,8 +88,42 @@ const TEMPTING: &[&str] = &[
     "tema.mp3",
 ];
 
-fn is_in_user_folder(p: &Path, home: &Path) -> bool {
-    USER_FOLDERS.iter().any(|f| p.starts_with(home.join(f)))
+/// `(dev, ino)` de `p` y de todo lo que cuelga de él, sin seguir enlaces
+/// simbólicos (un enlace cuenta por sí mismo, no por su destino).
+fn identities_under(p: &Path) -> BTreeSet<(u64, u64)> {
+    let mut out = BTreeSet::new();
+    let mut stack = vec![p.to_path_buf()];
+    while let Some(q) = stack.pop() {
+        let Ok(m) = fs::symlink_metadata(&q) else {
+            continue;
+        };
+        out.insert((m.dev(), m.ino()));
+        if m.is_dir()
+            && let Ok(rd) = fs::read_dir(&q)
+        {
+            stack.extend(rd.flatten().map(|e| e.path()));
+        }
+    }
+    out
+}
+
+/// Identidades de las seis carpetas de documentos y de todo su contenido.
+fn user_documents(home: &Path) -> BTreeSet<(u64, u64)> {
+    USER_FOLDERS
+        .iter()
+        .flat_map(|f| identities_under(&home.join(f)))
+        .collect()
+}
+
+/// Elementos del plan que son, o contienen, un objeto de las carpetas de
+/// documentos. Por identidad y no por ruta: así también se detecta llegar
+/// a un documento por un enlace simbólico en la ruta o por un enlace duro.
+fn touching_documents(plan: &ra_core::Plan, docs: &BTreeSet<(u64, u64)>) -> Vec<PathBuf> {
+    plan.items()
+        .iter()
+        .filter(|i| !identities_under(&i.path).is_disjoint(docs))
+        .map(|i| i.path.clone())
+        .collect()
 }
 
 fn all_categories(core: &Core) -> Selection {
@@ -141,16 +175,20 @@ proptest! {
     #[test]
     fn preselected_never_intersects_user_documents((entries, links) in home_tree()) {
         let w = World::new(&entries, &links);
+        let docs = user_documents(&w.home);
+        prop_assert!(!docs.is_empty());
         let default = w.core.plan(&Selection::default(), Action::Trash).expect("plan");
         for i in default.plan.items() {
             prop_assert!(i.preselected, "{:?}", i.path);
-            prop_assert!(!is_in_user_folder(&i.path, &w.home), "preseleccionado: {:?}", i.path);
         }
+        let hit = touching_documents(&default.plan, &docs);
+        prop_assert!(hit.is_empty(), "preseleccionado: {:?}", hit);
         let all = w.core.plan(&all_categories(&w.core), Action::Trash).expect("plan");
         for i in all.plan.items() {
-            prop_assert!(!is_in_user_folder(&i.path, &w.home), "en el plan: {:?}", i.path);
             prop_assert_eq!(i.origin, Origin::Rules);
         }
+        let hit = touching_documents(&all.plan, &docs);
+        prop_assert!(hit.is_empty(), "en el plan: {:?}", hit);
     }
 }
 
