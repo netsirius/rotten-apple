@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use ra_core::{Core, ExecReport, Outcome, tilde};
+use ra_core::{Core, ExecReport, Outcome, SkipReason, tilde};
 use serde_json::{Value, json};
 
 use crate::args::TrashCmd;
@@ -39,8 +39,13 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
         Err(e) => return ui.core_error(COMMAND, &e),
     };
     // Cada ruta la ha pedido el usuario: si alguna se queda fuera del plan,
-    // la operación no está completa.
-    let left_out = !preview.plan.skipped().is_empty();
+    // la operación no está completa. Una ruta repetida o dentro de otra
+    // elegida no cuenta: se mueve con la que la contiene.
+    let left_out = preview
+        .plan
+        .skipped()
+        .iter()
+        .any(|s| !matches!(s.reason, SkipReason::Overlaps(_)));
 
     if dry_run {
         if ui.json {

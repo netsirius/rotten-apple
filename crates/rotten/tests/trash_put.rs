@@ -203,6 +203,17 @@ fn excluded_paths_do_not_enter_the_plan() {
 }
 
 #[test]
+fn repeated_or_nested_paths_are_not_omissions() {
+    let fx = fixture();
+    let dir = fx.p("Desktop/carpeta");
+    let inner = fx.p("Desktop/carpeta/nota.txt");
+    let (code, doc) = fx.run(&["trash", "put", "--yes", "--json", &dir, &inner, &dir]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert_eq!(doc["report"]["done"], 1);
+    assert!(!Path::new(&dir).exists());
+}
+
+#[test]
 fn without_terminal_or_yes_is_a_usage_error() {
     let fx = fixture();
     let (code, doc) = fx.run(&["trash", "put", &fx.p("Downloads/setup.dmg")]);
