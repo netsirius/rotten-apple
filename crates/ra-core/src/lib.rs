@@ -11,6 +11,7 @@
 mod doctor;
 mod env;
 mod scan;
+mod selection;
 
 use std::path::Path;
 use std::time::SystemTime;
@@ -215,13 +216,14 @@ impl Core {
                 plan.home().display()
             )));
         }
+        let origin = plan.origin();
         let approved = plan
             .approve(reviewed_hash, SystemTime::now())
             .map_err(|e| CoreError::Safety(e.to_string()))?;
         // La configuración se vuelve a validar justo antes de actuar.
         let exclusions = self.exclusions_or_abort()?;
         let lock = self.lock()?;
-        let protected = self.protected();
+        let protected = self.protected().for_origin(origin);
         let apps = AppProbe::snapshot(self.apps.as_ref());
         let history = self.history_paths();
         let ctx = ExecContext {
