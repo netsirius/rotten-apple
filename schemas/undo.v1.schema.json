@@ -124,6 +124,27 @@
         "detail": { "type": "string" }
       }
     },
+    "in_use_detail": {
+      "description": "Detalle del motivo «in_use» (RF-SEG-08): el proceso que lo tiene abierto o, si no se pudo saber, por qué.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "pid", "process"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "held" },
+            "pid": { "type": "integer" },
+            "process": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "detail"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "unknown" }, "detail": { "type": "string" } }
+        }
+      ]
+    },
 
     "exec_report": {
       "type": "object",
@@ -170,7 +191,8 @@
             "reason": {
               "enum": [
                 "missing", "symlink_in_path", "identity_changed", "contents_changed", "flags",
-                "crosses_device", "protected", "excluded", "app", "unreadable", "conflict_exists"
+                "crosses_device", "protected", "excluded", "app", "unreadable", "conflict_exists",
+                "in_use"
               ]
             },
             "message": { "type": "string" },
@@ -180,7 +202,8 @@
                 { "type": "string" },
                 { "$ref": "#/$defs/protection_reason" },
                 { "$ref": "#/$defs/exclusion_match" },
-                { "$ref": "#/$defs/app_block" }
+                { "$ref": "#/$defs/app_block" },
+                { "$ref": "#/$defs/in_use_detail" }
               ]
             }
           }
