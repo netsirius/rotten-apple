@@ -16,9 +16,12 @@
 //!
 //! - Las constantes de abajo coinciden con las del SDK. El crate `libc` no
 //!   declara estas funciones ni sus constantes, así que se declaran aquí.
-//! - Al arrancar, el proceso hereda `MATERIALIZE_DATALESS_FILES = ON` (2),
-//!   aunque el manual dice que el valor por defecto del sistema es `OFF`. Por
-//!   eso hay que fijarla explícitamente.
+//! - En el entorno de verificación, el proceso arranca heredando
+//!   `MATERIALIZE_DATALESS_FILES = ON` (2), aunque el manual dice que el
+//!   valor por defecto del sistema es `OFF`. Como el valor heredado depende
+//!   del proceso padre, hay que fijarla explícitamente.
+//! - Con ámbito de hilo, `getiopolicy_np` devuelve `DEFAULT` (0), que según
+//!   el manual sigue a la política del proceso: cubre a todos los hilos.
 //! - `setiopolicy_np` devuelve 0; después, `getiopolicy_np` devuelve el valor
 //!   fijado (1, 4 y 1). Repetir la llamada es inocuo.
 //! - El único error documentado y observado es `EINVAL` (tipo, ámbito o
