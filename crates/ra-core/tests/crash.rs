@@ -481,10 +481,10 @@ fn round(bin: &Path, seed: u64, clean: &mut Stats, undo: &mut Stats) {
     else {
         return;
     };
-    let ready = prepare_undo(&records, &op.op_id, None)
-        .expect("plan de deshacer")
-        .ready
-        .len();
+    let plan = prepare_undo(&records, &op.op_id, None).expect("plan de deshacer");
+    let ready = plan.ready.len();
+    // Con elementos ya no recuperables, un deshacer completo termina con 4.
+    let partial = !plan.not_recoverable.is_empty();
     if ready == 0 {
         return;
     }
@@ -492,7 +492,10 @@ fn round(bin: &Path, seed: u64, clean: &mut Stats, undo: &mut Stats) {
     let jitter = Duration::from_micros(rng.upto(JITTER_MAX_US));
     let ending = run_and_kill(&w, bin, &["undo", "--yes", "--json"], k, jitter);
     if let Ending::Exited(code) = ending {
-        assert_eq!(code, Some(0), "undo terminó mal ({repro})");
+        assert!(
+            code == Some(0) || (partial && code == Some(4)),
+            "undo terminó con {code:?} ({repro})"
+        );
     }
     undo.note(&ending);
     let ctx = format!(
