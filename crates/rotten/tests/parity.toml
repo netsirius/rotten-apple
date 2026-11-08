@@ -20,7 +20,8 @@
 #   task    tarea de 08 que lo implementa ("" si ya estaba hecho).
 #   run     (obligatorio si status = "done") argumentos con los que la prueba
 #           lo ejecuta sobre la carpeta personal de prueba: `--dry-run --json`
-#           si cambia algo, `--json` si es de lectura.
+#           si cambia algo, `--json` si es de lectura. `$HOME` se sustituye
+#           por la carpeta personal de prueba (las rutas no expanden `~`).
 #   setup   (opcional) comandos previos, p. ej. una limpieza antes de `undo`.
 #   exit    (opcional, 0 por defecto) código de salida esperado.
 #   json    (opcional, true por defecto) false si la salida no es JSON.
@@ -328,8 +329,9 @@ cli = "rotten trash put <ruta…>"
 mole = ""
 source = "08 §2.1"
 phase = "mvp"
-status = "pending"
+status = "done"
 task = "T-10"
+run = ["trash", "put", "$HOME/Library/Caches/com.example.editor", "--dry-run", "--json"]
 note = "Con --dry-run, --json y --yes, por el mismo pipeline. Aprobado el 2026-11-08."
 
 [[command]]

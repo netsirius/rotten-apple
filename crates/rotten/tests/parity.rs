@@ -82,6 +82,21 @@ impl Entry {
     }
 }
 
+/// Argumentos de `run` o `setup`, con `$HOME` sustituido por la carpeta
+/// personal de prueba: los comandos que reciben rutas (`trash put`) no
+/// expanden `~`, eso lo hace la shell.
+fn args_in<'a>(raw: &'a [String], home: &str) -> Vec<std::borrow::Cow<'a, str>> {
+    raw.iter()
+        .map(|a| {
+            if a.contains("$HOME") {
+                a.replace("$HOME", home).into()
+            } else {
+                a.as_str().into()
+            }
+        })
+        .collect()
+}
+
 fn table() -> Vec<Entry> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/parity.toml");
     let text = fs::read_to_string(&path).expect("leer parity.toml");
@@ -154,18 +169,15 @@ fn done_commands_run_and_validate() {
     let mut checked = Vec::new();
     for e in table().iter().filter(|e| e.status == Status::Done) {
         let fx = fixture();
+        let home = fx.home.to_str().expect("ruta UTF-8");
         for s in &e.setup {
-            let args: Vec<&str> = s.iter().map(String::as_str).collect();
+            let args = args_in(s, home);
+            let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
             let (code, doc) = fx.run(&args);
             assert_eq!(code, 0, "{}: preparación {args:?} falló: {doc:#}", e.id);
         }
-        let args: Vec<&str> = e
-            .run
-            .as_deref()
-            .expect("run")
-            .iter()
-            .map(String::as_str)
-            .collect();
+        let args = args_in(e.run.as_deref().expect("run"), home);
+        let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
         if e.json {
             let (code, doc) = fx.run(&args);
             assert_eq!(code, e.exit, "{}: {args:?} → {doc:#}", e.id);
@@ -188,20 +200,34 @@ fn done_commands_run_and_validate() {
 /// Un comando «pending» que ya existe obliga a actualizar la tabla. Se
 /// comprueba con `--help`, que no ejecuta nada: un subcomando desconocido
 /// es un error de uso (`2`).
+///
+/// Si el comando es a la vez el grupo de otro ya hecho (`rotten trash`
+/// pendiente, `rotten trash put` hecho), `--help` sale con `0` porque el
+/// grupo existe. Entonces se sondea a secas: sin implementar, falta el
+/// subcomando y también es un error de uso.
 #[test]
 fn pending_commands_do_not_exist_yet() {
     let fx = fixture();
-    for e in table().iter().filter(|e| e.status == Status::Pending) {
+    let entries = table();
+    let done: Vec<Vec<&str>> = entries
+        .iter()
+        .filter(|e| e.status == Status::Done)
+        .map(Entry::words)
+        .collect();
+    for e in entries.iter().filter(|e| e.status == Status::Pending) {
         let words = e.words();
         if words.is_empty() {
             continue; // El menú (`rotten` a secas) no se puede sondear así.
         }
-        let out = fx
-            .cmd()
-            .args(&words)
-            .arg("--help")
-            .output()
-            .expect("ejecutar");
+        let is_group = done
+            .iter()
+            .any(|d| d.len() > words.len() && d.starts_with(&words));
+        let mut cmd = fx.cmd();
+        cmd.args(&words);
+        if !is_group {
+            cmd.arg("--help");
+        }
+        let out = cmd.output().expect("ejecutar");
         assert_eq!(
             out.status.code(),
             Some(2),
