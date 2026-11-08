@@ -25,5 +25,5 @@ expression: "redact(fx, &doc)"
     "trash": "dir:[TRASH]",
     "version": "[version]"
   },
-  "schema_version": 1
+  "schema_version": 2
 }

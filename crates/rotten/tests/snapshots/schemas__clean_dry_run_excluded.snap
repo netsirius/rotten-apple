@@ -158,5 +158,5 @@ expression: "redact(fx, &doc)"
     "skipped": 0,
     "would": 2
   },
-  "schema_version": 1
+  "schema_version": 2
 }

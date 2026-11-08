@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use args::{Cli, Cmd, ExcludeCmd};
 use text::{Lang, size};
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

@@ -8,5 +8,5 @@ expression: "redact(fx, &doc)"
   "command": "exclude",
   "dry_run": true,
   "exclusion": "~/Library/Logs/old-app",
-  "schema_version": 1
+  "schema_version": 2
 }

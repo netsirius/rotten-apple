@@ -8,5 +8,5 @@ expression: "redact(fx, &doc)"
     "exit_code": 5,
     "message": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml está corrupto: TOML no válido: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n. No se ejecuta ninguna acción hasta corregirlo."
   },
-  "schema_version": 1
+  "schema_version": 2
 }

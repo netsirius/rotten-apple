@@ -8,5 +8,5 @@ expression: "redact(fx, &doc)"
     "exit_code": 2,
     "message": "categoría desconocida: CAT-99"
   },
-  "schema_version": 1
+  "schema_version": 2
 }

@@ -44,7 +44,7 @@ fn clean_dry_run_json_produces_a_valid_plan_and_changes_nothing() {
     let before = snapshot(&fx.home, &fx.state);
     let (code, doc) = fx.run(&["clean", "--dry-run", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
-    assert_eq!(doc["schema_version"], 1);
+    assert_eq!(doc["schema_version"], 2);
     assert_eq!(doc["command"], "clean");
     assert_eq!(doc["dry_run"], true);
 
@@ -87,7 +87,7 @@ fn json_is_automatic_when_piped() {
     let fx = fixture();
     let (code, doc) = fx.run(&["scan"]);
     assert_eq!(code, 0);
-    assert_eq!(doc["schema_version"], 1);
+    assert_eq!(doc["schema_version"], 2);
     assert_eq!(doc["scan_status"], "complete");
     let cats: Vec<&str> = doc["categories"]
         .as_array()
