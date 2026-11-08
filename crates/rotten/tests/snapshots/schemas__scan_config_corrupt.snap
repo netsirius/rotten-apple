@@ -1,0 +1,65 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "catalog_version": "2026.11.0",
+  "categories": [
+    {
+      "bytes_allocated": 12288,
+      "id": "CAT-01",
+      "items": 1,
+      "preselected_bytes": 0,
+      "preselected_items": 0,
+      "requires": [],
+      "scan_status": "complete",
+      "skipped_items": 1,
+      "title_en": "App caches",
+      "title_es": "Archivos temporales de apps"
+    },
+    {
+      "bytes_allocated": 8192,
+      "id": "CAT-03",
+      "items": 2,
+      "preselected_bytes": 8192,
+      "preselected_items": 2,
+      "requires": [],
+      "scan_status": "complete",
+      "skipped_items": 1,
+      "title_en": "Logs and crash reports",
+      "title_es": "Registros e informes de fallos"
+    },
+    {
+      "bytes_allocated": 0,
+      "id": "CAT-08",
+      "items": 0,
+      "preselected_bytes": 0,
+      "preselected_items": 0,
+      "requires": [],
+      "scan_status": "complete",
+      "skipped_items": 0,
+      "title_en": "Browser caches",
+      "title_es": "Cachés de navegadores"
+    },
+    {
+      "bytes_allocated": 4096,
+      "id": "CAT-10",
+      "items": 1,
+      "preselected_bytes": 4096,
+      "preselected_items": 1,
+      "requires": [],
+      "scan_status": "complete",
+      "skipped_items": 0,
+      "title_en": "Saved window state",
+      "title_es": "Estado guardado de ventanas"
+    }
+  ],
+  "command": "scan",
+  "config": "corrupt",
+  "home": "[HOME]",
+  "scan_status": "complete",
+  "schema_version": 1,
+  "warnings": [
+    "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml está corrupto (TOML no válido: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n): no se aplican exclusiones y no se podrá limpiar"
+  ]
+}

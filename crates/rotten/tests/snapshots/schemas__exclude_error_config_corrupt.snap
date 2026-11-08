@@ -1,0 +1,12 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "exclude",
+  "error": {
+    "exit_code": 5,
+    "message": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml está corrupto (TOML no válido: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n); corrígelo antes de cambiar las exclusiones"
+  },
+  "schema_version": 1
+}

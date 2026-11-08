@@ -1,0 +1,57 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "undo",
+  "dry_run": true,
+  "not_recoverable": [
+    {
+      "item_id": 1,
+      "reason": "ya no está en la Papelera o ha cambiado"
+    },
+    {
+      "item_id": 2,
+      "reason": "ya se restauró"
+    }
+  ],
+  "plan": [
+    {
+      "bytes": 4096,
+      "from": "[TRASH]/com.example.closed.savedState",
+      "identity": {
+        "ctime": "[ctime]",
+        "ctime_nsec": "[ctime_nsec]",
+        "dev": "[dev]",
+        "ino": "[ino]",
+        "kind": "dir",
+        "mtime": "[mtime]",
+        "mtime_nsec": "[mtime_nsec]",
+        "size": "[size]"
+      },
+      "item_id": 3,
+      "parent_mode": "[parent_mode]",
+      "regenerable": true,
+      "to": "[HOME]/Library/Saved Application State/com.example.closed.savedState"
+    }
+  ],
+  "preview": {
+    "bytes_done": 0,
+    "done": 0,
+    "dry_run": true,
+    "failed": 0,
+    "items": [
+      {
+        "action": "would_restore",
+        "bytes": 4096,
+        "item_id": 3,
+        "outcome": "would",
+        "path": "[HOME]/Library/Saved Application State/com.example.closed.savedState"
+      }
+    ],
+    "skipped": 0,
+    "would": 1
+  },
+  "schema_version": 1,
+  "undo_of": "[undo_of]"
+}

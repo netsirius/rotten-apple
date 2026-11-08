@@ -20,6 +20,15 @@ serde_json.workspace = true
 assert_cmd.workspace = true
 ra-catalog = { workspace = true, features = ["fixtures"] }
 tempfile.workspace = true
+# Esquemas JSON y snapshots de la salida (T-01). Solo pruebas; sin las
+# features por defecto de `jsonschema`, que traen HTTP y TLS.
+#
+# `jsonschema` se queda en 0.33 porque desde 0.34 depende de `fluent-uri`
+# 0.4, que exige `borrow-or-share` ≥ 0.2.4 (MIT-0, fuera de `deny.toml`).
+# Con 0.33, `Cargo.lock` fija `borrow-or-share` 0.2.1 (`CC0-1.0 OR MIT`):
+# no lo subas con `cargo update` sin revisar las licencias.
+insta = { version = "1.43", default-features = false, features = ["json"] }
+jsonschema = { version = "0.33", default-features = false }
 
 [lints]
 workspace = true

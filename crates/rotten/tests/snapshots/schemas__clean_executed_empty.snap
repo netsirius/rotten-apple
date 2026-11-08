@@ -1,0 +1,59 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "clean",
+  "dry_run": false,
+  "plan": {
+    "action": "trash",
+    "catalog_version": "2026.11.0",
+    "created_at": "[created_at]",
+    "home": "[HOME]",
+    "items": [],
+    "not_selected": {
+      "CAT-01": {
+        "bytes_allocated": 12288,
+        "items": 1
+      }
+    },
+    "origin": "rules",
+    "plan_hash": "[plan_hash]",
+    "plan_id": "[plan_id]",
+    "schema": "rotten.plan.v1",
+    "schema_version": 1,
+    "skipped": [
+      {
+        "category": "CAT-03",
+        "path": "[HOME]/Library/Logs/current.log",
+        "reason": {
+          "detail": {
+            "age_days": 0,
+            "kind": "too_recent",
+            "min_age_days": 7
+          },
+          "kind": "blocked"
+        },
+        "rule": {
+          "id": "user-logs",
+          "version": 1
+        }
+      }
+    ],
+    "totals": {
+      "bytes_allocated": 0,
+      "irreversible_items": 0,
+      "items": 0
+    }
+  },
+  "report": {
+    "bytes_done": 0,
+    "done": 0,
+    "dry_run": false,
+    "failed": 0,
+    "items": [],
+    "skipped": 0,
+    "would": 0
+  },
+  "schema_version": 1
+}

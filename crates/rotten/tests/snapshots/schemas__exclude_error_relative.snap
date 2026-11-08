@@ -1,0 +1,12 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "exclude",
+  "error": {
+    "exit_code": 2,
+    "message": "la ruta no es absoluta: relativa/ruta"
+  },
+  "schema_version": 1
+}
