@@ -152,6 +152,35 @@ fn protected_paths_and_ancestors_exit_5_and_touch_nothing() {
     assert!(trash_is_empty(&fx));
 }
 
+/// RF-SEG-19: una ruta fuera de `~` aborta todo con 5, con o sin
+/// `--dry-run`, y no toca nada.
+#[test]
+fn paths_outside_home_exit_5_and_touch_nothing() {
+    let fx = fixture();
+    let outside = fx.home.parent().expect("raíz").join("fuera");
+    fs::create_dir_all(&outside).expect("mkdir");
+    let bad = outside.join("x.txt");
+    fs::write(&bad, "x").expect("write");
+    let bad = bad.to_string_lossy().into_owned();
+    let before = snapshot(&fx.home, &fx.state);
+    for dry in [true, false] {
+        let mut args = vec!["trash", "put", "--json", "--yes"];
+        if dry {
+            args.push("--dry-run");
+        }
+        let ok = fx.p("Downloads/setup.dmg");
+        args.push(&ok);
+        args.push(&bad);
+        let (code, doc) = fx.run(&args);
+        assert_eq!(code, 5, "dry-run: {dry}: {doc:#}");
+        let msg = doc["error"]["message"].as_str().expect("mensaje");
+        assert!(msg.contains("fuera de la carpeta personal"), "{msg}");
+    }
+    assert!(Path::new(&bad).exists());
+    assert_eq!(snapshot(&fx.home, &fx.state), before);
+    assert!(trash_is_empty(&fx));
+}
+
 #[test]
 fn dry_run_shows_the_plan_with_its_origin_and_changes_nothing() {
     let fx = fixture();

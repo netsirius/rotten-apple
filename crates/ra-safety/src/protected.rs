@@ -8,7 +8,9 @@
 //!   también `~/Library/Keychains`);
 //! - es la carpeta personal, la raíz de un volumen o los datos de la propia app;
 //! - algún componente es una fototeca (`*.photoslibrary`) o una copia de
-//!   Time Machine (`Backups.backupdb`).
+//!   Time Machine (`Backups.backupdb`);
+//! - viene de una selección explícita y está fuera de la carpeta personal
+//!   (RF-SEG-19).
 
 use std::path::{Path, PathBuf};
 
@@ -44,6 +46,9 @@ pub enum ProtectionReason {
     ProtectedBundle,
     #[error("ruta no válida: {detail}")]
     InvalidPath { detail: String },
+    /// Selección explícita fuera de la carpeta personal (RF-SEG-19).
+    #[error("está fuera de la carpeta personal: solo se pueden elegir rutas dentro de ~")]
+    OutsideHome,
 }
 
 impl From<PathError> for ProtectionReason {
@@ -132,7 +137,8 @@ impl ProtectedList {
     /// [`Origin::Rules`], y con `for_origin(Origin::ExplicitSelection)` el
     /// contenido de las carpetas de documentos deja de rechazarse. Todo lo
     /// demás (raíces protegidas, ancestros, carpeta personal, estado de la
-    /// app, fototecas) no depende del origen y se sigue rechazando.
+    /// app, fototecas) no depende del origen y se sigue rechazando. Con
+    /// selección explícita, además, nada fuera de la carpeta personal.
     pub fn for_origin(mut self, origin: Origin) -> Self {
         self.floor = origin;
         self
@@ -195,6 +201,10 @@ impl ProtectedList {
             return Err(ProtectionReason::AncestorOfProtected {
                 root: self.home.clone(),
             });
+        }
+        // RF-SEG-19: lo elegido a mano, solo dentro de la carpeta personal.
+        if origin == Origin::ExplicitSelection && !paths::is_within(path, &self.home) {
+            return Err(ProtectionReason::OutsideHome);
         }
         Ok(())
     }
@@ -269,6 +279,42 @@ mod tests {
         ] {
             assert!(l.check(Path::new(p), Origin::Rules).is_err(), "{p}");
         }
+    }
+
+    #[test]
+    fn explicit_selection_only_inside_home() {
+        let l = list();
+        for p in [
+            "/tmp/x",
+            "/private/tmp/x",
+            "/Volumes/Disco/x",
+            "/usr/local/bin/x",
+            "/Users/otra/x",
+        ] {
+            assert_eq!(
+                l.check(Path::new(p), Origin::ExplicitSelection),
+                Err(ProtectionReason::OutsideHome),
+                "{p}"
+            );
+        }
+        // Con reglas, lo de fuera de `~` sigue igual que antes.
+        assert!(
+            l.check(Path::new("/usr/local/var/cache/x"), Origin::Rules)
+                .is_ok()
+        );
+        // El suelo de selección explícita también lo aplica al ejecutar.
+        let floor = list().for_origin(Origin::ExplicitSelection);
+        assert_eq!(
+            floor.check(Path::new("/tmp/x"), Origin::Rules),
+            Err(ProtectionReason::OutsideHome)
+        );
+        assert!(
+            l.check(
+                Path::new("/Users/ana/Downloads/x"),
+                Origin::ExplicitSelection
+            )
+            .is_ok()
+        );
     }
 
     #[test]

@@ -235,6 +235,27 @@ fn protected_paths_and_their_ancestors_abort_everything() {
     assert!(fs::read_dir(&w.trash).expect("trash").next().is_none());
 }
 
+/// RF-SEG-19: solo rutas dentro de la carpeta personal, ya resueltas.
+#[test]
+fn paths_outside_home_abort_everything() {
+    let w = World::new(&[file("Downloads/setup.dmg", 30)], &[]);
+    let outside = w.home.parent().expect("raíz").join("fuera");
+    fs::create_dir_all(&outside).expect("mkdir");
+    fs::write(outside.join("x.txt"), "x").expect("write");
+    let ok = w.p("Downloads/setup.dmg");
+    for bad in [outside.join("x.txt"), outside.clone(), w.trash.clone()] {
+        let m = safety(w.core.plan_selection(&[ok.clone(), bad.clone()]));
+        assert!(m.contains("fuera de la carpeta personal"), "{bad:?}: {m}");
+    }
+    // Un enlace en la carpeta padre que sale de `~` tampoco sirve.
+    std::os::unix::fs::symlink(&outside, w.p("Downloads/fuera")).expect("enlace");
+    let m = safety(w.core.plan_selection(&[w.p("Downloads/fuera/x.txt")]));
+    assert!(m.contains("fuera de la carpeta personal"), "{m}");
+    assert!(ok.exists());
+    assert!(outside.join("x.txt").exists());
+    assert!(fs::read_dir(&w.trash).expect("trash").next().is_none());
+}
+
 #[test]
 fn excluded_paths_stay_out_of_the_plan() {
     let w = World::new(

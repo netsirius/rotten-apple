@@ -250,7 +250,7 @@
         "kind": {
           "enum": [
             "inside_protected", "ancestor_of_protected", "user_folder", "home", "volume_root",
-            "app_state", "protected_bundle", "invalid_path"
+            "app_state", "protected_bundle", "invalid_path", "outside_home"
           ]
         },
         "root": { "$ref": "#/$defs/path" },

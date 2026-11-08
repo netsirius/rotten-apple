@@ -9,6 +9,8 @@
 //! Diferencias con el plan del catálogo (RF-SEG-05):
 //! - una ruta protegida, o ancestro de una protegida, **aborta todo** con
 //!   [`CoreError::Safety`] en lugar de omitirse;
+//! - también aborta una ruta que, ya resuelta, queda fuera de la carpeta
+//!   personal (RF-SEG-19);
 //! - una ruta que no se puede resolver ni clasificar también aborta;
 //! - una ruta excluida por el usuario no entra en el plan (queda en
 //!   `skipped`).
