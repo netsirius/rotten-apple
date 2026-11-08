@@ -23,7 +23,7 @@ pub use ra_exec::{ExecReport, ItemReport, Outcome, SkipCause, TrashBackend};
 pub use ra_history::{OpSummary, UndoPlan, UndoState};
 pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};
 pub use ra_safety::{ConfigState, Exclusion, FileKind, Origin, RunningApps, SystemApps};
-pub use scan::{CategorySummary, ScanReport, ScanStatus};
+pub use scan::{CategorySummary, ScanReport, ScanStatus, VolumeState};
 
 use ra_exec::{ExecContext, ExecLock};
 use ra_history::HistoryPaths;
@@ -157,13 +157,15 @@ impl Core {
         let (res, _) = self.raw_scan(&catalog);
         let config = self.config_state();
         let exclusions = config.exclusions(&self.env.home).ok();
-        Ok(scan::summarize(
+        let mut report = scan::summarize(
             &catalog,
             &res,
             &self.protected(),
             exclusions.as_ref(),
             &config,
-        ))
+        );
+        scan::add_volume(&mut report, &self.env.home);
+        Ok(report)
     }
 
     /// Construye el plan y lo simula (la revisión). Aborta si las
