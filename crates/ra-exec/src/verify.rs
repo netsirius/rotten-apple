@@ -6,6 +6,7 @@ use std::os::fd::{AsFd, OwnedFd};
 use std::path::Path;
 
 use ra_plan::PlanItem;
+use ra_platform::files::OpenFiles;
 use ra_safety::apps::AppBlock;
 use ra_safety::fingerprint::{fingerprint_at, open_parent_nofollow};
 use ra_safety::identity::check_flags;
@@ -42,6 +43,19 @@ pub enum SkipCause {
     Unreadable { detail: String },
     #[error("ya existe algo en la ruta original")]
     ConflictExists,
+    #[error("{detail}")]
+    InUse { detail: InUseDetail },
+}
+
+/// Detalle de [`SkipCause::InUse`] (RF-SEG-08).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum InUseDetail {
+    #[error("en uso por {process} (pid {pid})")]
+    Held { pid: i32, process: String },
+    /// La lista de ficheros abiertos no se pudo obtener: cuenta como «en uso».
+    #[error("no se puede saber si está en uso: {detail}")]
+    Unknown { detail: String },
 }
 
 impl SkipCause {
@@ -59,6 +73,7 @@ impl SkipCause {
             SkipCause::App { .. } => "app_running",
             SkipCause::Unreadable { .. } => "unreadable",
             SkipCause::ConflictExists => "conflict_exists",
+            SkipCause::InUse { .. } => "in_use",
         }
     }
 }
@@ -90,6 +105,8 @@ pub(crate) struct Guards<'a> {
     pub protected: &'a ProtectedList,
     pub exclusions: &'a Exclusions,
     pub apps: &'a AppProbe,
+    /// Instantánea de los ficheros abiertos, tomada una vez por pasada.
+    pub open: Result<OpenFiles, String>,
 }
 
 pub(crate) fn verify<'p>(item: &'p PlanItem, g: &Guards<'_>) -> Result<Verified<'p>, SkipCause> {
@@ -127,5 +144,17 @@ pub(crate) fn verify<'p>(item: &'p PlanItem, g: &Guards<'_>) -> Result<Verified<
     g.apps
         .check(&item.apps)
         .map_err(|detail| SkipCause::App { detail })?;
+    // Lo último: si el elemento cambió, el motivo es el cambio, no el uso.
+    let open = g.open.as_ref().map_err(|e| SkipCause::InUse {
+        detail: InUseDetail::Unknown { detail: e.clone() },
+    })?;
+    if let Some(h) = open.holder(path, now.dev, now.ino) {
+        return Err(SkipCause::InUse {
+            detail: InUseDetail::Held {
+                pid: h.pid,
+                process: h.process,
+            },
+        });
+    }
     Ok(Verified { parent, name })
 }

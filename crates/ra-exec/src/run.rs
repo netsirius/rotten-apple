@@ -7,6 +7,7 @@ use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
 
 use ra_history::{
@@ -14,6 +15,7 @@ use ra_history::{
     manifest_for, read_journal,
 };
 use ra_plan::{Action, ApprovedPlan, Plan, PlanItem};
+use ra_platform::files::OpenFiles;
 use ra_safety::fingerprint::{open_parent_nofollow, stat_nofollow_any};
 use ra_safety::{AppProbe, Exclusions, FileKind, ProtectedList};
 use rustix::fs::{AtFlags, Dir, Mode, OFlags, RenameFlags};
@@ -40,6 +42,7 @@ impl ExecContext<'_> {
             protected: self.protected,
             exclusions: self.exclusions,
             apps: self.apps,
+            open: OpenFiles::snapshot().map_err(|e| e.to_string()),
         }
     }
 }
@@ -298,9 +301,11 @@ fn run_item(item: &PlanItem, ctx: &ExecContext<'_>, g: &Guards<'_>) -> ItemRepor
             },
         },
         Action::Delete => match remove_at(v.parent.as_fd(), v.name, item.identity.kind) {
-            Ok(()) => Outcome::Done {
+            Ok(degraded) => Outcome::Done {
                 result_path: None,
-                post_check: None,
+                post_check: degraded.then(|| {
+                    "AT_NODELETEBUSY no disponible: borrado sin la barrera del kernel".into()
+                }),
             },
             Err(e) => Outcome::Failed {
                 error: e.to_string(),
@@ -315,9 +320,39 @@ fn run_item(item: &PlanItem, ctx: &ExecContext<'_>, g: &Guards<'_>) -> ItemRepor
     }
 }
 
+/// `AT_NODELETEBUSY` de `<sys/fcntl.h>` (no está en `rustix`): `unlinkat`
+/// falla con `EBUSY` si el fichero tiene descriptores abiertos.
+const AT_NODELETEBUSY: AtFlags = AtFlags::from_bits_retain(0x4000);
+
+/// Si el sistema admite `AT_NODELETEBUSY`. Se desactiva la primera vez que
+/// devuelve `EINVAL` (RNF-ARQ-27).
+static NODELETEBUSY: AtomicBool = AtomicBool::new(true);
+
+/// `unlinkat` de un fichero con `extra` (normalmente `AT_NODELETEBUSY`) como
+/// última barrera. Si el sistema no admite el flag (`EINVAL`), lo anota en
+/// `supported` y borra sin él. Devuelve `true` si se degradó.
+fn unlink_file(
+    parent: BorrowedFd<'_>,
+    name: &OsStr,
+    extra: AtFlags,
+    supported: &AtomicBool,
+) -> io::Result<bool> {
+    if supported.load(Ordering::Relaxed) {
+        match rustix::fs::unlinkat(parent, name, extra) {
+            Ok(()) => return Ok(false),
+            Err(rustix::io::Errno::INVAL) => supported.store(false, Ordering::Relaxed),
+            Err(e) => return Err(e.into()),
+        }
+    }
+    rustix::fs::unlinkat(parent, name, AtFlags::empty())?;
+    Ok(true)
+}
+
 /// Borrado permanente relativo a descriptor; no sigue enlaces ni cruza
-/// volúmenes (la huella ya lo ha comprobado).
-fn remove_at(parent: BorrowedFd<'_>, name: &OsStr, kind: FileKind) -> io::Result<()> {
+/// volúmenes (la huella ya lo ha comprobado). Devuelve `true` si algún
+/// fichero se borró sin `AT_NODELETEBUSY`.
+fn remove_at(parent: BorrowedFd<'_>, name: &OsStr, kind: FileKind) -> io::Result<bool> {
+    let mut degraded = false;
     if kind == FileKind::Dir {
         let dir = rustix::fs::openat(
             parent,
@@ -343,13 +378,13 @@ fn remove_at(parent: BorrowedFd<'_>, name: &OsStr, kind: FileKind) -> io::Result
                     "punto de montaje",
                 ));
             }
-            remove_at(dir.as_fd(), &c, ck)?;
+            degraded |= remove_at(dir.as_fd(), &c, ck)?;
         }
         rustix::fs::unlinkat(parent, name, AtFlags::REMOVEDIR)?;
     } else {
-        rustix::fs::unlinkat(parent, name, AtFlags::empty())?;
+        degraded |= unlink_file(parent, name, AT_NODELETEBUSY, &NODELETEBUSY)?;
     }
-    Ok(())
+    Ok(degraded)
 }
 
 fn save_manifests(history: &HistoryPaths, ops: &[&str]) -> Result<(), ExecError> {
@@ -681,6 +716,75 @@ fn find_restored(target: &Path, identity: &ra_safety::Identity) -> Option<PathBu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tmp_file(name: &str) -> (tempfile::TempDir, std::fs::File, PathBuf) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = fs::File::open(tmp.path()).expect("abrir carpeta");
+        let path = tmp.path().join(name);
+        fs::write(&path, b"x").expect("write");
+        (tmp, dir, path)
+    }
+
+    /// Con un descriptor abierto, `AT_NODELETEBUSY` no borra (`EBUSY`); si
+    /// el sistema no lo admite, se degrada y se anota.
+    #[test]
+    fn nodeletebusy_refuses_open_files_or_degrades() {
+        let (_tmp, dir, path) = tmp_file("abierto");
+        let _open = fs::File::open(&path).expect("abrir");
+        let supported = AtomicBool::new(true);
+        match unlink_file(
+            dir.as_fd(),
+            OsStr::new("abierto"),
+            AT_NODELETEBUSY,
+            &supported,
+        ) {
+            Err(e) => {
+                assert_eq!(
+                    e.raw_os_error(),
+                    Some(rustix::io::Errno::BUSY.raw_os_error())
+                );
+                assert!(path.exists(), "no debe borrarse un fichero abierto");
+                assert!(supported.load(Ordering::Relaxed));
+            }
+            Ok(degraded) => {
+                assert!(degraded && !supported.load(Ordering::Relaxed));
+                assert!(!path.exists());
+            }
+        }
+    }
+
+    /// Un flag que el sistema rechaza con `EINVAL` desactiva la barrera y se
+    /// borra sin ella (RNF-ARQ-27).
+    #[test]
+    fn unsupported_flag_degrades_on_einval() {
+        let (_tmp, dir, path) = tmp_file("cerrado");
+        let supported = AtomicBool::new(true);
+        let bogus = AtFlags::from_bits_retain(0x4000_0000);
+        let degraded =
+            unlink_file(dir.as_fd(), OsStr::new("cerrado"), bogus, &supported).expect("borrar");
+        assert!(degraded);
+        assert!(!supported.load(Ordering::Relaxed));
+        assert!(!path.exists());
+        // Una vez desactivada, ni se intenta.
+        let (_tmp2, dir2, path2) = tmp_file("otro");
+        assert!(unlink_file(dir2.as_fd(), OsStr::new("otro"), bogus, &supported).expect("borrar"));
+        assert!(!path2.exists());
+    }
+
+    #[test]
+    fn closed_files_are_deleted_with_the_barrier() {
+        let (_tmp, dir, path) = tmp_file("cerrado");
+        let supported = AtomicBool::new(true);
+        let degraded = unlink_file(
+            dir.as_fd(),
+            OsStr::new("cerrado"),
+            AT_NODELETEBUSY,
+            &supported,
+        )
+        .expect("borrar");
+        assert!(!path.exists());
+        assert_eq!(degraded, !supported.load(Ordering::Relaxed));
+    }
 
     #[test]
     fn restored_names() {

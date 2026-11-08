@@ -11,6 +11,8 @@ use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
+pub mod files;
+
 /// Rutas de los ejecutables de todos los procesos visibles para el usuario.
 ///
 /// Devuelve error si la lista no se puede obtener o sale vacía: quien llame

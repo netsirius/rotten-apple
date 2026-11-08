@@ -7,8 +7,9 @@
 //!   antes de actuar; el resultado se anota después.
 //! - Capa 3 de validación justo antes de cada acción ([`verify`]): ruta sin
 //!   enlaces simbólicos, identidad `(dev, ino, tipo, tamaño, mtime, ctime)`,
-//!   huella del contenido, flags, puntos de montaje, apps abiertas y, otra
-//!   vez, lista protegida y exclusiones. Si algo no cuadra, se **omite**.
+//!   huella del contenido, flags, puntos de montaje, apps abiertas, ficheros
+//!   abiertos por otros procesos y, otra vez, lista protegida y exclusiones.
+//!   Si algo no cuadra, se **omite**.
 //! - Por defecto a la Papelera; el borrado permanente es relativo a
 //!   descriptor (`unlinkat`), nunca `rm -rf` por ruta.
 //! - Un `--dry-run` recorre exactamente el mismo camino y sustituye la acción
@@ -28,4 +29,4 @@ pub use run::{
     execute_undo, recover_incomplete,
 };
 pub use trash::{TrashBackend, unique_name};
-pub use verify::SkipCause;
+pub use verify::{InUseDetail, SkipCause};
