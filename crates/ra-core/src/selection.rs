@@ -1,0 +1,154 @@
+//! Planes por selección explícita (`rotten trash put`, T-10).
+//!
+//! El usuario elige las rutas una a una. Pasan por las mismas capas que un
+//! plan del catálogo (lista protegida, exclusiones, identidad, huella y
+//! journal) con el origen [`Origin::ExplicitSelection`]: pueden estar dentro
+//! de Documentos, Escritorio o Descargas, pero nunca salen preseleccionadas
+//! (RF-SEG-09).
+//!
+//! Diferencias con el plan del catálogo (RF-SEG-05):
+//! - una ruta protegida, o ancestro de una protegida, **aborta todo** con
+//!   [`CoreError::Safety`] en lugar de omitirse;
+//! - una ruta que no se puede resolver ni clasificar también aborta;
+//! - una ruta excluida por el usuario no entra en el plan (queda en
+//!   `skipped`).
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+use ra_catalog::{Block, Candidate, Risk, RuleAction, ScanResult};
+use ra_exec::ExecContext;
+use ra_plan::PlanInputs;
+use ra_safety::fingerprint::{fingerprint_path, stat_nofollow_any};
+use ra_safety::identity::check_flags;
+use ra_safety::{AppProbe, Origin};
+
+use crate::{Action, Core, CoreError, Plan, Preview, Selection, tilde};
+
+/// Regla y categoría con las que se anotan los elementos elegidos a mano.
+/// No es una categoría del catálogo: `exclude add cat:selection` impediría
+/// cualquier selección explícita.
+pub const SELECTION_ID: &str = "selection";
+
+impl Core {
+    /// Construye el plan de una selección explícita y lo simula (la
+    /// revisión). Siempre manda a la Papelera.
+    ///
+    /// Cada ruta debe ser absoluta; su carpeta padre se resuelve (sin
+    /// seguir el último componente: un enlace se mueve como enlace).
+    pub fn plan_selection(&self, paths: &[PathBuf]) -> Result<Preview, CoreError> {
+        let exclusions = self.exclusions_or_abort()?;
+        if paths.is_empty() {
+            return Err(CoreError::Usage("indica al menos una ruta".into()));
+        }
+        let protected = self.protected().for_origin(Origin::ExplicitSelection);
+        let mut candidates = Vec::with_capacity(paths.len());
+        for raw in paths {
+            let path = self.resolve(raw)?;
+            if let Err(reason) = protected.check(&path, Origin::ExplicitSelection) {
+                return Err(CoreError::Safety(format!(
+                    "{}: {reason}. No se mueve nada.",
+                    tilde(&path, &self.env.home)
+                )));
+            }
+            candidates.push(self.selected(path)?);
+        }
+        let scan = ScanResult {
+            catalog_version: self.catalog.catalog_version.clone(),
+            candidates,
+            roots: vec![],
+        };
+        let plan = Plan::build(&PlanInputs {
+            scan: &scan,
+            home: &self.env.home,
+            protected: &protected,
+            exclusions: &exclusions,
+            selection: &Selection::default(),
+            action: Action::Trash,
+            origin: Origin::ExplicitSelection,
+            now: SystemTime::now(),
+        });
+        let apps = AppProbe::snapshot(self.apps.as_ref());
+        let history = self.history_paths();
+        let dry_run = ra_exec::dry_run(
+            &plan,
+            &ExecContext {
+                history: &history,
+                protected: &protected,
+                exclusions: &exclusions,
+                apps: &apps,
+                trash: &self.env.trash,
+                by: "cli",
+            },
+        );
+        Ok(Preview { plan, dry_run })
+    }
+
+    /// Ruta absoluta con la carpeta padre canónica. Si no se puede
+    /// resolver, se aborta (RF-SEG-05 c).
+    fn resolve(&self, raw: &Path) -> Result<PathBuf, CoreError> {
+        if !raw.is_absolute() {
+            return Err(CoreError::Usage(format!(
+                "la ruta debe ser absoluta: {}",
+                raw.display()
+            )));
+        }
+        let unresolvable = |e: std::io::Error| {
+            CoreError::Safety(format!(
+                "no se puede resolver {}: {e}. No se mueve nada.",
+                raw.display()
+            ))
+        };
+        match (raw.parent(), raw.file_name()) {
+            (Some(parent), Some(name)) => {
+                Ok(fs::canonicalize(parent).map_err(unresolvable)?.join(name))
+            }
+            // `/` o una ruta que acaba en `..`: se resuelve entera.
+            _ => fs::canonicalize(raw).map_err(unresolvable),
+        }
+    }
+
+    /// Candidato para una ruta elegida a mano: nunca preseleccionado,
+    /// nunca regenerable (al deshacer no se omite si ya existe algo).
+    fn selected(&self, path: PathBuf) -> Result<Candidate, CoreError> {
+        let (identity, flags) = stat_nofollow_any(&path).map_err(|e| {
+            CoreError::Safety(format!(
+                "no se puede clasificar {}: {e}. No se mueve nada.",
+                tilde(&path, &self.env.home)
+            ))
+        })?;
+        let mut c = Candidate {
+            path,
+            rule_id: SELECTION_ID.into(),
+            rule_version: 1,
+            cat: SELECTION_ID.into(),
+            risk: Risk::Review,
+            regenerable: false,
+            preselected: false,
+            action: RuleAction::Trash,
+            identity,
+            fingerprint: None,
+            apps: vec![],
+            block: None,
+        };
+        if let Err(flag) = check_flags(flags) {
+            c.block = Some(Block::Flags { flag });
+            return Ok(c);
+        }
+        match fingerprint_path(&c.path) {
+            Ok(fp) => {
+                if fp.crosses_device {
+                    c.block = Some(Block::CrossesDevice);
+                }
+                c.fingerprint = Some(fp);
+            }
+            Err(e) => {
+                c.block = Some(Block::Unreadable {
+                    detail: e.to_string(),
+                });
+            }
+        }
+        Ok(c)
+    }
+}

@@ -104,6 +104,8 @@ pub struct ProtectedList {
     always: Vec<PathBuf>,
     exceptions: Vec<PathBuf>,
     user_folders: Vec<PathBuf>,
+    /// Origen mínimo con el que se comprueba (ver [`ProtectedList::for_origin`]).
+    floor: Origin,
 }
 
 impl ProtectedList {
@@ -119,7 +121,21 @@ impl ProtectedList {
             always,
             exceptions: SYSTEM_EXCEPTIONS.iter().map(PathBuf::from).collect(),
             user_folders: HOME_USER_FOLDERS.iter().map(|r| home.join(r)).collect(),
+            floor: Origin::Rules,
         }
+    }
+
+    /// La misma lista, pero comprobando siempre al menos con `origin`.
+    ///
+    /// Sirve para revalidar al ejecutar un plan cuyos elementos vienen todos
+    /// de una selección explícita: el ejecutor comprueba con
+    /// [`Origin::Rules`], y con `for_origin(Origin::ExplicitSelection)` el
+    /// contenido de las carpetas de documentos deja de rechazarse. Todo lo
+    /// demás (raíces protegidas, ancestros, carpeta personal, estado de la
+    /// app, fototecas) no depende del origen y se sigue rechazando.
+    pub fn for_origin(mut self, origin: Origin) -> Self {
+        self.floor = origin;
+        self
     }
 
     /// Raíces protegidas en todo caso (para `doctor` y las pruebas).
@@ -129,6 +145,11 @@ impl ProtectedList {
 
     /// `Ok(())` si el elemento puede entrar en un plan con ese origen.
     pub fn check(&self, path: &Path, origin: Origin) -> Result<(), ProtectionReason> {
+        let origin = if self.floor == Origin::ExplicitSelection {
+            Origin::ExplicitSelection
+        } else {
+            origin
+        };
         paths::check_absolute_normal(path)?;
         let comps = paths::folded_components(path);
 
@@ -229,6 +250,25 @@ mod tests {
         let d = Path::new("/Users/ana/Documents");
         assert!(l.check(d, Origin::ExplicitSelection).is_ok());
         assert!(l.check(d, Origin::Rules).is_err());
+    }
+
+    #[test]
+    fn explicit_floor_only_relaxes_user_folders() {
+        let l = list().for_origin(Origin::ExplicitSelection);
+        assert!(
+            l.check(Path::new("/Users/ana/Downloads/setup.dmg"), Origin::Rules)
+                .is_ok()
+        );
+        for p in [
+            "/Users/ana",
+            "/Users/ana/Library",
+            "/Users/ana/Library/Keychains/login.keychain-db",
+            "/Users/ana/Pictures/Fotos.photoslibrary",
+            "/Users/ana/Library/Application Support/app.test/config.toml",
+            "/System/Library",
+        ] {
+            assert!(l.check(Path::new(p), Origin::Rules).is_err(), "{p}");
+        }
     }
 
     #[test]

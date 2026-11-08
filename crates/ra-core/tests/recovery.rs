@@ -99,6 +99,7 @@ fn interrupted_undo_is_reconciled_as_restored() {
             regenerable: first.regenerable,
             bytes: first.bytes,
             parent_mode: None,
+            origin: None,
         },
         true,
     )
@@ -160,6 +161,7 @@ fn interrupted_clean_before_acting_is_not_moved() {
             regenerable: item.regenerable,
             bytes: item.bytes_allocated,
             parent_mode: None,
+            origin: None,
         },
         true,
     )

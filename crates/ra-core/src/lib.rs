@@ -11,6 +11,7 @@
 mod doctor;
 mod env;
 mod scan;
+mod selection;
 
 use std::path::Path;
 use std::time::SystemTime;
@@ -20,8 +21,8 @@ pub use env::{BUNDLE_ID, Env, EnvError};
 pub use ra_catalog::{Catalog, Localized, Risk};
 pub use ra_exec::{ExecReport, ItemReport, Outcome, SkipCause, TrashBackend};
 pub use ra_history::{OpSummary, UndoPlan, UndoState};
-pub use ra_plan::{Action, Plan, PlanError, Selection};
-pub use ra_safety::{ConfigState, Exclusion, FileKind, RunningApps, SystemApps};
+pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};
+pub use ra_safety::{ConfigState, Exclusion, FileKind, Origin, RunningApps, SystemApps};
 pub use scan::{CategorySummary, ScanReport, ScanStatus};
 
 use ra_exec::{ExecContext, ExecLock};
@@ -179,6 +180,7 @@ impl Core {
             exclusions: &exclusions,
             selection,
             action,
+            origin: Origin::Rules,
             now: SystemTime::now(),
         });
         let history = self.history_paths();
@@ -214,13 +216,14 @@ impl Core {
                 plan.home().display()
             )));
         }
+        let origin = plan.origin();
         let approved = plan
             .approve(reviewed_hash, SystemTime::now())
             .map_err(|e| CoreError::Safety(e.to_string()))?;
         // La configuración se vuelve a validar justo antes de actuar.
         let exclusions = self.exclusions_or_abort()?;
         let lock = self.lock()?;
-        let protected = self.protected();
+        let protected = self.protected().for_origin(origin);
         let apps = AppProbe::snapshot(self.apps.as_ref());
         let history = self.history_paths();
         let ctx = ExecContext {

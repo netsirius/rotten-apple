@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod args;
+mod cmd;
 mod text;
 
 use std::io::{self, BufRead, IsTerminal, Write};
@@ -145,6 +146,7 @@ fn main() -> ExitCode {
         Cmd::Undo { .. } => "undo",
         Cmd::Doctor => "doctor",
         Cmd::Exclude { .. } => "exclude",
+        Cmd::Trash { .. } => "trash",
     };
 
     if ra_core::running_as_root() && !cli.allow_root {
@@ -185,6 +187,7 @@ fn main() -> ExitCode {
         } => undo(&ui, &core, op_id, items, dry_run),
         Cmd::Doctor => doctor(&ui, &core),
         Cmd::Exclude { action } => exclude(&ui, &core, action),
+        Cmd::Trash { action } => cmd::trash::run(&ui, &core, action),
     };
     exit.into()
 }
