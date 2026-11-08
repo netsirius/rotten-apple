@@ -12,6 +12,7 @@ objc2.workspace = true
 objc2-foundation.workspace = true
 ra-history.workspace = true
 ra-plan.workspace = true
+ra-platform.workspace = true
 ra-safety.workspace = true
 rustix.workspace = true
 serde.workspace = true

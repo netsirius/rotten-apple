@@ -14,6 +14,7 @@ use ra_history::{
     manifest_for, read_journal,
 };
 use ra_plan::{Action, ApprovedPlan, Plan, PlanItem};
+use ra_platform::files::OpenFiles;
 use ra_safety::fingerprint::{open_parent_nofollow, stat_nofollow_any};
 use ra_safety::{AppProbe, Exclusions, FileKind, ProtectedList};
 use rustix::fs::{AtFlags, Dir, Mode, OFlags, RenameFlags};
@@ -40,6 +41,7 @@ impl ExecContext<'_> {
             protected: self.protected,
             exclusions: self.exclusions,
             apps: self.apps,
+            open: OpenFiles::snapshot().map_err(|e| e.to_string()),
         }
     }
 }

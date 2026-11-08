@@ -612,6 +612,7 @@ dependencies = [
  "objc2-foundation",
  "ra-history",
  "ra-plan",
+ "ra-platform",
  "ra-safety",
  "rustix",
  "serde",
