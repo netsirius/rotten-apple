@@ -124,6 +124,8 @@ Amplía la higiene de secretos del doc 03 §6, H1–H9, a petición del autor.
 
 `0` ok · `1` error · `2` uso incorrecto o falta `--yes` · `3` falta permiso · `4` completado con omisiones · `5` abortado por seguridad o plan cambiado · `6` otro ejecutor activo · `10` (`vulns` y `secrets` con `--fail-on`) hallazgos por encima del umbral.
 
+Con `--dry-run`, el código es el que tendría la ejecución: `4` si la simulación ya prevé omisiones (decisión del autor del 2026-11-08, 08 §2.1).
+
 ## 6. Requisitos nuevos
 
 | ID | Requisito | Prioridad | Fase | Criterio de aceptación |

@@ -56,18 +56,18 @@ Qué cumple ya el código de PR #2 y qué falta. «Hecho» quiere decir implemen
 | RF-SEG-02 Papelera por defecto | Hecho | `ra-exec/trash.rs` (`NSFileManager trashItemAtURL`; `ROTTEN_TRASH_DIR` en pruebas) | Comportamiento en volúmenes sin Papelera (SMB) sin probar → T-29 |
 | RF-SEG-03 Borrado permanente solo explícito | Parcial | `clean --permanent` exige `--yes` | `free` y `trash empty` → T-11, T-12 |
 | RF-SEG-04 Rutas protegidas | Hecho | `ra-safety/protected.rs`; propiedad `never_touches_anything_outside_the_plan` | — |
-| RF-SEG-05 Fail-closed | Parcial | Configuración corrupta → `5`; raíces limitadas a `ALLOWED_PREFIXES` | Selección explícita del usuario (5a) → T-10 |
+| RF-SEG-05 Fail-closed | Hecho | Configuración corrupta → `5`; raíces limitadas a `ALLOWED_PREFIXES`; selección explícita (T-10): ruta protegida, ancestro, fuera de `~`, carpeta raíz del usuario o ruta que no se puede resolver → `5` | — |
 | RF-SEG-06 Resolución de rutas segura | Hecho | `O_NOFOLLOW_ANY`, operaciones relativas a descriptor | Fuzzing: v1 (06 §4) → T-109 |
 | RF-SEG-07 Identidad anti-TOCTOU | Hecho | `(dev, ino, tipo, tamaño, mtime, ctime)` + huella BLAKE3 de carpetas; propiedad `skips_items_changed_between_plan_and_execution` | — |
-| RF-SEG-08 Ficheros en uso | Parcial | Solo apps abiertas por bundle ID (`ra-platform`, libproc) | Ficheros abiertos por procesos y `AT_NODELETEBUSY` → T-04 |
-| RF-SEG-09 Nunca preseleccionar documentos | Parcial | Por construcción del catálogo | Propiedad «preseleccionados ∩ documentos = ∅» por módulo → T-10 y cada tarea de módulo |
+| RF-SEG-08 Ficheros en uso | Hecho | Apps abiertas por bundle ID; ficheros abiertos por procesos visibles (`ra-platform/files.rs`) → `in_use`; `AT_NODELETEBUSY` en el borrado permanente (T-04) | La lista de ficheros abiertos se toma una vez por pasada, no por elemento (§2.2) |
+| RF-SEG-09 Nunca preseleccionar documentos | Parcial | Catálogo y selección explícita, con la propiedad «preseleccionados ∩ documentos = ∅» (`ra-core/tests/selection.rs`, T-10) | La misma propiedad en cada tarea de módulo |
 | RF-SEG-10 Sin descargas de iCloud | Parcial | `check_flags` rechaza `SF_DATALESS` antes de actuar | Política de proceso `setiopolicy_np` → T-06 |
 | RF-SEG-11 Log de operaciones | Parcial | Journal JSONL | Log técnico local rotado → T-14 |
 | RF-SEG-12 Tamaños honestos | Parcial | `st_blocks × 512`; enlaces duros una vez dentro de cada elemento | `PRIVATESIZE`, deduplicación entre elementos, «liberado» medido → T-05, T-11 |
 | RF-SEG-13 Mínimo privilegio | Hecho | Sin elevación; como root, aborta salvo `--allow-root` | — |
 | RF-SEG-14 Automatizaciones (CLI) | Hecho | `--yes` obligatorio sin TTY | Programación: v1 → T-103 |
 | RF-SEG-15 Errores parciales | Hecho | Sigue con el resto; código `4` | — |
-| RF-SEG-16 Dry-run idéntico | Hecho | Mismo código y mismo hash; propiedad `dry_run_changes_nothing` | — |
+| RF-SEG-16 Dry-run idéntico | Hecho | Mismo código y mismo hash; propiedad `dry_run_changes_nothing`; sale con `4` si prevé omisiones, como la ejecución | — |
 | RF-SEG-17 Integridad de reglas | Parcial | Catálogo incrustado y sin red | Firma Ed25519 del catálogo (RNF-ARQ-25): solo aporta con catálogo remoto (D-06) → §2 |
 | RF-SEG-18 Restauración segura | Hecho | No sobrescribe (variantes «(restaurado)»); `rename` conserva propietario y permisos | — |
 | RF-SEG-19 Solo el usuario actual | Hecho por construcción | Solo trabaja en la carpeta personal del usuario actual | Prueba con un segundo usuario → T-29 |
@@ -231,6 +231,10 @@ Las ha tomado el autor y están recogidas en README §3 (D-01, D-05, D-08, D-11,
 | Propuestas | Aprobadas PROP-01 a PROP-08, PROP-10 y PROP-11, en la fase propuesta (PROP-11 en v1 tardía). **PROP-09 descartada** | T-131 a T-138, T-140 y T-141 entran en v1. T-139, fuera |
 | RF-INS-02 | Se aplica la propuesta por defecto (sin confirmar): el atajo «Seleccionar los de apps ya instaladas» llega con RF-INS-06 en v1 | T-20 no lo incluye |
 | RNF-ARQ-25 | Se aplica la propuesta por defecto (sin confirmar): la firma Ed25519 del catálogo espera a que haya catálogo remoto (D-06 = No) | — |
+| `trash put` fuera de `~` | Solo se admiten rutas dentro de la carpeta personal (RF-SEG-19); fuera, `5` | Hecho en `ra-safety` (motivo `outside_home`) |
+| Carpetas raíz del usuario | Documentos, Escritorio, Descargas, Imágenes, Películas y Música en sí no se pueden elegir (`5`); su contenido sí | Hecho en `ra-safety` (motivo `user_folder_root`), también a través de enlaces |
+| Ficheros abiertos sin poder listar procesos | Se omite todo el plan con `in_use` (fail-closed) | Sin cambios |
+| Código de salida de `--dry-run` | `4` si la simulación prevé omisiones, como la ejecución; `0` si no | Hecho en `clean` y `trash put`; anotado en 07 §5 |
 
 **Paridad total en el MVP**
 
@@ -264,6 +268,20 @@ Lo que pasa de v1 o v2 al MVP. Cuando una tarea entra «en parte», solo esa par
 - **Plazo.** El MVP ya pasaba de los 6 meses de README §4 para una persona sola. La paridad total suma unas 2 tareas L (T-99, T-102), 4 M (T-98, T-108, T-120, T-142) y partes de otras 7: del orden de 2 a 3 meses más para una persona. Con 6 meses solo se llega trabajando mucho en paralelo.
 - **Seguridad.** Lo que corre como root se salta parte de las protecciones del usuario. Por eso T-142 solo acepta una lista cerrada de verbos, siempre con previsualización y journal, igual que hará el ayudante de v1.
 - **Firma.** Nada del MVP depende ya del ayudante, así que P-03 solo bloquea la distribución (H-7).
+
+### 2.2 Seguimiento de la primera tanda (2026-11-08)
+
+La primera tanda (T-01, T-02, T-04, T-07 y T-10) pasó una revisión crítica. Sin bloqueantes. Lo que queda abierto:
+
+| Tema | Qué pasa | Cómo se cierra |
+|---|---|---|
+| Papelera del sistema sin Acceso total al disco | Tras un corte, `recover` busca por inode en `~/.Trash`, pero sin FDA no puede listarla: el elemento queda `unknown` con un aviso explícito | Comprobar en VM o a mano (`ls ~/.Trash` desde un Terminal sin FDA) y ampliar la prueba ignorada `system_trash_roundtrip` con un `recover` real (T-28) |
+| Ficheros abiertos por pasada | La lista de procesos con ficheros abiertos se toma una vez por operación (unos 35 ms), no antes de cada elemento. En `--permanent` lo cubre `AT_NODELETEBUSY`; en la Papelera, mover un fichero abierto no rompe el proceso | Decisión de coste aceptada. Si hiciera falta, refrescar cada N elementos. Spotlight (`mdworker`) puede provocar `4` esporádicos |
+| Enlace a una ruta protegida con la Papelera del sistema | Con `dir:` se mueve solo el enlace; con `trashItemAtURL:` falta comprobar que no resuelve el enlace | Prueba ignorada sobre un enlace con la Papelera real (T-28) |
+| Arnés con `--permanent` | El arnés cubre `clean --yes` y `undo --yes`, no un corte a mitad de un borrado permanente | Variante con `--permanent` en T-08 o T-09 |
+| Nocturna del arnés | `crash.rs` lanza el binario de `target/`, que puede estar desactualizado si se ejecuta solo | En T-09: `cargo build -p rotten` antes de `ROTTEN_CRASH_ROUNDS=1000` |
+| Incoherencias del JSON | `clean.plan` y `undo.plan` con formas distintas; `preview`/`report`; `doctor.running_apps_probe` como `Result`; `exit_code` en dos sitios; `"kind"` duplicado en `Block::App` (se pierde `"app"`); `SkipCause::code()` = `app_running` frente a `app` en el JSON; errores del núcleo en español con `LANG=en_US`; `doctor.trash` con dos datos en una cadena; categoría `selection` fuera del patrón `CAT-NN`; `history` muestra `kind: "clean"` para `trash put` | T-03 (con subida de `schema_version` donde cambie la forma) |
+| Origen «módulo» | El plan admite `rules` y `explicit_selection`; falta el origen de módulo (instaladores, desinstalador, dev) | T-20 y siguientes |
 
 ---
 
@@ -345,16 +363,16 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 
 | Tarea | Título | Hito | Tamaño | Depende de | Estado |
 |---|---|---|---|---|---|
-| T-01 | Esquemas JSON y validación en CI | H-0 | M | — | Pendiente |
-| T-02 | Prueba de paridad de comandos | H-0 | S | T-01 | Pendiente |
+| T-01 | Esquemas JSON y validación en CI | H-0 | M | — | Hecho (2026-11-08) |
+| T-02 | Prueba de paridad de comandos | H-0 | S | T-01 | Hecho (2026-11-08) |
 | T-03 | Cadenas externalizadas y pseudo-localización del CLI | H-0 | M | T-01 | Pendiente |
-| T-04 | Ficheros abiertos y `AT_NODELETEBUSY` | H-0 | M | — | Pendiente |
+| T-04 | Ficheros abiertos y `AT_NODELETEBUSY` | H-0 | M | — | Hecho (2026-11-08) |
 | T-05 | Tamaños honestos y estado del volumen | H-0 | M | — | Pendiente |
 | T-06 | Política de E/S y de ficheros sin descargar | H-0 | S | — | Pendiente |
-| T-07 | Arnés de cierre abrupto (`kill -9`) | H-0 | M | — | Pendiente |
+| T-07 | Arnés de cierre abrupto (`kill -9`) | H-0 | M | — | Hecho (2026-11-08) |
 | T-08 | `fsync` por lotes sin perder la escritura anticipada | H-0 | M | T-07 | Pendiente |
 | T-09 | CI nocturna, `cargo-audit`, `forbid(unsafe_code)` y cobertura | H-0 | S | T-07 | Pendiente |
-| T-10 | Planes por selección explícita y `rotten trash put` | H-0 | M | — | Pendiente |
+| T-10 | Planes por selección explícita y `rotten trash put` | H-0 | M | — | Hecho (2026-11-08) |
 | T-11 | `rotten free <op-id>` («Liberar ahora») | H-1 | M | T-01 | Pendiente |
 | T-12 | `rotten trash` y `rotten trash empty` | H-1 | M | T-11 | Pendiente |
 | T-13 | `rotten config` y enlace en `~/.config/rotten/` | H-1 | S | — | Pendiente |
