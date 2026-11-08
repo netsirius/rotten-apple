@@ -10,13 +10,21 @@
 //! padre del elemento con `O_NOFOLLOW_ANY` (falla si cualquier componente de
 //! la ruta es un enlace). No cruza puntos de montaje: si encuentra uno lo
 //! marca en [`TreeFingerprint::crosses_device`] y no desciende.
+//!
+//! El mismo recorrido mide lo que se liberaría al borrar
+//! ([`TreeFingerprint::size`]): `ATTR_CMNEXT_PRIVATESIZE` de cada fichero
+//! (05 §1.5.2), enlaces duros una vez, y los inodes que otro elemento puede
+//! compartir (enlaces duros y clones completos) para que `scan` los cuente
+//! una sola vez entre elementos (RF-SEG-12, RNF-ARQ-28).
 
 use std::collections::HashSet;
-use std::ffi::OsStr;
+use std::ffi::{CStr, CString, OsStr};
 use std::io;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
+use ra_platform::attrs::{FileAttrs, file_attrs_at};
 use rustix::fs::{AtFlags, Dir, Mode, OFlags};
 use serde::{Deserialize, Serialize};
 
@@ -36,6 +44,51 @@ pub struct TreeFingerprint {
     pub crosses_device: bool,
     /// `blake3:<hex>`.
     pub digest: String,
+    /// Tamaño liberable. No se serializa: no forma parte del plan ni de su
+    /// hash, y cambia sin que cambie el contenido (al clonar o borrar otra
+    /// copia); solo sirve para la estimación de `scan`.
+    #[serde(skip)]
+    pub size: SizeDetail,
+}
+
+/// Lo que se liberaría al borrar un elemento (RF-SEG-12, RNF-ARQ-28).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SizeDetail {
+    /// Suma, una vez por inode, de los bytes que se liberarían de inmediato:
+    /// `ATTR_CMNEXT_PRIVATESIZE` de los ficheros (0 para un clon completo;
+    /// `scan` suma la familia entera cuando todos sus miembros están en la
+    /// selección) y `st_blocks × 512` de lo demás o donde el volumen no da
+    /// el atributo.
+    pub bytes_private: u64,
+    /// Ficheros que pueden compartir bloques con un clon APFS.
+    pub cloned_entries: u64,
+    /// Ficheros con más de un enlace duro (`st_nlink > 1`).
+    pub hardlinked_entries: u64,
+    /// Inodes que pueden aparecer también en otro elemento: enlaces duros y
+    /// miembros de una familia de clones completos.
+    pub shared: Vec<SharedInode>,
+}
+
+/// Inode que `scan` cuenta una sola vez entre elementos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SharedInode {
+    pub dev: u64,
+    pub ino: u64,
+    /// Lo que aportó a [`TreeFingerprint::bytes_allocated`].
+    pub allocated: u64,
+    /// Lo que aportó a [`SizeDetail::bytes_private`].
+    pub private: u64,
+    /// Familia de clones completos a la que pertenece, si la hay.
+    pub clone: Option<CloneFamily>,
+}
+
+/// Familia de clones completos (`ATTR_CMNEXT_CLONEID`): `members` es
+/// `ATTR_CMNEXT_CLONE_REFCNT`, que cuenta los inodes que comparten todos sus
+/// bloques, incluido el propio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CloneFamily {
+    pub id: u64,
+    pub members: u32,
 }
 
 /// Abre la carpeta padre de `path` sin seguir ningún enlace simbólico.
@@ -84,15 +137,28 @@ pub fn fingerprint_at(parent: BorrowedFd<'_>, name: &OsStr) -> io::Result<TreeFi
             newest_mtime: i64::MIN,
             crosses_device: false,
             digest: String::new(),
+            size: SizeDetail::default(),
         },
     };
-    acc.add(b"", &root, st.st_blocks as u64);
+    let attrs = CString::new(name.as_bytes())
+        .map(|c| file_attrs(parent, &c, root.kind))
+        .unwrap_or_default();
+    acc.add(b"", &root, &st, attrs);
     if root.kind == FileKind::Dir {
         let fd = open_dir_at(parent, name)?;
         acc.walk(fd.as_fd(), &mut Vec::new())?;
     }
     acc.out.digest = format!("blake3:{}", acc.hasher.finalize().to_hex());
     Ok(acc.out)
+}
+
+/// Atributos de tamaño de un fichero regular. Si no se pueden leer, se mide
+/// con `st_blocks × 512`: la estimación no debe bloquear el elemento.
+fn file_attrs(dir: BorrowedFd<'_>, name: &CStr, kind: FileKind) -> FileAttrs {
+    if kind != FileKind::File {
+        return FileAttrs::default();
+    }
+    file_attrs_at(dir, name).unwrap_or_default()
 }
 
 fn open_dir_at(parent: BorrowedFd<'_>, name: impl rustix::path::Arg) -> io::Result<OwnedFd> {
@@ -112,12 +178,35 @@ struct Acc {
 }
 
 impl Acc {
-    fn add(&mut self, rel: &[u8], id: &Identity, blocks: u64) {
+    fn add(&mut self, rel: &[u8], id: &Identity, st: &rustix::fs::Stat, attrs: FileAttrs) {
         self.out.entries += 1;
         self.out.newest_mtime = self.out.newest_mtime.max(id.mtime);
         if self.seen.insert((id.dev, id.ino)) {
-            self.out.bytes_allocated += blocks * 512;
+            let allocated = st.st_blocks as u64 * 512;
+            let private = attrs.private_size.unwrap_or(allocated);
+            self.out.bytes_allocated += allocated;
             self.out.bytes_logical += id.size;
+            let size = &mut self.out.size;
+            size.bytes_private += private;
+            let hardlinked = id.kind == FileKind::File && st.st_nlink > 1;
+            size.hardlinked_entries += u64::from(hardlinked);
+            size.cloned_entries += u64::from(attrs.may_share_blocks());
+            // Solo los clones completos con otro miembro forman familia.
+            let clone = match (attrs.clone_id, attrs.clone_refcnt) {
+                (Some(id), Some(members)) if members > 1 && attrs.may_share_blocks() => {
+                    Some(CloneFamily { id, members })
+                }
+                _ => None,
+            };
+            if hardlinked || clone.is_some() {
+                size.shared.push(SharedInode {
+                    dev: id.dev,
+                    ino: id.ino,
+                    allocated,
+                    private,
+                    clone,
+                });
+            }
         }
         let h = &mut self.hasher;
         h.update(&(rel.len() as u64).to_le_bytes());
@@ -143,7 +232,7 @@ impl Acc {
         }
         names.sort();
         for name in names {
-            let cname = std::ffi::CString::new(name.clone())
+            let cname = CString::new(name.clone())
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "NUL en nombre"))?;
             let st = rustix::fs::statat(dir, cname.as_c_str(), AtFlags::SYMLINK_NOFOLLOW)?;
             let id = Identity::from_stat(&st);
@@ -152,7 +241,8 @@ impl Acc {
                 rel.push(b'/');
             }
             rel.extend_from_slice(&name);
-            self.add(rel, &id, st.st_blocks as u64);
+            let attrs = file_attrs(dir, cname.as_c_str(), id.kind);
+            self.add(rel, &id, &st, attrs);
             if id.kind == FileKind::Dir {
                 if id.dev != self.root_dev {
                     self.out.crosses_device = true;
@@ -226,6 +316,54 @@ mod tests {
         let fp = fingerprint_path(&base.join("cache")).expect("fp");
         // El enlace cuenta como una entrada; su destino no se recorre.
         assert_eq!(fp.entries, 6);
+    }
+
+    #[test]
+    fn plain_files_free_what_they_occupy() {
+        let t = tree();
+        let fp = fingerprint_path(&canon(t.path()).join("cache")).expect("fp");
+        assert_eq!(fp.size.bytes_private, fp.bytes_allocated);
+        assert_eq!(fp.size.cloned_entries, 0);
+        assert!(fp.size.shared.is_empty());
+    }
+
+    #[test]
+    fn full_clones_free_nothing_on_their_own() {
+        let t = tree();
+        let p = canon(t.path()).join("cache");
+        let st = std::process::Command::new("cp")
+            .arg("-c")
+            .arg(p.join("a/b/deep.bin"))
+            .arg(p.join("clone.bin"))
+            .status()
+            .expect("cp -c");
+        assert!(st.success());
+        let fp = fingerprint_path(&p).expect("fp");
+        assert_eq!(fp.size.cloned_entries, 2);
+        // Los dos miembros de la familia aportan 0: `scan` suma la familia
+        // una vez si están todos en la selección.
+        assert_eq!(fp.size.shared.len(), 2);
+        let fam = fp.size.shared[0].clone.expect("familia");
+        assert_eq!(fam.members, 2);
+        assert!(
+            fp.size
+                .shared
+                .iter()
+                .all(|s| s.clone == Some(fam) && s.private == 0)
+        );
+        let deep = fp.size.shared[0].allocated;
+        assert_eq!(fp.size.bytes_private + 2 * deep, fp.bytes_allocated);
+    }
+
+    #[test]
+    fn hard_links_count_once_and_are_shared() {
+        let t = tree();
+        let p = canon(t.path()).join("cache");
+        fs::hard_link(p.join("a/b/deep.bin"), p.join("link.bin")).expect("link");
+        let fp = fingerprint_path(&p).expect("fp");
+        assert_eq!(fp.size.hardlinked_entries, 1);
+        assert_eq!(fp.size.shared.len(), 1);
+        assert_eq!(fp.size.bytes_private, fp.bytes_allocated);
     }
 
     #[test]
