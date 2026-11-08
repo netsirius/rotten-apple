@@ -22,7 +22,7 @@ use rustix::fs::{AtFlags, Dir, Mode, OFlags, RenameFlags};
 use serde::{Deserialize, Serialize};
 
 use crate::lock::ExecLock;
-use crate::trash::TrashBackend;
+use crate::trash::{TrashBackend, find_trashed};
 use crate::verify::{Guards, SkipCause, open_error, verify};
 
 /// Todo lo que el ejecutor necesita además del plan.
@@ -604,24 +604,30 @@ fn restore_one(u: &ra_history::UndoItem) -> RestoreResult {
 
 /// Reconciliación al arrancar (05 §5.6): cierra las operaciones que no
 /// llegaron a `op_finished`. Para cada intención sin resultado, mira si el
-/// original sigue en su sitio.
+/// original sigue en su sitio y, si no, si llegó a su destino (la Papelera
+/// de la operación o la ruta que restauraba).
 pub fn recover_incomplete(
     ctx: &ExecContext<'_>,
     _lock: &ExecLock,
 ) -> Result<Vec<String>, ExecError> {
     let (records, _) = read_journal(ctx.history)?;
-    let mut started: Vec<(&str, Option<&str>)> = Vec::new();
+    let mut started: Vec<(&str, Option<&str>, &str)> = Vec::new();
     let mut finished: Vec<&str> = Vec::new();
     for r in &records {
         match &r.event {
-            Event::OpStarted { undo_of, .. } => started.push((&r.op, undo_of.as_deref())),
+            Event::OpStarted { undo_of, trash, .. } => {
+                started.push((&r.op, undo_of.as_deref(), trash))
+            }
             Event::OpFinished { .. } => finished.push(&r.op),
             _ => {}
         }
     }
     let mut touched: Vec<String> = Vec::new();
     let mut recovered = Vec::new();
-    for (op, undo_of) in started.into_iter().filter(|(op, _)| !finished.contains(op)) {
+    for (op, undo_of, trash) in started
+        .into_iter()
+        .filter(|(op, ..)| !finished.contains(op))
+    {
         let mut j = Journal::open(ctx.history, op, SystemTime::now())?;
         let mut resolved: Vec<u32> = Vec::new();
         for r in records.iter().filter(|r| r.op == op) {
@@ -657,13 +663,19 @@ pub fn recover_incomplete(
                 _ => {
                     done += 1;
                     // Un deshacer interrumpido puede haber llegado a su destino
-                    // (con o sin sufijo « (restaurado)»).
-                    let restored = match (action, target) {
-                        (StepAction::Restore, Some(t)) => find_restored(t, identity),
+                    // (con o sin sufijo « (restaurado)»); una limpieza, a la
+                    // Papelera que anotó en `op_started`.
+                    let found = match (action, target) {
+                        (StepAction::Restore, Some(t)) => {
+                            find_restored(t, identity).map(|p| ("restored", p))
+                        }
+                        (StepAction::Trash, _) => {
+                            find_trashed(trash, path, identity).map(|p| ("trashed", p))
+                        }
                         _ => None,
                     };
-                    match restored {
-                        Some(p) => ("restored", Some(p)),
+                    match found {
+                        Some((state, p)) => (state, Some(p)),
                         None => ("unknown", None),
                     }
                 }

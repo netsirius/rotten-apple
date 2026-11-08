@@ -19,7 +19,8 @@ use std::path::{Path, PathBuf};
 
 use objc2::rc::autoreleasepool;
 use objc2_foundation::{NSFileManager, NSURL};
-use rustix::fs::{AtFlags, Mode, OFlags, RenameFlags};
+use ra_safety::Identity;
+use rustix::fs::{AtFlags, Dir, Mode, OFlags, RenameFlags};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrashBackend {
@@ -107,9 +108,179 @@ pub fn unique_name(name: &OsStr, n: u32) -> OsString {
     OsString::from(OsStr::from_bytes(&out))
 }
 
+/// Tras un cierre abrupto, busca en la Papelera que usó la operación
+/// (`trash`, tal como lo escribió [`TrashBackend::describe`]) el elemento que
+/// estaba en `original`. Compara por identidad (volumen, inode y tipo), nunca
+/// por nombre, y mira solo el primer nivel de la Papelera.
+pub(crate) fn find_trashed(trash: &str, original: &Path, identity: &Identity) -> Option<PathBuf> {
+    // Solo hace falta con la Papelera del sistema; sin ella, `~/.Trash` no
+    // se considera.
+    let home = std::env::home_dir().unwrap_or_default();
+    let uid = rustix::process::getuid().as_raw();
+    trash_dirs(trash, original, identity.dev, &home, uid, dev_of)
+        .iter()
+        .find_map(|d| find_in_dir(d, identity))
+}
+
+fn dev_of(p: &Path) -> Option<u64> {
+    rustix::fs::lstat(p).ok().map(|st| st.st_dev as u64)
+}
+
+/// Carpetas donde pudo quedar un elemento del volumen `dev`:
+///
+/// - `dir:<ruta>`: esa carpeta.
+/// - `system`: `~/.Trash` si el elemento es del volumen de la carpeta
+///   personal; si no, `<raíz del volumen>/.Trashes/<uid>`, donde la raíz es
+///   el antepasado más alto de `original` que sigue en el volumen `dev`
+///   (`/` incluido).
+fn trash_dirs(
+    trash: &str,
+    original: &Path,
+    dev: u64,
+    home: &Path,
+    uid: u32,
+    dev_of: impl Fn(&Path) -> Option<u64>,
+) -> Vec<PathBuf> {
+    if let Some(dir) = trash.strip_prefix("dir:") {
+        return vec![PathBuf::from(dir)];
+    }
+    if trash != "system" {
+        return vec![];
+    }
+    if dev_of(home) == Some(dev) {
+        return vec![home.join(".Trash")];
+    }
+    let mut root = None;
+    for a in original.ancestors().skip(1) {
+        match dev_of(a) {
+            Some(d) if d == dev => root = Some(a),
+            Some(_) => break,
+            None => continue,
+        }
+    }
+    root.map(|r| r.join(".Trashes").join(uid.to_string()))
+        .into_iter()
+        .collect()
+}
+
+/// Entrada del primer nivel de `dir` que es el mismo objeto que `identity`.
+fn find_in_dir(dir: &Path, identity: &Identity) -> Option<PathBuf> {
+    let fd = rustix::fs::open(
+        dir,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW_ANY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .ok()?;
+    // Mover a la Papelera es un `rename`: si la Papelera está en otro
+    // volumen, el elemento no puede estar en ella.
+    if rustix::fs::fstat(&fd).ok()?.st_dev as u64 != identity.dev {
+        return None;
+    }
+    for e in Dir::read_from(&fd).ok()? {
+        let Ok(e) = e else { continue };
+        let name = e.file_name().to_bytes();
+        if name == b"." || name == b".." {
+            continue;
+        }
+        let name = OsStr::from_bytes(name);
+        let Ok(st) = rustix::fs::statat(&fd, name, AtFlags::SYMLINK_NOFOLLOW) else {
+            continue;
+        };
+        if Identity::from_stat(&st).same_object(identity) {
+            return Some(dir.join(name));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn identity(p: &Path) -> Identity {
+        ra_safety::fingerprint::stat_nofollow_any(p)
+            .expect("lstat")
+            .0
+    }
+
+    /// Varias entradas `a N.log` y un `a.log` con el mismo nombre que el
+    /// original pero otro inode: solo vale la que es el mismo objeto.
+    #[test]
+    fn finds_trashed_item_by_inode_not_by_name() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(tmp.path()).expect("canon");
+        let trash = base.join("trash");
+        std::fs::create_dir(&trash).expect("mkdir");
+        let original = base.join("a.log");
+        std::fs::write(&original, b"elemento").expect("write");
+        let id = identity(&original);
+        for n in ["a.log", "a 2.log", "a 4.log"] {
+            std::fs::write(trash.join(n), b"otro").expect("write");
+        }
+        std::fs::rename(&original, trash.join("a 3.log")).expect("mover");
+        let desc = TrashBackend::Dir(trash.clone()).describe();
+        assert_eq!(
+            find_trashed(&desc, &original, &id),
+            Some(trash.join("a 3.log"))
+        );
+
+        // Si ya no está (Papelera vaciada), no se confunde con `a.log`.
+        std::fs::remove_file(trash.join("a 3.log")).expect("rm");
+        assert_eq!(find_trashed(&desc, &original, &id), None);
+    }
+
+    /// Una Papelera en otro volumen no se recorre, y una descripción
+    /// desconocida no da carpetas.
+    #[test]
+    fn foreign_volume_or_unknown_backend_finds_nothing() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(tmp.path()).expect("canon");
+        let f = base.join("x");
+        std::fs::write(&f, b"x").expect("write");
+        let mut id = identity(&f);
+        assert_eq!(find_in_dir(&base, &id), Some(f.clone()));
+        id.dev ^= 1;
+        assert_eq!(find_in_dir(&base, &id), None);
+        assert!(trash_dirs("otra", &f, 1, &base, 501, |_| Some(1)).is_empty());
+    }
+
+    /// Papelera del sistema: `~/.Trash` en el volumen de la carpeta personal
+    /// y `<volumen>/.Trashes/<uid>` en los demás (volúmenes simulados).
+    #[test]
+    fn system_trash_dirs_by_volume() {
+        let home = Path::new("/Users/ana");
+        let devs = |p: &Path| -> Option<u64> {
+            let s = p.to_str()?;
+            if s.starts_with("/Volumes/Ext") {
+                Some(7)
+            } else if s.starts_with("/Volumes") || s == "/" {
+                Some(1)
+            } else if s.starts_with("/Users") {
+                Some(2)
+            } else {
+                None
+            }
+        };
+        // Volumen de la carpeta personal.
+        let item = Path::new("/Users/ana/Library/Logs/a.log");
+        assert_eq!(
+            trash_dirs("system", item, 2, home, 501, devs),
+            vec![PathBuf::from("/Users/ana/.Trash")]
+        );
+        // Otro volumen montado en /Volumes/Ext; la carpeta del elemento ya
+        // no existe.
+        let item = Path::new("/Volumes/Ext/Proyecto/borrada/a.log");
+        assert_eq!(
+            trash_dirs("system", item, 7, home, 501, devs),
+            vec![PathBuf::from("/Volumes/Ext/.Trashes/501")]
+        );
+        // Volumen de arranque distinto del de la carpeta personal.
+        let item = Path::new("/Volumes/a.log");
+        assert_eq!(
+            trash_dirs("system", item, 1, home, 501, devs),
+            vec![PathBuf::from("/.Trashes/501")]
+        );
+    }
 
     #[test]
     fn unique_names_keep_extension() {

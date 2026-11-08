@@ -21,9 +21,10 @@
 //!   imprime. La semilla de una ronda que falla reproduce esa ronda con
 //!   `ROTTEN_CRASH_SEED=<semilla> ROTTEN_CRASH_ROUNDS=1` (mismo `k` y mismo
 //!   retardo; el reparto del planificador del sistema no es reproducible).
-//! - `ROTTEN_CRASH_STRICT=1`: falla también si un elemento queda en la
-//!   Papelera con paradero «desconocido» en el journal (ver
-//!   `recovered_trash_item_keeps_its_location`).
+//! - `ROTTEN_CRASH_STRICT`: activo por defecto; la prueba falla si un
+//!   elemento queda en la Papelera con paradero «desconocido» en el journal
+//!   (ver `recovered_trash_item_keeps_its_location`). Con
+//!   `ROTTEN_CRASH_STRICT=0` solo se cuentan y se informan.
 //! - `ROTTEN_BIN`: binario `rotten` que se lanza. Por defecto, el de
 //!   `target/<perfil>/rotten`, que `cargo test --workspace` compila antes de
 //!   ejecutar las pruebas. Con `cargo test -p ra-core` hay que compilarlo
@@ -515,7 +516,7 @@ fn kill9_at_random_points_leaves_everything_recoverable() {
             .expect("reloj")
             .as_nanos() as u64
     });
-    let strict = std::env::var("ROTTEN_CRASH_STRICT").is_ok_and(|v| v == "1");
+    let strict = !std::env::var("ROTTEN_CRASH_STRICT").is_ok_and(|v| v.trim() == "0");
     eprintln!("arnés kill -9: {rounds} rondas, ROTTEN_CRASH_SEED={base}");
     let (mut clean, mut undo) = (Stats::default(), Stats::default());
     let start = Instant::now();
@@ -550,12 +551,10 @@ fn kill9_at_random_points_leaves_everything_recoverable() {
 
 /// Una limpieza muere después de mover el elemento a la Papelera y antes de
 /// anotar el resultado. La operación registró qué Papelera usaba
-/// (`trash: dir:<ruta>`) y el elemento está allí con el mismo inode, pero
-/// `recover_incomplete` solo busca el destino de los `restore`: anota el
-/// elemento como `unknown` y el deshacer lo da por perdido.
+/// (`trash: dir:<ruta>`) y el elemento está allí con el mismo inode:
+/// `recover_incomplete` lo busca allí por identidad, lo anota como
+/// `trashed` con su ruta y el deshacer puede devolverlo.
 #[test]
-#[ignore = "bug de recuperación (T-07): un elemento ya movido a la Papelera queda como \
-            «paradero desconocido» y no se puede deshacer; el arreglo es de ra-exec/run.rs"]
 fn recovered_trash_item_keeps_its_location() {
     let w = world();
     let preview = w
