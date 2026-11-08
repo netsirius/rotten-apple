@@ -42,18 +42,22 @@ pub struct OpenFiles {
 }
 
 impl OpenFiles {
-    /// Devuelve error si la lista de procesos no se puede obtener: quien
-    /// llame debe tratarlo como «no determinable», que cuenta como «en uso».
+    /// Devuelve error si la lista de procesos no se puede obtener, o si no
+    /// se ha podido inspeccionar ninguno de los demás procesos: quien llame
+    /// debe tratarlo como «no determinable», que cuenta como «en uso».
     pub fn snapshot() -> io::Result<Self> {
         let me = std::process::id() as libc::pid_t;
         let mut vnodes = Vec::new();
+        let (mut others, mut inspected) = (0usize, 0usize);
         for pid in list_all_pids()? {
             if pid == me {
                 continue;
             }
+            others += 1;
             // Un proceso que no se puede inspeccionar es de otro usuario o
             // ya ha terminado: no es visible para el usuario.
             let Some(fds) = list_fds(pid) else { continue };
+            inspected += 1;
             for fd in fds {
                 if fd.proc_fdtype != libc::PROX_FDTYPE_VNODE as u32 {
                     continue;
@@ -73,6 +77,7 @@ impl OpenFiles {
                 });
             }
         }
+        determinable(others, inspected)?;
         Ok(Self { vnodes })
     }
 
@@ -97,6 +102,18 @@ impl OpenFiles {
             process,
         })
     }
+}
+
+/// Decide si la instantánea sirve (M-1). Que fallen *todos* los demás
+/// procesos no es «nadie lo tiene abierto»: es que no se puede saber (p. ej.
+/// un sandbox que bloquea `proc_pidinfo`). Sin otros procesos, sí sirve.
+fn determinable(others: usize, inspected: usize) -> io::Result<()> {
+    if others > 0 && inspected == 0 {
+        return Err(io::Error::other(format!(
+            "no se ha podido inspeccionar ninguno de los {others} procesos"
+        )));
+    }
+    Ok(())
 }
 
 /// `struct proc_fileinfo` de `<sys/proc_info.h>` (no está en `libc`).
@@ -237,6 +254,14 @@ mod tests {
         assert_eq!(in_dir.map(|h| h.pid), Some(pid));
         assert_eq!(unrelated, None);
         assert_eq!(holder(&file), None);
+    }
+
+    #[test]
+    fn failing_to_inspect_every_other_process_is_not_determinable() {
+        assert!(determinable(120, 0).is_err());
+        assert!(determinable(120, 1).is_ok());
+        assert!(determinable(120, 120).is_ok());
+        assert!(determinable(0, 0).is_ok());
     }
 
     #[test]
