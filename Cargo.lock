@@ -922,6 +922,7 @@ dependencies = [
  "ra-exec",
  "ra-history",
  "ra-plan",
+ "ra-platform",
  "ra-safety",
  "rustix",
  "serde",

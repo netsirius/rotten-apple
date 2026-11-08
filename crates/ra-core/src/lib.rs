@@ -93,6 +93,13 @@ impl Core {
 
     /// Con una fuente de apps en ejecución inyectada (pruebas).
     pub fn with_apps(env: Env, apps: Box<dyn RunningApps>) -> Result<Self, CoreError> {
+        // Sin la política que impide descargar de iCloud no se arranca
+        // (RF-SEG-10); ver `ra_platform::iopolicy::apply`.
+        ra_platform::iopolicy::apply().map_err(|e| {
+            CoreError::Safety(format!(
+                "no se pudo impedir la descarga de ficheros de iCloud: {e}"
+            ))
+        })?;
         let catalog = Catalog::embedded().map_err(|e| CoreError::Other(e.to_string()))?;
         Ok(Self { env, catalog, apps })
     }
