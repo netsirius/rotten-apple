@@ -17,7 +17,9 @@
 //! - una ruta excluida por el usuario no entra en el plan (queda en
 //!   `skipped`).
 
+use std::ffi::{OsStr, OsString};
 use std::fs;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -27,6 +29,7 @@ use ra_plan::PlanInputs;
 use ra_safety::fingerprint::{fingerprint_path, stat_nofollow_any};
 use ra_safety::identity::check_flags;
 use ra_safety::{AppProbe, Origin, ProtectionReason};
+use rustix::fs::{AtFlags, Dir, Mode, OFlags};
 
 use crate::{Action, Core, CoreError, Plan, Preview, Selection, tilde};
 
@@ -103,8 +106,9 @@ impl Core {
         Ok(Preview { plan, dry_run })
     }
 
-    /// Ruta absoluta con la carpeta padre canónica. Si no se puede
-    /// resolver, se aborta (RF-SEG-05 c).
+    /// Ruta absoluta con la carpeta padre canónica y el último componente
+    /// con su nombre real en disco (I-1). Si no se puede resolver, se aborta
+    /// (RF-SEG-05 c).
     fn resolve(&self, raw: &Path) -> Result<PathBuf, CoreError> {
         if !raw.is_absolute() {
             return Err(CoreError::Usage(format!(
@@ -120,7 +124,9 @@ impl Core {
         };
         match (raw.parent(), raw.file_name()) {
             (Some(parent), Some(name)) => {
-                Ok(fs::canonicalize(parent).map_err(unresolvable)?.join(name))
+                let parent = fs::canonicalize(parent).map_err(unresolvable)?;
+                let name = real_name(&parent, name).unwrap_or_else(|| name.to_owned());
+                Ok(parent.join(name))
             }
             // `/` o una ruta que acaba en `..`: se resuelve entera.
             _ => fs::canonicalize(raw).map_err(unresolvable),
@@ -169,4 +175,44 @@ impl Core {
         }
         Ok(c)
     }
+}
+
+/// Nombre con el que está guardada en `parent` la entrada que el usuario
+/// escribió como `name`. En APFS sin distinción de mayúsculas,
+/// `~/Desktop/CARPETA` abre `~/Desktop/carpeta`: el plan, la Papelera y el
+/// deshacer deben usar el nombre real, y la detección de ficheros en uso
+/// compara rutas por prefijo.
+///
+/// Sin seguir enlaces: se busca en `parent` la entrada con el mismo
+/// `(dev, ino)` que `name`. Si la que se escribió existe tal cual (o es un
+/// enlace duro con otro nombre en la misma carpeta), se queda esa. `None`
+/// si `name` no existe: lo rechaza después la clasificación.
+fn real_name(parent: &Path, name: &OsStr) -> Option<OsString> {
+    let dir = rustix::fs::open(
+        parent,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .ok()?;
+    let want = rustix::fs::statat(&dir, name, AtFlags::SYMLINK_NOFOLLOW).ok()?;
+    let mut found = None;
+    for entry in Dir::read_from(&dir).ok()? {
+        let Ok(entry) = entry else { continue };
+        let bytes = entry.file_name().to_bytes();
+        if bytes == b"." || bytes == b".." {
+            continue;
+        }
+        let entry_name = OsStr::from_bytes(bytes);
+        if entry_name == name {
+            return Some(name.to_owned());
+        }
+        if found.is_none()
+            && let Ok(st) = rustix::fs::statat(&dir, entry_name, AtFlags::SYMLINK_NOFOLLOW)
+            && st.st_dev == want.st_dev
+            && st.st_ino == want.st_ino
+        {
+            found = Some(entry_name.to_owned());
+        }
+    }
+    found
 }

@@ -292,6 +292,44 @@ fn user_folder_roots_abort_but_their_contents_do_not() {
     assert!(fs::read_dir(&w.trash).expect("trash").next().is_none());
 }
 
+/// I-1: con otra caja en el último componente, el plan usa el nombre real
+/// de la entrada (por identidad, sin seguir enlaces).
+#[test]
+fn the_last_component_keeps_its_real_case() {
+    let w = World::new(
+        &[
+            file("Desktop/carpeta/nota.txt", 30),
+            file("Downloads/setup.dmg", 30),
+        ],
+        &[],
+    );
+    if !w.p("Desktop/CARPETA").exists() {
+        eprintln!("volumen con distinción de mayúsculas: no aplica");
+        return;
+    }
+    // Un enlace con el nombre en mayúsculas no se sigue: se mueve el enlace.
+    std::os::unix::fs::symlink(w.p("Downloads/setup.dmg"), w.p("Desktop/Enlace")).expect("enlace");
+    let preview = w
+        .core
+        .plan_selection(&[w.p("Desktop/CARPETA"), w.p("Desktop/ENLACE")])
+        .expect("plan");
+    let mut paths: Vec<_> = preview
+        .plan
+        .items()
+        .iter()
+        .map(|i| i.path.clone())
+        .collect();
+    paths.sort();
+    assert_eq!(paths, vec![w.p("Desktop/Enlace"), w.p("Desktop/carpeta")]);
+    let link = preview
+        .plan
+        .items()
+        .iter()
+        .find(|i| i.path == w.p("Desktop/Enlace"))
+        .expect("enlace");
+    assert_eq!(link.kind, ra_core::FileKind::Symlink);
+}
+
 #[test]
 fn excluded_paths_stay_out_of_the_plan() {
     let w = World::new(

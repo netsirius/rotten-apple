@@ -287,6 +287,43 @@ fn dry_run_with_an_excluded_path_exits_4() {
     assert!(trash_is_empty(&fx));
 }
 
+/// I-1: `trash put ~/Desktop/CARPETA` con la carpeta real en minúsculas
+/// mueve y restaura `carpeta`, no `CARPETA`.
+#[test]
+fn put_and_undo_keep_the_real_case_of_the_name() {
+    let fx = fixture();
+    let typed = fx.p("Desktop/CARPETA");
+    if !Path::new(&typed).exists() {
+        eprintln!("volumen con distinción de mayúsculas: no aplica");
+        return;
+    }
+    let real = fx.p("Desktop/carpeta");
+    let (code, doc) = fx.run(&["trash", "put", "--yes", "--json", &typed]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert_eq!(doc["plan"]["items"][0]["path"], real.as_str());
+    let result = doc["report"]["items"][0]["result_path"]
+        .as_str()
+        .expect("result_path");
+    assert_eq!(Path::new(result).file_name(), Some("carpeta".as_ref()));
+    let trashed: Vec<_> = fs::read_dir(&fx.trash)
+        .expect("trash")
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
+    assert_eq!(trashed, vec!["carpeta"]);
+
+    let (code, doc) = fx.run(&["undo", "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert_eq!(doc["report"]["items"][0]["result_path"], real.as_str());
+    let desktop: Vec<_> = fs::read_dir(fx.home.join("Desktop"))
+        .expect("Desktop")
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
+    assert_eq!(desktop, vec!["carpeta"]);
+    assert!(Path::new(&fx.p("Desktop/carpeta/sub/foto.jpg")).exists());
+}
+
 #[test]
 fn repeated_or_nested_paths_are_not_omissions() {
     let fx = fixture();

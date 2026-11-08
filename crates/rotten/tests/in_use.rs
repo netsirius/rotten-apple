@@ -110,3 +110,25 @@ fn dry_run_exits_4_when_it_foresees_an_item_in_use() {
     assert!(held.exists());
     assert!(fs::read_dir(&fx.trash).expect("trash").next().is_none());
 }
+
+/// I-1: con otra caja en la ruta pedida, un fichero en uso dentro de la
+/// carpeta se sigue detectando (la detección compara por prefijo con la
+/// ruta del plan, que ahora lleva el nombre real).
+#[test]
+fn a_held_file_is_found_inside_a_folder_typed_with_another_case() {
+    let fx = fixture();
+    let typed = fx.p("Library/Caches/COM.EXAMPLE.EDITOR");
+    if !typed.exists() {
+        eprintln!("volumen con distinción de mayúsculas: no aplica");
+        return;
+    }
+    let real = fx.p("Library/Caches/com.example.editor");
+    let holder = Holder::open(&real.join("data.bin"));
+    let typed = typed.to_str().expect("ruta UTF-8");
+    let (code, doc) = fx.run(&["trash", "put", "--dry-run", "--json", typed]);
+    assert_eq!(code, 4, "{doc:#}");
+    let item = &doc["preview"]["items"][0];
+    assert_eq!(item["path"], real.to_str().expect("ruta UTF-8"), "{item:#}");
+    assert_eq!(item["reason"], "in_use", "{item:#}");
+    assert_eq!(item["detail"]["pid"], holder.pid(), "{item:#}");
+}
