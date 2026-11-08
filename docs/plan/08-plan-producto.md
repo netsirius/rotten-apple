@@ -11,7 +11,7 @@
 
 ## 0. Cómo usar este documento
 
-**Precedencia.** Manda lo que fija `docs/README.md`: README › 06 › 02 › 03 y 05 (cada uno en su dominio) › 07 para el CLI. Cuando 02 contradice a README o a 07 (códigos de salida, `--permanent`, lista de subcomandos de RF-CLI-02, macOS mínimo de RNF-38), se aplica la fila correspondiente de README §8. Este plan no reabre esas decisiones.
+**Precedencia.** Manda lo que fija `docs/README.md`: README › 06 › 02 › 03 y 05 (cada uno en su dominio) › 07 para el CLI. Cuando 02 contradice a README o a 07 (códigos de salida, `--permanent`, lista de subcomandos de RF-CLI-02, macOS mínimo de RNF-38), se aplica la fila correspondiente de README §8. Este plan no reabre esas decisiones, con una excepción: **las decisiones del autor de §2.1 (2026-11-08) mandan sobre README §3, §4 y §5 en los puntos que citan**, hasta que las ramas se fusionen y README se actualice (T-43).
 
 **Fase de cada función.** La fija README §4, aunque 03 o 04 digan otra cosa:
 
@@ -135,7 +135,7 @@ D-11 promete **todos los comandos de Mole como mínimo** para el producto, pero 
 - **Comandos:** de los 15 de Mole, el MVP trae 10. `optimize` llega a medias (solo el arranque, en lectura). `slim`, `status` y `remove` llegan en v1, y `touchid` en v2.
 - **Contenido de `clean`:** el `clean` del MVP limpia menos que `mo clean` (segunda tabla).
 
-Si quieres paridad completa ya en la versión base, la decisión está en §2.
+**Actualizado el 2026-11-08:** el autor ha decidido que el MVP tenga paridad completa (§2.1). Las fases de las tablas siguientes son las originales de 07; las que cambian están en §2.1.
 
 **Comandos**
 
@@ -190,36 +190,80 @@ Todas son del autor. La tabla dice qué desbloquea cada una y cómo cerrarla.
 | ID | Qué falta | Bloquea | Cómo se cierra |
 |---|---|---|---|
 | D-07 | Spike de GUI: SwiftUI + UniFFI frente a Tauri 2 | Toda la GUI (T-32 a T-38) | T-31. **No depende del núcleo: puede empezar ya** |
-| P-03 | Alta en el Apple Developer Program (cuota anual) | Firma, notarización y DMG (T-40); paso 6 del spike | Decisión y alta del autor |
-| D-08 | Bundle ID definitivo (provisional: `io.github.netsirius.RottenApple`) | Antes de la beta: identidad TCC, ruta de estado, firma (T-40) | Fijarlo antes de T-33. Cambiarlo después obliga a migrar `~/Library/Application Support/<bundle-id>/` |
-| D-01 | macOS 26 + arm64 (provisional) | Matriz de CI y VMs, `LSMinimumSystemVersion` | Confirmar. El código ya comprueba macOS ≥ 26 y `aarch64` |
+| D-08 | Bundle ID definitivo (provisional: `io.github.netsirius.RottenApple`). El autor lo deja provisional el 2026-11-08 | Antes de la beta: identidad TCC, ruta de estado, firma (T-40) | Fijarlo antes de T-33. Cambiarlo después obliga a migrar `~/Library/Application Support/<bundle-id>/` |
 | V-01 | URL del panel de Acceso total al disco en macOS 26 y 27 | Botón principal del onboarding (T-33) | `open "x-apple.systempreferences:…"` en VM (T-28) |
 | V-03 | Acceso a contenedores de otras apps, con y sin FDA | CAT-02; Safari en contenedor dentro de CAT-08 | VM con y sin FDA (T-28). Si se confirma, se añaden las reglas y sus fixtures |
 | V-04 | ¿Mover un `.app` ajeno a la Papelera requiere «Gestión de apps»? | Ejecución de `uninstall` sobre `/Applications` (T-22) | VM + `log stream --predicate 'subsystem == "com.apple.TCC"'` (T-28) |
 | V-18 | Cachés «con estado» dentro de `~/Library/Caches` | Lista permitida de preselección de CAT-01 (hoy vacía) | Borrar cada candidata en VM y observar (T-28) |
-| CAT-10 | README §4 lo llama «restos de actualizadores»; 02 §5 lo define como «estado guardado de ventanas» | Texto de README §4 | Se implementó 02 §5. Confirmar o pedir la otra categoría (es una regla TOML y su fixture) |
-| Comandos `trash` | 07 solo define `trash empty`. RNF-ARQ-02 exige que «Mover a la Papelera» del Explorador exista en el CLI, y RF-PAN-07 pide ver la Papelera con su tamaño | T-10, T-12 | Propuesta: `rotten trash` (lectura: tamaño por volumen y lo enviado por la app) y `rotten trash put <ruta…>` (con `--dry-run`, `--json` y `--yes`, por el mismo pipeline). Aprobar o renombrar |
-| Arranque en lectura | 07 pone «arranque en solo lectura» en el MVP dentro de `optimize`, sin nombre de subcomando | T-23 | Propuesta: `rotten optimize startup`. Aprobar o renombrar |
-| RF-INS-02 | Pide el atajo «Seleccionar los de apps ya instaladas», pero detectar «ya instalada» es RF-INS-06 (v1) | T-20 | Propuesta: en el MVP no se ofrece el atajo; llega con RF-INS-06 |
-| RNF-ARQ-25 | Firma Ed25519 del catálogo incrustado | Nada mientras D-06 = No | Propuesta: posponer la firma a cuando haya catálogo remoto; la limitación a prefijos ya está hecha |
-| Hardware de pruebas | Mac mini como *runner* autoalojado con Tart (como máximo 2 VMs por Mac) | T-29, T-30 | Compra o cesión de un Mac y licencia de Tart para CI (05 §10.4, «por verificar») |
-| Paridad con Mole en el MVP | D-11 pide todos los comandos de Mole, pero README §4 solo mete en el MVP los marcados MVP en 07. Sin cambios, el MVP sale sin `slim`, `status`, `remove`, `touchid` ni `optimize` con tareas, y su `clean` limpia menos que `mo clean` (§1.5) | Alcance del MVP; qué exige `ROTTEN_PARITY_STRICT` (T-02) y la puerta de salida (T-42) | Por defecto, las fases de 07. Para acercarse a la paridad sin mucho coste se pueden adelantar tres cosas: `remove` (T-108; sin ayudante ni agentes en el MVP, se reduce a borrar los datos y el enlace de configuración); las referencias en configuraciones de shell y MCP de `uninstall` (RF-DES-10, de solo lectura; 07 la incluye en el `uninstall` del MVP, pero RF-DES-10 no es un RF-CLI, así que manda 02 y queda en v1, en T-96); y los restos huérfanos (parte de T-95). Lo caro es `status` (T-99, L), lo que necesita el ayudante (`optimize` con tareas, `touchid`: T-92, L) y `slim`, que espera a su verificación de Gestión de apps. Cada cosa que adelantes cambia de fase en §6.0 y entra en `parity.toml` como MVP |
+| Hardware de pruebas | Runner dedicado para CI (Mac mini con Tart, como máximo 2 VMs por Mac). Las verificaciones manuales ya se hacen en el Mac del autor con Tart (§2.1) | T-29, T-30 | Compra o cesión de un Mac y licencia de Tart para CI (05 §10.4, «por verificar») |
 
 **Para v1 y v2:**
 
 | ID | Qué falta | Bloquea | Cómo se cierra |
 |---|---|---|---|
-| Marcadores con IA | ¿La reorganización de marcadores con IA (RF-IA-32) entra en v1? D-05 deja la IA de v1 en organizar carpetas y «¿Qué es esto?» | T-58 | Por defecto, v2. Si la quieres en v1, basta con cambiar la fase de T-58 en §6.0 |
-| Historial de shell en `secrets` | 02 §1.7 prohíbe editar la configuración del shell; 07 §3.1 deja que `secrets` quite una línea del historial con copia previa | T-73 | Decidir si se permite. Mientras tanto, T-73 solo enseña la línea y el comando para borrarla |
 | Historial de git en `secrets` | 03 §6 (H6) no escanea el historial de git; 07 §3.1 lo pide con `--history` | — | Manda 07 (D-13, petición del autor). Queda anotado |
-| Topes de coste de la IA | 04 §9.2 propone confirmar por encima de 0,50 $ por operación y bloquear al pasar de 5 $ al mes | T-47 | Confirmar los valores por defecto |
-| Entitlement de PCC | Apple Private Cloud Compute exige un entitlement de Apple | T-111 | Solicitarlo o descartarlo (04 §9.2) |
 | V-05 | ¿Qué identidad TCC tiene un agente de `SMAppService` o de launchd? | T-103 | Prototipo en VM (05 §1.1.7, ADR-06 §7.4) |
-| Gestión de apps en `slim` | Sustituir un bundle firmado puede requerir «Gestión de apps», como V-04 | T-102 | VM + `log stream` de TCC, junto con V-04 (T-28) |
+| Gestión de apps en `slim` | Sustituir un bundle firmado puede requerir «Gestión de apps», como V-04 | T-102 (ahora en el MVP, condicionado: §2.1) | VM + `log stream` de TCC, junto con V-04 (T-28) |
 | Verificaciones de marcadores | `checksum` de Chrome, ruta del perfil de Firefox (`profiles.ini`), TCC de `~/Library/Safari` en macOS 27 (04 §2.3.1) | T-56, T-114 | Prueba en VM con cada navegador, con y sin sincronización |
 | Capturas sin Spotlight | `kMDItemIsScreenCapture` y `kMDItemDateAdded` pueden faltar sin índice (04 §2.2) | T-53 | `mdls` sobre una captura, con y sin índice; si falta, usar xattrs y el patrón de nombre |
 | `TCC.db` para la auditoría de permisos | Leerlo da falsos negativos en macOS 27 según un foro (README §8) | T-77 | Probar en VM con FDA; si no es fiable, la auditoría solo enlaza a cada panel de Ajustes |
-| Propuestas nuevas | PROP-01 a PROP-11 no están en 01–07 | T-131 a T-141 | Aprobar, cambiar de fase o descartar cada una (§8) |
+
+### 2.1 Decisiones cerradas el 2026-11-08
+
+Las ha tomado el autor. Mandan sobre README §3, §4 y §5 en lo que citan hasta que las ramas se fusionen (§0).
+
+| ID | Decisión | Qué cambia |
+|---|---|---|
+| D-01 | **macOS 26 + solo Apple silicon (arm64)**, confirmado | Nada en el código (ya lo comprueba). VMs con macOS 26 y 27 |
+| P-03 | Alta en el Apple Developer Program **después del spike** y antes de H-7. Hace falta para que otras personas abran la app sin el bloqueo de Gatekeeper, para que el Acceso total al disco sobreviva a las actualizaciones y para el ayudante de v1 | El spike (T-31) se hace sin firmar (pasos 1 a 5). T-40 sigue dependiendo de P-03 |
+| D-08 | El bundle ID **sigue provisional** | Sigue abierto en §2: hay que fijarlo antes de T-33 |
+| Comandos `trash` | Aprobados `rotten trash` (lectura: tamaño por volumen y lo enviado por la app) y `rotten trash put <ruta…>` (con `--dry-run`, `--json` y `--yes`, por el mismo pipeline) | Desbloquea T-10 y T-12. Entran en `parity.toml` como MVP |
+| Arranque en lectura | Aprobado `rotten optimize startup` | Desbloquea T-23 |
+| CAT-10 y CAT-11 | CAT-10 sigue siendo el estado guardado de ventanas (02 §5, ya hecho). Se añade **CAT-11 · restos de actualizadores** (Sparkle, Squirrel, Google Updater y similares) | Tarea nueva T-143. README §4 se corrige al fusionar las ramas |
+| D-11 · Paridad con Mole | **El MVP trae como mínimo todo lo que hace Mole**: sus 15 comandos y todo lo que limpia `mo clean`. `slim` entra condicionado a su verificación | Ver «Paridad total en el MVP» |
+| Root en el MVP | **Sin ayudante (daemon) en el MVP.** El CLI pide `sudo` por operación, como Mole; la app pide la contraseña con el diálogo de autorización de macOS en cada operación que necesita root. El ayudante `SMAppService` sigue en v1 (T-92), cuando ya haya firma | Tarea nueva T-142. README §5 («Sin helper root en el MVP») pasa a «sin daemon en el MVP; privilegios por operación» |
+| D-05 · Proveedor de IA | **Solo proveedores locales** (Ollama, LM Studio) por ahora. Claude con tu clave queda aparcado hasta v2. Foundation Models y PCC, fuera | T-46 aparcada; T-47 sin topes de coste; T-111 descartada. El campo de la clave de Claude de los mockups de IA y Ajustes deja de aplicar |
+| Marcadores con IA | RF-IA-32 **entra en v1** | T-58 pasa a v1. Depende de que un modelo local dé la calidad suficiente, que decide la suite de evaluación (T-50) |
+| Historial de shell en `secrets` | **Se permite** quitar la línea con el secreto de los ficheros de historial (`.zsh_history`, `.bash_history` y similares), con copia previa y `undo`. Nunca se tocan `.zshrc` ni otros ficheros de configuración | T-73 lo implementa. Es una excepción a 02 §1.7 limitada a ficheros de historial |
+| Topes de coste de la IA | **No aplican** mientras solo haya IA local | Se quitan de T-47. Se decidirán si vuelve un proveedor de pago |
+| Entitlement de PCC | Descartado (consecuencia de D-05) | T-111 descartada |
+| Hardware de pruebas | **El Mac del autor con Tart** para las verificaciones manuales (V-01, V-03, V-04, V-18, V-05 y Gestión de apps) | Desbloquea T-28. La matriz de CI con VMs (T-29) y los *benchmarks* en hardware de referencia (T-30) **siguen bloqueados** hasta tener un runner dedicado |
+| Propuestas | Aprobadas PROP-01 a PROP-08, PROP-10 y PROP-11, en la fase propuesta (PROP-11 en v1 tardía). **PROP-09 descartada** | T-131 a T-138, T-140 y T-141 entran en v1. T-139, fuera |
+| RF-INS-02 | Se aplica la propuesta por defecto (sin confirmar): el atajo «Seleccionar los de apps ya instaladas» llega con RF-INS-06 en v1 | T-20 no lo incluye |
+| RNF-ARQ-25 | Se aplica la propuesta por defecto (sin confirmar): la firma Ed25519 del catálogo espera a que haya catálogo remoto (D-06 = No) | — |
+
+**Paridad total en el MVP**
+
+Lo que pasa de v1 o v2 al MVP. Cuando una tarea entra «en parte», solo esa parte cambia de fase y el resto sigue en v1.
+
+| Mole | Qué entra en el MVP | Tarea | Notas |
+|---|---|---|---|
+| `mo optimize` | `rotten optimize` con las tareas de Mole | T-98 | Las tareas que necesitan root van por T-142, sin T-92 |
+| `mo status` | `rotten status` (monitor en la terminal) | T-99 | La manzana de la barra de menús (T-100) sigue en v1 |
+| `mo touchid` | `rotten touchid` | T-120 (antes v2) | Por T-142. Enseña el cambio exacto en `/etc/pam.d/sudo_local` y se puede revertir |
+| `mo slim` | `rotten slim` | T-102 | **Condicionado:** si la verificación de Gestión de apps (T-28) lo impide, en el MVP solo en lectura (cuánto se ahorraría) |
+| `mo remove` | `rotten remove` | T-108 | Versión reducida: borra los datos de Rotten Apple y el enlace de configuración. No hay ayudante ni agentes que retirar |
+| `mo clean`: temporales | CAT-05 | Parte de T-95 | Sin preselección hasta verificarla |
+| `mo clean`: logs del sistema | CAT-04 | Parte de T-93 | Por T-142 en vez del ayudante |
+| `mo clean`: navegadores | Edge, Brave y Arc en CAT-08 | Parte de T-95 | — |
+| `mo clean`: restos de apps desinstaladas | Huérfanos | Parte de T-95 | — |
+| `mo clean`: simuladores iOS | `simctl delete unavailable` | Parte de T-82 | — |
+| `mo clean`: cachés de gestores de paquetes | Limpieza de las cachés globales, no solo lectura | Parte de T-80 y T-84 | Con el comando nativo de cada gestor |
+| `mo uninstall` | Referencias en configuraciones de shell y MCP (RF-DES-10, solo lectura) | Parte de T-96 | — |
+| `MO_LAUNCHER_APP`, Raycast, Alfred y skills | `ROTTEN_TERMINAL`, `rotten launchers install`, skill y `llms.txt` | Parte de T-107 | `rotten mcp` sigue en v2. Nix sigue sin equivalente |
+
+`parity.toml` (T-02) marca todo lo anterior como MVP, así que `ROTTEN_PARITY_STRICT=1` y la puerta de salida (T-42) lo exigen.
+
+**Tareas nuevas**
+
+- **T-142 · Privilegios por operación** (H-3b, M, depende de T-10). Alcance: `crates/ra-platform/src/privilege.rs` y un comando interno del CLI. Lista cerrada de verbos que necesitan root (caché de DNS, Launch Services, Spotlight, scripts de mantenimiento, `sudo_local`, CAT-04). En el CLI, si no es root, se reejecuta solo ese verbo con `sudo`. En la app, el diálogo de autorización de macOS; el mecanismo exacto se valida en el spike (T-31). Cada verbo pasa por la previsualización y deja su entrada en el journal. Aceptación: un verbo fuera de la lista se rechaza; sin contraseña no se ejecuta nada; la prueba con `sudo` simulado cubre éxito, cancelación y fallo a medias.
+- **T-143 · CAT-11 · Restos de actualizadores** (H-3b, S). Una regla TOML por actualizador con su fixture. Nada preseleccionado hasta verificarlo en VM.
+
+**Consecuencias**
+
+- **Plazo.** El MVP ya pasaba de los 6 meses de README §4 para una persona sola. La paridad total suma unas 2 tareas L (T-99, T-102), 4 M (T-98, T-108, T-120, T-142) y partes de otras 7: del orden de 2 a 3 meses más para una persona. Con 6 meses solo se llega trabajando mucho en paralelo.
+- **Seguridad.** Lo que corre como root se salta parte de las protecciones del usuario. Por eso T-142 solo acepta una lista cerrada de verbos, siempre con previsualización y journal, igual que hará el ayudante de v1.
+- **Firma.** Nada del MVP depende ya del ayudante, así que P-03 solo bloquea la distribución (H-7).
 
 ---
 
@@ -231,6 +275,7 @@ Todas son del autor. La tabla dice qué desbloquea cada una y cómo cerrarla.
 | **H-1** · Papelera y comandos pequeños | `free`, `trash`, `config`, `completion`, `update`, menú | T-11 a T-16 | T-01; T-03 recomendado |
 | **H-2** · Permisos | Preflight por módulo en el núcleo, `doctor` y `scan` | T-17 | — |
 | **H-3** · Módulos del MVP | Corpus sintético, `analyze`, `installer`, `uninstall`, arranque en lectura | T-18 a T-23 | T-10 (todos los módulos con acción) |
+| **H-3b** · Paridad con Mole (D-11, §2.1) | Privilegios por operación, CAT-11 y todo lo que §2.1 adelanta de v1 y v2 | T-142, T-143, T-98, T-99, T-102, T-108, T-120 y partes de T-80, T-82, T-84, T-93, T-95, T-96 y T-107 | T-10; T-28 para `slim` |
 | **H-4** · Zona Desarrollador mínima (D-03) | `purge` y `dev` en lectura | T-24 a T-27 | T-10 |
 | **H-5** · Verificación | V-01/03/04/18, matriz de VMs, *benchmarks* | T-28 a T-30 | Hardware (§2) |
 | **H-6** · GUI | Spike, FFI y pantallas del MVP | T-31 a T-38 | T-31 → resto; H-1 a H-4 para cada pantalla |
@@ -275,7 +320,7 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 
 | Hito | Qué entrega | Tareas | Depende de |
 |---|---|---|---|
-| **H-9** · Base de IA | `ra-ai`, proveedores locales y Claude, consentimiento, redacción, vista previa del envío, validación de planes, evaluación | T-44 a T-51 | MVP; T-32 para la GUI |
+| **H-9** · Base de IA | `ra-ai`, proveedores locales (solo locales: §2.1), consentimiento, redacción, vista previa del envío, validación de planes, evaluación | T-44 a T-51 | MVP; T-32 para la GUI |
 | **H-10** · Organizar carpetas | Acciones de mover, renombrar y etiquetar; organizador por reglas y con IA; previsualización editable | T-52 a T-55 | T-10; H-9 para la parte con IA |
 | **H-11** · Marcadores | Lectura multinavegador, duplicados, enlaces rotos, exportación HTML con previsualización | T-56 a T-59 | — (sin IA); H-9 para T-58 |
 | **H-12** · «¿Qué es esto?» | Base de conocimiento local y explicación con IA | T-60, T-61 | H-9 para T-61 |
@@ -289,8 +334,8 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 | **H-20** · Adelgazar apps | `slim` | T-102 | V-04 y su verificación hermana |
 | **H-21** · Programación | Limpiezas programadas y avisos | T-103, T-104 | V-05 |
 | **H-22** · Ajustes, integraciones y release v1 | Exportaciones, retención, `man`, lanzadores, `remove`, SBOM, fuzzing | T-105 a T-109 | — |
-| **H-23** · v2 | IA avanzada, MCP, `touchid` y el resto de v2 | T-110 a T-130 | v1 |
-| **H-24** · Propuestas | PROP-01 a PROP-11, si se aprueban | T-131 a T-141 | Aprobación del autor |
+| **H-23** · v2 | IA avanzada, MCP y el resto de v2 (`touchid` pasa al MVP: §2.1) | T-110 a T-130 | v1 |
+| **H-24** · Propuestas | Las aprobadas en §2.1: todas menos PROP-09 | T-131 a T-141 | Aprobación del autor |
 
 ---
 
@@ -309,7 +354,7 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 | T-07 | Arnés de cierre abrupto (`kill -9`) | H-0 | M | — | Pendiente |
 | T-08 | `fsync` por lotes sin perder la escritura anticipada | H-0 | M | T-07 | Pendiente |
 | T-09 | CI nocturna, `cargo-audit`, `forbid(unsafe_code)` y cobertura | H-0 | S | T-07 | Pendiente |
-| T-10 | Planes por selección explícita y `rotten trash put` | H-0 | M | §2 | Pendiente |
+| T-10 | Planes por selección explícita y `rotten trash put` | H-0 | M | — | Pendiente |
 | T-11 | `rotten free <op-id>` («Liberar ahora») | H-1 | M | T-01 | Pendiente |
 | T-12 | `rotten trash` y `rotten trash empty` | H-1 | M | T-11 | Pendiente |
 | T-13 | `rotten config` y enlace en `~/.config/rotten/` | H-1 | S | — | Pendiente |
@@ -322,7 +367,7 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 | T-20 | `rotten installer` | H-3 | M | T-10 | Pendiente |
 | T-21 | `ra-apps`: inventario y restos (`uninstall --list`) | H-3 | L | — | Pendiente |
 | T-22 | `rotten uninstall`: ejecución, agentes y deshacer | H-3 | L | T-10, T-21, V-04 | Pendiente |
-| T-23 | Arranque en solo lectura | H-3 | M | §2 | Pendiente |
+| T-23 | Arranque en solo lectura (`rotten optimize startup`) | H-3 | M | — | Pendiente |
 | T-24 | `ra-dev`: descubrimiento de proyectos y artefactos | H-4 | L | — | Pendiente |
 | T-25 | Lectura de git segura y protecciones | H-4 | L | T-24 | Pendiente |
 | T-26 | Actividad, regenerabilidad y preselección | H-4 | M | T-24, T-25 | Pendiente |
@@ -342,6 +387,8 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 | T-40 | Firma, notarización, DMG, cask y SBOM | H-7 | L | P-03, D-08, T-38 | Pendiente |
 | T-41 | Sparkle 2 | H-7 | M | T-40 | Pendiente |
 | T-42 | Puerta de salida y beta cerrada | H-8 | L | Todo | Pendiente |
+| T-142 | Privilegios por operación (`sudo` en el CLI, diálogo de autorización en la app) | H-3b | M | T-10 | Pendiente (§2.1) |
+| T-143 | CAT-11 · Restos de actualizadores | H-3b | S | — | Pendiente (§2.1) |
 | T-43 | Registrar este plan en `docs/README.md` | H-8 | S | PR #1 fusionado | Pendiente |
 
 ### 4.1 H-0 · Columna vertebral y deuda del núcleo
@@ -809,8 +856,8 @@ Las tarjetas de v1 son más cortas que las del MVP: el diseño detallado está e
 |---|---|---|---|---|---|
 | T-44 | `ra-ai`: proveedores y frontera con el ejecutor | H-9 | M | MVP | Pendiente |
 | T-45 | Proveedores locales | H-9 | M | T-44 | Pendiente |
-| T-46 | Claude con tu clave | H-9 | M | T-44 | Pendiente |
-| T-47 | Consentimiento, modo solo local, registro y topes | H-9 | M | T-44 | Pendiente |
+| T-46 | Claude con tu clave | H-9 | M | T-44 | **Aparcada** hasta v2 (D-05, §2.1) |
+| T-47 | Consentimiento, modo solo local y registro (sin topes de coste: §2.1) | H-9 | M | T-44 | Pendiente |
 | T-48 | Minimización, redacción y vista previa del envío | H-9 | M | T-44 | Pendiente |
 | T-49 | Validación de planes de IA y defensa frente a *prompt injection* | H-9 | M | T-44, T-10 | Pendiente |
 | T-50 | Suite de evaluación | H-9 | M | T-49 | Pendiente |
@@ -821,7 +868,7 @@ Las tarjetas de v1 son más cortas que las del MVP: el diseño detallado está e
 | T-55 | Previsualización antes/después editable | H-10 | L | T-53, T-32 | Pendiente |
 | T-56 | `ra-bookmarks`: lectura multinavegador | H-11 | M | — | Pendiente |
 | T-57 | Duplicados, enlaces rotos y exportación con previsualización | H-11 | M | T-56 | Pendiente |
-| T-58 | Reorganizar marcadores con IA | H-11 | M | T-57, H-9 | **v2** salvo decisión (§2) |
+| T-58 | Reorganizar marcadores con IA | H-11 | M | T-57, H-9 | **v1** (§2.1) |
 | T-59 | GUI de marcadores | H-11 | M | T-57, T-55 | Pendiente |
 | T-60 | Base de conocimiento local y `rotten explain` | H-12 | M | — | Pendiente |
 | T-61 | «¿Qué es esto?» con IA | H-12 | S | T-60, H-9 | Pendiente |
@@ -843,11 +890,11 @@ Las tarjetas de v1 son más cortas que las del MVP: el diseño detallado está e
 | T-77 | Auditoría de permisos de apps | H-15 | S | §2 (`TCC.db`) | Pendiente |
 | T-78 | GUI Privacidad | H-15 | M | T-75, T-32 | Pendiente |
 | T-79 | Dev: raíces sugeridas, procesos, abandonados, entornos rotos y reglas locales | H-16 | M | H-4 | Pendiente |
-| T-80 | Dev: comandos nativos y Homebrew | H-16 | M | H-4 | Pendiente |
+| T-80 | Dev: comandos nativos y Homebrew | H-16 | M | H-4 | En parte **MVP** (§2.1) |
 | T-81 | Dev: toolchains no referenciadas | H-16 | L | H-4 | Pendiente |
-| T-82 | Dev: Xcode avanzado y Android | H-16 | M | H-4 | Pendiente |
+| T-82 | Dev: Xcode avanzado y Android | H-16 | M | H-4 | En parte **MVP** (§2.1) |
 | T-83 | Dev: contenedores | H-16 | M | T-80 | Pendiente |
-| T-84 | Dev: IDE, modelos de IA y resto de cachés globales | H-16 | M | H-4 | Pendiente |
+| T-84 | Dev: IDE, modelos de IA y resto de cachés globales | H-16 | M | H-4 | En parte **MVP** (§2.1) |
 | T-85 | `rotten dev` completo e incremental | H-16 | M | T-79 a T-84, T-87 | Pendiente |
 | T-86 | GUI Desarrollo y Comando oficial | H-16 | L | T-85, T-32 | Pendiente |
 | T-87 | `ra-index`: caché de escaneo y FSEvents | H-17 | L | T-19 | Pendiente |
@@ -856,22 +903,22 @@ Las tarjetas de v1 son más cortas que las del MVP: el diseño detallado está e
 | T-90 | Volúmenes externos y de red | H-17 | S | T-19 | Pendiente |
 | T-91 | GUI: mapa de espacio | H-17 | M | T-36 | Pendiente |
 | T-92 | Ayudante privilegiado | H-18 | L | P-03, T-40 | Pendiente |
-| T-93 | Categorías de sistema con el ayudante | H-18 | M | T-92 | Pendiente |
+| T-93 | Categorías de sistema con el ayudante | H-18 | M | T-92; la parte de CAT-04 del MVP, T-142 | En parte **MVP** (§2.1) |
 | T-94 | Instantáneas y copias de iPhone/iPad | H-18 | M | T-92 | Pendiente |
-| T-95 | Restos de apps y cachés de apps | H-18 | M | T-21 | Pendiente |
-| T-96 | Desinstalador v1 | H-18 | M | T-22, T-92 | Pendiente |
+| T-95 | Restos de apps y cachés de apps | H-18 | M | T-21 | En parte **MVP** (§2.1) |
+| T-96 | Desinstalador v1 | H-18 | M | T-22, T-92 | En parte **MVP** (§2.1) |
 | T-97 | Instaladores v1 | H-18 | M | T-20 | Pendiente |
-| T-98 | `rotten optimize` con tareas | H-19 | M | T-23, T-92 | Pendiente |
-| T-99 | `ra-monitor` y `rotten status` | H-19 | L | — | Pendiente |
+| T-98 | `rotten optimize` con tareas | H-19 | M | T-23, T-142 | **MVP** (§2.1) |
+| T-99 | `ra-monitor` y `rotten status` | H-19 | L | — | **MVP** (§2.1) |
 | T-100 | La manzana en la barra de menús | H-19 | M | T-99, T-32 | Pendiente |
 | T-101 | GUI Monitor y Mantenimiento | H-19 | M | T-98, T-99 | Pendiente |
-| T-102 | `rotten slim` y pantalla Adelgazar | H-20 | L | §2 (Gestión de apps) | Pendiente |
+| T-102 | `rotten slim` y pantalla Adelgazar | H-20 | L | §2 (Gestión de apps) | **MVP**, condicionado a la verificación (§2.1) |
 | T-103 | Programación | H-21 | L | V-05, T-32 | Pendiente |
 | T-104 | Avisos en segundo plano | H-21 | S | T-103 | Pendiente |
 | T-105 | Historial: exportar, retención y borrado diferido | H-22 | M | — | Pendiente |
 | T-106 | Ajustes: importar, exportar, restablecer y privacidad de red | H-22 | M | T-37 | Pendiente |
-| T-107 | CLI: `man`, instalación, lanzadores y agentes | H-22 | M | — | Pendiente |
-| T-108 | `rotten remove` | H-22 | M | T-103, T-92 | Pendiente |
+| T-107 | CLI: `man`, instalación, lanzadores y agentes | H-22 | M | — | En parte **MVP** (§2.1) |
+| T-108 | `rotten remove` | H-22 | M | T-13 (versión reducida del MVP) | **MVP** (§2.1) |
 | T-109 | Release v1: SBOM, atestación, fuzzing y actualizaciones | H-22 | M | T-40 | Pendiente |
 
 ### 6.1 H-9 · Base de IA
@@ -1038,7 +1085,7 @@ El resultado de v1 es un **HTML organizado** que el usuario importa. Nunca se es
   - El HTML se importa sin errores en Safari, Chrome y Firefox, con una prueba manual documentada por navegador.
 
 #### T-58 · Reorganizar marcadores con IA
-- **Cierra:** RF-IA-32 (taxonomía y títulos). **Fase:** v2 salvo que cambies D-05 (§2).
+- **Cierra:** RF-IA-32 (taxonomía y títulos). **Fase:** v1 (decisión del autor del 2026-11-08, §2.1); depende de que un modelo local dé la calidad suficiente (T-50).
 - **Qué hacer:**
   - Plan `bookmarks_plan.v1`: 15 carpetas de primer nivel como máximo por defecto; títulos más claros, desactivables.
   - Al modelo solo se envían el dominio y el título limpio.
@@ -1349,7 +1396,7 @@ Una fila por tarea. La aceptación es el criterio del requisito citado, salvo qu
 | Tarea | Título | Cierra | Notas | Depende de | Estado |
 |---|---|---|---|---|---|
 | T-110 | Asistente en lenguaje natural con herramientas de solo lectura | F3, RF-IA-34; 04 §6.6, §7.8 | Las cifras y los candidatos los calcula el núcleo; el modelo explica. Chips `[[item:id]]` verificados; ningún botón de borrar en el chat | H-9, PROP-03 | Pendiente |
-| T-111 | Apple Foundation Models y PCC | RF-IA-08, RF-IA-09 | Puente Swift; solo si está disponible; PCC con entitlement (§2) | H-9, T-32 | Pendiente |
+| T-111 | Apple Foundation Models y PCC | RF-IA-08, RF-IA-09 | Puente Swift; solo si está disponible; PCC con entitlement (§2) | H-9, T-32 | **Descartada** (D-05, §2.1) |
 | T-112 | Motor de reglas automáticas (`rule.v1`) sin IA | RF-AJU-05, RF-LIM-16; 04 §6.2.3 | DSL sin regex libre; empieza en simulación; acciones destructivas limitadas a la Papelera; reglas sobre rutas protegidas rechazadas | T-52, T-103 | Pendiente |
 | T-113 | Reglas desde lenguaje natural | F6, RF-IA-37 | La IA traduce la frase a `rule.v1`; dry-run sobre los ficheros actuales antes de guardar; D-10 | T-112, H-9 | Pendiente |
 | T-114 | Escritura directa de marcadores y extensión compañera | RF-IA-33; 04 §2.3.1 | Solo con el navegador cerrado y copia previa; nunca Safari ni Arc. WebExtension con la API `bookmarks` y *native messaging* como vía preferente en Chromium y Firefox | T-57, verificaciones de marcadores | Pendiente |
@@ -1358,7 +1405,7 @@ Una fila por tarea. La aceptación es el criterio del requisito citado, salvo qu
 | T-117 | Renombrado por contenido y permiso por operación | F9, RF-IA-17 | Local por defecto; enviar contenido a la nube exige una casilla por operación que no se puede dejar en «siempre» | T-54 | Pendiente |
 | T-118 | Estudio de duplicados semánticos de documentos | F10 | Solo estudio; decidir si sigue | T-89 | Pendiente |
 | T-119 | Servidor MCP | 07 `rotten mcp --allow-actions`; 05 §7.3 | El agente solo ejecuta sin confirmación `--dry-run`, `scan`, `analyze`, `status`, `vulns` y `secrets`; las acciones las aprueba una persona en la GUI | T-01 | Pendiente |
-| T-120 | `rotten touchid` | 07 `touchid --status --enable --disable` | Enseña el cambio exacto en `/etc/pam.d/sudo_local` antes de aplicarlo y se puede revertir | T-92 | Pendiente |
+| T-120 | `rotten touchid` | 07 `touchid --status --enable --disable` | Enseña el cambio exacto en `/etc/pam.d/sudo_local` antes de aplicarlo y se puede revertir | T-142 | **MVP** (§2.1) |
 | T-121 | CLI como cliente de la app | ADR-06 §7.3 | Usar los permisos de la app en vez de los de la terminal; IPC autenticada | T-32 | Pendiente |
 | T-122 | Re-escaneo incremental del Explorador | RF-ESP-12 | — | T-87 | Pendiente |
 | T-123 | Disparador por umbral de espacio | RF-AJU-04 | Mismas restricciones que la programación; como mucho una vez cada 24 h | T-103 | Pendiente |
@@ -1386,7 +1433,7 @@ No están en 01–07. Cada una dice qué hueco de 01 §5 cubre y cómo respeta l
 | T-136 | PROP-06 · Acción rápida de Finder | «¿Qué es esto?» y «Mover a la Papelera con Rotten Apple» sobre lo seleccionado en Finder | 01 H8 (transparencia) | Selección explícita por el pipeline de T-10; abre la revisión; se puede deshacer | v1, tras T-60 y la GUI | La acción abre la revisión con los elementos elegidos; `undo` los devuelve |
 | T-137 | PROP-07 · Aviso de instaladores ya usados | Al instalar una app, si su DMG o PKG sigue en Descargas, aviso discreto «¿Mover el instalador a la Papelera?» | Paridad «instaladores» mejorada | Opt-in; nunca automático; abre la revisión | v1, tras T-97 y T-103 | Sin aceptar el aviso no se toca nada; sin coincidencia segura no hay aviso |
 | T-138 | PROP-08 · Deshacer por periodo | «Restaurar todo lo de esta semana»: deshacer varias operaciones, de la más reciente a la más antigua, con previsualización y conflictos | 01 H2 (reversibilidad) | Mismo deshacer que CU-05; nunca sobrescribe (RF-SEG-18) | v1 | Tres operaciones de fixture se restauran en orden inverso y el árbol queda como antes |
-| T-139 | PROP-09 · Guías al almacenamiento de Apple | Para lo grande que no se toca (Mensajes, Fotos, iCloud Drive, Mail), enseñar su tamaño si se puede medir y abrir la gestión de Apple (Ajustes › General › Almacenamiento, «Optimizar almacenamiento» de Fotos) | Honestidad (02 P-6) | Solo lectura; no toca rutas protegidas ni iCloud (02 §1.7) | v1 | Los enlaces abren el panel correcto en macOS 26 y 27 (por verificar) |
+| T-139 | PROP-09 · Guías al almacenamiento de Apple | Para lo grande que no se toca (Mensajes, Fotos, iCloud Drive, Mail), enseñar su tamaño si se puede medir y abrir la gestión de Apple (Ajustes › General › Almacenamiento, «Optimizar almacenamiento» de Fotos) | Honestidad (02 P-6) | Solo lectura; no toca rutas protegidas ni iCloud (02 §1.7) | **Descartada** (§2.1) | Los enlaces abren el panel correcto en macOS 26 y 27 (por verificar) |
 | T-140 | PROP-10 · Comprimidos ya extraídos | En Descargas, `.zip` y similares cuyo índice coincide (nombres y tamaños) con una carpeta extraída al lado | Paridad «instaladores» mejorada | Solo lee el índice, nunca extrae (como RF-INS-08); nada preseleccionado | v1, con T-97 | Fixtures: coincidencia completa → «ya extraído»; parcial → no se propone |
 | T-141 | PROP-11 · Filtros del Explorador en lenguaje natural | «Vídeos de más de 1 GB que no abro desde 2024» → la IA devuelve un filtro del esquema de RF-ESP-10, validado; el Explorador lo aplica | 01 H6 (IA local) | La IA solo produce un filtro, sin acciones (04 P3); vale un modelo local | v1 tardía o v2, tras T-88 y H-9 | El filtro generado valida contra el esquema; con IA desactivada, el filtro manual sigue funcionando |
 
