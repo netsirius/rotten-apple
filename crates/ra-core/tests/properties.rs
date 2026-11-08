@@ -13,17 +13,19 @@
 //! 4. Omite los elementos que cambian entre el plan y la ejecución.
 //! 5. `undo(execute(P))` devuelve el árbol a su estado.
 //! 6. La simulación no cambia nada.
+//! 7. Omite los elementos con ficheros abiertos por otro proceso (RF-SEG-08).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, SystemTime};
 
 use proptest::prelude::*;
 use ra_catalog::fixture::{Entry, Link, materialize};
 use ra_core::{
-    Action, Core, CoreError, Env, ExecReport, FileKind, Outcome, Selection, TrashBackend,
+    Action, Core, CoreError, Env, ExecReport, FileKind, Outcome, Selection, SkipCause, TrashBackend,
 };
 
 // ---------------------------------------------------------------------------
@@ -99,6 +101,29 @@ fn snapshot(base: &Path) -> BTreeMap<PathBuf, Meta> {
         }
     }
     out
+}
+
+/// Proceso hijo (`sleep`) con un fichero abierto como entrada estándar. Se
+/// mata al salir de ámbito, también si la prueba falla.
+struct HeldOpen(Child);
+
+impl HeldOpen {
+    fn spawn(file: &Path) -> HeldOpen {
+        let f = fs::File::open(file).expect("abrir");
+        let child = Command::new("/bin/sleep")
+            .arg("60")
+            .stdin(Stdio::from(f))
+            .spawn()
+            .expect("lanzar sleep");
+        HeldOpen(child)
+    }
+}
+
+impl Drop for HeldOpen {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }
 
 fn inodes(s: &BTreeMap<PathBuf, Meta>) -> BTreeSet<u64> {
@@ -439,6 +464,55 @@ proptest! {
         prop_assert_eq!(preview.dry_run.items.len(), preview.plan.items().len());
         let all_would = preview.dry_run.items.iter().all(|i| matches!(i.outcome, Outcome::Would { .. }));
         prop_assert!(all_would);
+    }
+
+    /// 7: un elemento con un fichero abierto por otro proceso se omite con
+    /// motivo `in_use` y queda intacto; el resto se procesa (RF-SEG-08).
+    #[test]
+    fn skips_items_open_by_another_process(
+        (entries, links) in tree(),
+        pick in any::<prop::sample::Index>(),
+        permanent in any::<bool>(),
+    ) {
+        let w = World::new(&entries, &links);
+        let action = if permanent { Action::Delete } else { Action::Trash };
+        let preview = w.core.plan(&selection(true), action).expect("plan");
+        // Elementos con algún fichero que abrir: el propio fichero o el
+        // primero de la carpeta.
+        let candidates: Vec<(PathBuf, PathBuf)> = preview
+            .plan
+            .items()
+            .iter()
+            .filter_map(|i| match i.kind {
+                FileKind::File => Some((i.path.clone(), i.path.clone())),
+                FileKind::Dir => first_file(&i.path).map(|f| (i.path.clone(), f)),
+                _ => None,
+            })
+            .collect();
+        prop_assume!(!candidates.is_empty());
+        let (held_item, held_file) = &candidates[pick.index(candidates.len())];
+        let contents = fs::read(held_file).expect("leer");
+
+        let holder = HeldOpen::spawn(held_file);
+        let hash = preview.plan.plan_hash().to_owned();
+        let report = w.core.execute(preview.plan, &hash, "test").expect("ejecución");
+        let pid = holder.0.id();
+        drop(holder);
+
+        for r in &report.items {
+            if &r.path == held_item {
+                let in_use = matches!(&r.outcome, Outcome::Skipped { cause: SkipCause::InUse { .. }, .. });
+                prop_assert!(in_use, "{:?} está abierto y no se omitió: {:?}", r.path, r.outcome);
+                let v = serde_json::to_value(&r.outcome).expect("json");
+                prop_assert_eq!(&v["reason"], "in_use");
+                prop_assert_eq!(&v["detail"]["pid"], pid);
+            } else {
+                let done = matches!(r.outcome, Outcome::Done { .. });
+                prop_assert!(done, "{:?} no está abierto y no se procesó: {:?}", r.path, r.outcome);
+            }
+        }
+        prop_assert_eq!(report.skipped, 1);
+        prop_assert_eq!(fs::read(held_file).expect("sigue en su sitio"), contents);
     }
 }
 
