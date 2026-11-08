@@ -590,6 +590,7 @@ fn recovered_trash_item_keeps_its_location() {
             regenerable: item.regenerable,
             bytes: item.bytes_allocated,
             parent_mode: None,
+            origin: Some(item.origin),
         },
         true,
     )
