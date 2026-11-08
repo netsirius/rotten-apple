@@ -190,7 +190,7 @@ fn validators() -> &'static BTreeMap<(String, u64), Compiled> {
 
 fn errors_of(v: &jsonschema::Validator, doc: &Value) -> Vec<String> {
     v.iter_errors(doc)
-        .map(|e| format!("{}: {e}", e.instance_path))
+        .map(|e| format!("{}: {e}", e.instance_path()))
         .collect()
 }
 
