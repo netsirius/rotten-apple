@@ -22,7 +22,8 @@
 //!   `ROTTEN_CRASH_SEED=<semilla> ROTTEN_CRASH_ROUNDS=1` (mismo `k` y mismo
 //!   retardo; el reparto del planificador del sistema no es reproducible).
 //! - `ROTTEN_CRASH_STRICT=1`: falla también si un elemento queda en la
-//!   Papelera con paradero «desconocido» en el journal.
+//!   Papelera con paradero «desconocido» en el journal (ver
+//!   `recovered_trash_item_keeps_its_location`).
 //! - `ROTTEN_BIN`: binario `rotten` que se lanza. Por defecto, el de
 //!   `target/<perfil>/rotten`, que `cargo test --workspace` compila antes de
 //!   ejecutar las pruebas. Con `cargo test -p ra-core` hay que compilarlo
@@ -39,7 +40,8 @@ use std::time::{Duration, Instant, SystemTime};
 use ra_catalog::fixture::{Entry, materialize};
 use ra_core::{Action, Core, Env, Selection, TrashBackend};
 use ra_history::{
-    HistoryPaths, ItemState, OpKind, OpStatus, list_ops, manifest_for, prepare_undo, read_journal,
+    Event, HistoryPaths, ItemState, Journal, OpKind, OpMode, OpStatus, StepAction, list_ops,
+    manifest_for, prepare_undo, read_journal,
 };
 
 const FILES: usize = 10;
@@ -541,4 +543,63 @@ fn kill9_at_random_points_leaves_everything_recoverable() {
         "{unknown} elementos en la Papelera con paradero desconocido en el journal \
          (semillas {unknown_seeds:?})"
     );
+}
+
+/// Una limpieza muere después de mover el elemento a la Papelera y antes de
+/// anotar el resultado. La operación registró qué Papelera usaba
+/// (`trash: dir:<ruta>`) y el elemento está allí con el mismo inode, pero
+/// `recover_incomplete` solo busca el destino de los `restore`: anota el
+/// elemento como `unknown` y el deshacer lo da por perdido.
+#[test]
+#[ignore = "bug de recuperación (T-07): un elemento ya movido a la Papelera queda como \
+            «paradero desconocido» y no se puede deshacer; el arreglo es de ra-exec/run.rs"]
+fn recovered_trash_item_keeps_its_location() {
+    let w = world();
+    let preview = w
+        .core
+        .plan(&Selection::default(), Action::Trash)
+        .expect("plan");
+    let item = preview.plan.items()[0].clone();
+    let paths = HistoryPaths::new(&w.state);
+    let mut j = Journal::open(&paths, "op-clean-crash", SystemTime::now()).expect("journal");
+    j.write(
+        Event::OpStarted {
+            kind: OpKind::Clean,
+            mode: OpMode::Trash,
+            plan_hash: Some(preview.plan.plan_hash().into()),
+            undo_of: None,
+            items: 1,
+            bytes: item.bytes_allocated,
+            by: "test".into(),
+            trash: TrashBackend::Dir(w.trash.clone()).describe(),
+        },
+        true,
+    )
+    .expect("start");
+    j.write(
+        Event::ItemIntent {
+            item: item.item_id,
+            action: StepAction::Trash,
+            path: item.path.clone(),
+            identity: item.identity,
+            target: None,
+            category: Some(item.category.clone()),
+            regenerable: item.regenerable,
+            bytes: item.bytes_allocated,
+            parent_mode: None,
+        },
+        true,
+    )
+    .expect("intent");
+    let to = w.trash.join(item.path.file_name().expect("nombre"));
+    fs::rename(&item.path, &to).expect("mover a la Papelera");
+    drop(j); // «Cierre abrupto»: sin item_done ni op_finished.
+
+    assert_eq!(w.core.recover().expect("recover"), vec!["op-clean-crash"]);
+    let (records, _) = read_journal(&paths).expect("journal");
+    let m = manifest_for(&records, "op-clean-crash").expect("manifiesto");
+    assert_eq!(m.items[0].state, ItemState::Trashed);
+    assert_eq!(m.items[0].trashed_path.as_ref(), Some(&to));
+    let undo = prepare_undo(&records, "op-clean-crash", None).expect("deshacer");
+    assert_eq!(undo.ready.len(), 1, "{:?}", undo.not_recoverable);
 }
