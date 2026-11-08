@@ -10,7 +10,8 @@
 //! - algún componente es una fototeca (`*.photoslibrary`) o una copia de
 //!   Time Machine (`Backups.backupdb`);
 //! - viene de una selección explícita y está fuera de la carpeta personal
-//!   (RF-SEG-19).
+//!   (RF-SEG-19), o es una de las carpetas de documentos del usuario en sí
+//!   (su contenido sí se puede elegir).
 
 use std::path::{Path, PathBuf};
 
@@ -36,6 +37,10 @@ pub enum ProtectionReason {
     AncestorOfProtected { root: PathBuf },
     #[error("carpeta de documentos del usuario ({root}): solo por selección explícita")]
     UserFolder { root: PathBuf },
+    /// La carpeta de documentos en sí, por selección explícita: se puede
+    /// mover su contenido, no la carpeta.
+    #[error("es una carpeta del usuario ({root}): se puede mover su contenido, no la carpeta")]
+    UserFolderRoot { root: PathBuf },
     #[error("es la carpeta personal")]
     Home,
     #[error("es la raíz de un volumen")]
@@ -144,6 +149,16 @@ impl ProtectedList {
         self
     }
 
+    /// La carpeta de documentos del usuario (Documentos, Escritorio,
+    /// Descargas, Imágenes, Películas, Música) que es exactamente `path`.
+    pub fn user_folder_root(&self, path: &Path) -> Option<&Path> {
+        let comps = paths::folded_components(path);
+        self.user_folders
+            .iter()
+            .find(|r| paths::folded_components(r) == comps)
+            .map(PathBuf::as_path)
+    }
+
     /// Raíces protegidas en todo caso (para `doctor` y las pruebas).
     pub fn roots(&self) -> impl Iterator<Item = &Path> {
         self.always.iter().map(PathBuf::as_path)
@@ -188,11 +203,15 @@ impl ProtectedList {
             }
         }
         for root in &self.user_folders {
-            if paths::is_within(root, path) && root.as_path() != path {
+            let is_root = paths::folded_components(root) == comps;
+            if paths::is_within(root, path) && !is_root {
                 return Err(ProtectionReason::AncestorOfProtected { root: root.clone() });
             }
             if origin == Origin::Rules && paths::is_within(path, root) {
                 return Err(ProtectionReason::UserFolder { root: root.clone() });
+            }
+            if is_root {
+                return Err(ProtectionReason::UserFolderRoot { root: root.clone() });
             }
         }
         // La carpeta personal es ancestro de casi todo lo anterior, pero se
@@ -256,10 +275,29 @@ mod tests {
         let p = Path::new("/Users/ana/Downloads/setup.dmg");
         assert!(l.check(p, Origin::Rules).is_err());
         assert!(l.check(p, Origin::ExplicitSelection).is_ok());
-        // La carpeta en sí: por selección explícita sí, por reglas nunca.
-        let d = Path::new("/Users/ana/Documents");
-        assert!(l.check(d, Origin::ExplicitSelection).is_ok());
-        assert!(l.check(d, Origin::Rules).is_err());
+        // La carpeta en sí, nunca: por reglas ni por selección explícita.
+        for f in HOME_USER_FOLDERS {
+            let d = Path::new("/Users/ana").join(f);
+            assert_eq!(l.user_folder_root(&d), Some(d.as_path()));
+            assert!(l.check(&d, Origin::Rules).is_err());
+            assert!(l.check(&d.join("x"), Origin::ExplicitSelection).is_ok());
+            if *f == "Music" {
+                // Ya era ancestro de `~/Music/Music`, que es protegida.
+                assert!(l.check(&d, Origin::ExplicitSelection).is_err());
+                continue;
+            }
+            assert_eq!(
+                l.check(&d, Origin::ExplicitSelection),
+                Err(ProtectionReason::UserFolderRoot { root: d.clone() }),
+                "{f}"
+            );
+        }
+        // Sin distinguir mayúsculas, como APFS.
+        assert!(matches!(
+            l.check(Path::new("/Users/ana/downloads"), Origin::ExplicitSelection),
+            Err(ProtectionReason::UserFolderRoot { .. })
+        ));
+        assert_eq!(l.user_folder_root(Path::new("/Users/ana/Library")), None);
     }
 
     #[test]

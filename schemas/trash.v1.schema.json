@@ -255,7 +255,7 @@
       "properties": {
         "kind": {
           "enum": [
-            "inside_protected", "ancestor_of_protected", "user_folder", "home", "volume_root",
+            "inside_protected", "ancestor_of_protected", "user_folder", "user_folder_root", "home", "volume_root",
             "app_state", "protected_bundle", "invalid_path", "outside_home"
           ]
         },

@@ -181,6 +181,31 @@ fn paths_outside_home_exit_5_and_touch_nothing() {
     assert!(trash_is_empty(&fx));
 }
 
+/// `trash put ~/Downloads` aborta con 5; `trash put ~/Downloads/x`, no.
+#[test]
+fn user_folder_roots_exit_5_but_their_contents_do_not() {
+    let fx = fixture();
+    let before = snapshot(&fx.home, &fx.state);
+    for root in ["Downloads", "Desktop", "Documents"] {
+        let (code, doc) = fx.run(&["trash", "put", "--yes", "--json", &fx.p(root)]);
+        assert_eq!(code, 5, "{root}: {doc:#}");
+        assert_eq!(doc["error"]["exit_code"], 5);
+    }
+    assert_eq!(snapshot(&fx.home, &fx.state), before);
+    assert!(trash_is_empty(&fx));
+
+    let (code, doc) = fx.run(&[
+        "trash",
+        "put",
+        "--yes",
+        "--json",
+        &fx.p("Downloads/setup.dmg"),
+    ]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert_eq!(doc["report"]["done"], 1);
+    assert!(!Path::new(&fx.p("Downloads/setup.dmg")).exists());
+}
+
 #[test]
 fn dry_run_shows_the_plan_with_its_origin_and_changes_nothing() {
     let fx = fixture();

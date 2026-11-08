@@ -11,6 +11,8 @@
 //!   [`CoreError::Safety`] en lugar de omitirse;
 //! - también aborta una ruta que, ya resuelta, queda fuera de la carpeta
 //!   personal (RF-SEG-19);
+//! - y una de las seis carpetas de documentos del usuario en sí, o un enlace
+//!   que apunta a una de ellas: su contenido sí se puede elegir;
 //! - una ruta que no se puede resolver ni clasificar también aborta;
 //! - una ruta excluida por el usuario no entra en el plan (queda en
 //!   `skipped`).
@@ -24,7 +26,7 @@ use ra_exec::ExecContext;
 use ra_plan::PlanInputs;
 use ra_safety::fingerprint::{fingerprint_path, stat_nofollow_any};
 use ra_safety::identity::check_flags;
-use ra_safety::{AppProbe, Origin};
+use ra_safety::{AppProbe, Origin, ProtectionReason};
 
 use crate::{Action, Core, CoreError, Plan, Preview, Selection, tilde};
 
@@ -51,6 +53,20 @@ impl Core {
             if let Err(reason) = protected.check(&path, Origin::ExplicitSelection) {
                 return Err(CoreError::Safety(format!(
                     "{}: {reason}. No se mueve nada.",
+                    tilde(&path, &self.env.home)
+                )));
+            }
+            // Un enlace a ~/Downloads (o a otra carpeta del usuario) cuenta
+            // como la carpeta.
+            if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink())
+                && let Ok(target) = fs::canonicalize(&path)
+                && let Some(root) = protected.user_folder_root(&target)
+            {
+                let reason = ProtectionReason::UserFolderRoot {
+                    root: root.to_path_buf(),
+                };
+                return Err(CoreError::Safety(format!(
+                    "{}: es un enlace a otra ruta que {reason}. No se mueve nada.",
                     tilde(&path, &self.env.home)
                 )));
             }

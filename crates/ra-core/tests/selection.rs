@@ -256,6 +256,42 @@ fn paths_outside_home_abort_everything() {
     assert!(fs::read_dir(&w.trash).expect("trash").next().is_none());
 }
 
+/// Las seis carpetas de documentos en sí abortan con selección explícita,
+/// también por un enlace que apunte a ellas; su contenido sí entra.
+#[test]
+fn user_folder_roots_abort_but_their_contents_do_not() {
+    let entries: Vec<Entry> = USER_FOLDERS
+        .iter()
+        .map(|f| file(&format!("{f}/dentro.txt"), 30))
+        .collect();
+    let w = World::new(&entries, &[]);
+    for f in USER_FOLDERS {
+        let root = w.p(f);
+        let m = safety(w.core.plan_selection(std::slice::from_ref(&root)));
+        // `~/Music` ya era ancestro de `~/Music/Music`, que es protegida.
+        if *f != "Music" {
+            assert!(m.contains("se puede mover su contenido"), "{f}: {m}");
+        }
+        // `~/Downloads/.` es la misma carpeta.
+        safety(w.core.plan_selection(&[root.join(".")]));
+        let inside = w
+            .core
+            .plan_selection(&[root.join("dentro.txt")])
+            .expect("el contenido sí se puede elegir");
+        assert_eq!(inside.plan.items().len(), 1, "{f}");
+    }
+    // Sin distinguir mayúsculas.
+    safety(w.core.plan_selection(&[w.p("downloads")]));
+    // Un enlace a una de ellas cuenta como la carpeta.
+    std::os::unix::fs::symlink(w.p("Downloads"), w.p("Desktop/dl")).expect("enlace");
+    let m = safety(w.core.plan_selection(&[w.p("Desktop/dl")]));
+    assert!(m.contains("enlace"), "{m}");
+    for f in USER_FOLDERS {
+        assert!(w.p(f).join("dentro.txt").exists());
+    }
+    assert!(fs::read_dir(&w.trash).expect("trash").next().is_none());
+}
+
 #[test]
 fn excluded_paths_stay_out_of_the_plan() {
     let w = World::new(
