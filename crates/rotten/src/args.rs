@@ -1,5 +1,7 @@
 //! Argumentos del CLI (07 §2–§4).
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -77,6 +79,24 @@ pub enum Cmd {
     Exclude {
         #[command(subcommand)]
         action: ExcludeCmd,
+    },
+    /// Papelera.
+    Trash {
+        #[command(subcommand)]
+        action: TrashCmd,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TrashCmd {
+    /// Mueve a la Papelera las rutas indicadas, tras revisarlas; se puede deshacer.
+    Put {
+        /// Ficheros o carpetas que mover a la Papelera.
+        #[arg(required = true, value_name = "RUTA")]
+        paths: Vec<PathBuf>,
+        /// Muestra el plan exacto sin cambiar nada.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
