@@ -11,6 +11,7 @@ use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
+pub mod attrs;
 pub mod files;
 
 /// Rutas de los ejecutables de todos los procesos visibles para el usuario.
