@@ -5,7 +5,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use ra_safety::Identity;
+use ra_safety::{Identity, Origin};
 use serde::{Deserialize, Serialize};
 
 use crate::HistoryPaths;
@@ -79,6 +79,11 @@ pub enum Event {
         /// Permisos de la carpeta padre, para recrearla al deshacer.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         parent_mode: Option<u32>,
+        /// De dónde salió el elemento del plan: reglas del catálogo o
+        /// selección explícita. Falta en los journals anteriores a T-10 y en
+        /// las restauraciones.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        origin: Option<Origin>,
     },
     ItemDone {
         item: u32,
@@ -266,6 +271,7 @@ mod tests {
                 regenerable: false,
                 bytes: 10,
                 parent_mode: Some(0o755),
+                origin: Some(Origin::ExplicitSelection),
             },
             true,
         )
@@ -304,5 +310,14 @@ mod tests {
         let line = fs::read_to_string(j.path()).expect("read");
         assert!(line.starts_with("{\"schema_version\":1,"));
         assert!(line.contains("\"ev\":\"item_intent\""));
+        assert!(line.contains("\"origin\":\"explicit_selection\""));
+    }
+
+    #[test]
+    fn intents_without_origin_still_parse() {
+        // Línea de un journal anterior a T-10: sin `origin`.
+        let line = r#"{"schema_version":1,"ts":"2026-11-01T10:00:00.000Z","op":"o","ev":"item_intent","item":1,"action":"trash","path":"/a","identity":{"dev":1,"ino":2,"kind":"file","size":3,"mtime":4,"mtime_nsec":0,"ctime":5,"ctime_nsec":0},"category":"CAT-03","regenerable":false,"bytes":10}"#;
+        let r: Record = serde_json::from_str(line).expect("parse");
+        assert!(matches!(r.event, Event::ItemIntent { origin: None, .. }));
     }
 }

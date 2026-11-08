@@ -492,6 +492,7 @@ mod tests {
                 regenerable: false,
                 bytes: 1,
                 parent_mode: None,
+                origin: None,
             },
             true,
         )

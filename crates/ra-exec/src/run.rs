@@ -226,6 +226,7 @@ pub fn execute(
                 regenerable: item.regenerable,
                 bytes: item.bytes_allocated,
                 parent_mode,
+                origin: Some(item.origin),
             },
             true,
         )?;
@@ -454,6 +455,7 @@ pub fn execute_undo(
                 regenerable: u.regenerable,
                 bytes: u.bytes,
                 parent_mode: u.parent_mode,
+                origin: None,
             },
             true,
         )?;

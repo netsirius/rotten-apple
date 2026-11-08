@@ -21,7 +21,7 @@ pub use ra_catalog::{Catalog, Localized, Risk};
 pub use ra_exec::{ExecReport, ItemReport, Outcome, SkipCause, TrashBackend};
 pub use ra_history::{OpSummary, UndoPlan, UndoState};
 pub use ra_plan::{Action, Plan, PlanError, Selection};
-pub use ra_safety::{ConfigState, Exclusion, FileKind, RunningApps, SystemApps};
+pub use ra_safety::{ConfigState, Exclusion, FileKind, Origin, RunningApps, SystemApps};
 pub use scan::{CategorySummary, ScanReport, ScanStatus};
 
 use ra_exec::{ExecContext, ExecLock};
@@ -179,6 +179,7 @@ impl Core {
             exclusions: &exclusions,
             selection,
             action,
+            origin: Origin::Rules,
             now: SystemTime::now(),
         });
         let history = self.history_paths();

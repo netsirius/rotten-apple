@@ -1,9 +1,14 @@
 //! Plan inmutable con hash (ADR-04 §5.2, §5.3).
 //!
-//! Un [`Plan`] se construye una vez a partir del escaneo, aplicando la capa 2
-//! de validación: lista protegida incrustada, exclusiones del usuario y
-//! elementos bloqueados por la capa 1. Después no se puede modificar: sus
+//! Un [`Plan`] se construye una vez a partir de unos candidatos, aplicando la
+//! capa 2 de validación: lista protegida incrustada, exclusiones del usuario
+//! y elementos bloqueados por la capa 1. Después no se puede modificar: sus
 //! campos son privados y solo tiene lectores.
+//!
+//! Los candidatos pueden venir del escaneo del catálogo ([`Origin::Rules`])
+//! o de una selección explícita del usuario ([`Origin::ExplicitSelection`],
+//! `rotten trash put`). Todos pasan por las mismas comprobaciones, y cada
+//! elemento lleva anotado su origen.
 //!
 //! `plan_hash` es el BLAKE3 de la serialización canónica (claves ordenadas)
 //! del plan sin el propio hash. La aprobación se liga a ese hash y caduca a
@@ -63,6 +68,19 @@ pub struct PlanItem {
     pub reversible: bool,
     /// Apps que deben seguir cerradas al ejecutar.
     pub apps: Vec<String>,
+    /// De dónde sale el elemento. No se serializa cuando es
+    /// [`Origin::Rules`]: los planes del catálogo quedan igual que antes
+    /// (mismo JSON, mismo `plan_hash`) y la regla ya está en `rule`.
+    #[serde(default = "rules_origin", skip_serializing_if = "is_rules_origin")]
+    pub origin: Origin,
+}
+
+fn rules_origin() -> Origin {
+    Origin::Rules
+}
+
+fn is_rules_origin(o: &Origin) -> bool {
+    *o == Origin::Rules
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,12 +137,17 @@ impl Selection {
 }
 
 pub struct PlanInputs<'a> {
+    /// Candidatos: del escaneo del catálogo o de una selección explícita.
     pub scan: &'a ScanResult,
     pub home: &'a Path,
     pub protected: &'a ProtectedList,
     pub exclusions: &'a Exclusions,
+    /// Solo con [`Origin::Rules`]: con una selección explícita entran todos
+    /// los candidatos (los ha elegido el usuario uno a uno).
     pub selection: &'a Selection,
     pub action: Action,
+    /// Origen de todos los candidatos de `scan`.
+    pub origin: Origin,
     pub now: SystemTime,
 }
 
@@ -173,7 +196,8 @@ impl Plan {
                 category: c.cat.clone(),
                 reason,
             };
-            if !inp.selection.wants(c) {
+            let wanted = inp.origin == Origin::ExplicitSelection || inp.selection.wants(c);
+            if !wanted {
                 if c.block.is_none() {
                     let e = not_selected.entry(c.cat.clone()).or_default();
                     e.items += 1;
@@ -185,7 +209,7 @@ impl Plan {
                 skipped.push(skip(SkipReason::Blocked(b.clone())));
                 continue;
             }
-            if let Err(r) = inp.protected.check(&c.path, Origin::Rules) {
+            if let Err(r) = inp.protected.check(&c.path, inp.origin) {
                 skipped.push(skip(SkipReason::Protected(r)));
                 continue;
             }
@@ -240,6 +264,7 @@ impl Plan {
                 action: inp.action,
                 reversible: inp.action == Action::Trash,
                 apps: c.apps.clone(),
+                origin: inp.origin,
             });
         }
         skipped.sort_by(|a, b| a.path.cmp(&b.path));
@@ -255,7 +280,7 @@ impl Plan {
             plan_id: new_id(inp.now),
             created_at: humantime::format_rfc3339_millis(inp.now).to_string(),
             catalog_version: inp.scan.catalog_version.clone(),
-            origin: Origin::Rules,
+            origin: inp.origin,
             home: inp.home.to_path_buf(),
             action: inp.action,
             items,
@@ -339,6 +364,10 @@ impl Plan {
     }
     pub fn home(&self) -> &Path {
         &self.home
+    }
+    /// Origen de los elementos del plan.
+    pub fn origin(&self) -> Origin {
+        self.origin
     }
     pub fn action(&self) -> Action {
         self.action

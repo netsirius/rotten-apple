@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use proptest::prelude::*;
@@ -43,6 +43,10 @@ fn cand(path: &str, cat: &str, preselected: bool, block: Option<Block>) -> Candi
 }
 
 fn build(cands: Vec<Candidate>, sel: &Selection, excl: &str) -> Plan {
+    build_from(cands, sel, excl, Origin::Rules)
+}
+
+fn build_from(cands: Vec<Candidate>, sel: &Selection, excl: &str, origin: Origin) -> Plan {
     let home = std::path::Path::new(HOME);
     let protected =
         ProtectedList::embedded(home, &home.join("Library/Application Support/app.test"));
@@ -60,8 +64,78 @@ fn build(cands: Vec<Candidate>, sel: &Selection, excl: &str) -> Plan {
         exclusions: &exclusions,
         selection: sel,
         action: Action::Trash,
+        origin,
         now: SystemTime::now(),
     })
+}
+
+#[test]
+fn explicit_selection_takes_everything_and_annotates_origin() {
+    let cands = vec![
+        cand("/Users/ana/Downloads/setup.dmg", "SEL", false, None),
+        cand("/Users/ana/Desktop/notas", "SEL", false, None),
+        cand("/Users/ana/Library", "SEL", false, None),
+        cand("/Users/ana/Desktop/viejo", "SEL", false, None),
+    ];
+    let excl = "[exclusions]\npaths = [\"~/Desktop/viejo\"]\n";
+    // Con origen «reglas», las carpetas de documentos no entran nunca.
+    let rules = build_from(cands.clone(), &Selection::default(), excl, Origin::Rules);
+    assert!(rules.items().is_empty());
+
+    let p = build_from(
+        cands,
+        &Selection::default(),
+        excl,
+        Origin::ExplicitSelection,
+    );
+    assert_eq!(p.origin(), Origin::ExplicitSelection);
+    let paths: Vec<_> = p.items().iter().map(|i| i.path.clone()).collect();
+    assert_eq!(
+        paths,
+        vec![
+            PathBuf::from("/Users/ana/Desktop/notas"),
+            PathBuf::from("/Users/ana/Downloads/setup.dmg"),
+        ]
+    );
+    assert!(
+        p.items()
+            .iter()
+            .all(|i| i.origin == Origin::ExplicitSelection && !i.preselected)
+    );
+    // El ancestro de una ruta protegida y la ruta excluida quedan omitidos.
+    assert!(
+        p.skipped()
+            .iter()
+            .any(|s| s.path == Path::new("/Users/ana/Library")
+                && matches!(s.reason, SkipReason::Protected(_)))
+    );
+    assert!(
+        p.skipped()
+            .iter()
+            .any(|s| s.path == Path::new("/Users/ana/Desktop/viejo")
+                && matches!(s.reason, SkipReason::Excluded(_)))
+    );
+
+    // El origen viaja en el JSON y el plan se puede volver a cargar.
+    let v = serde_json::to_value(&p).expect("json");
+    assert_eq!(v["origin"], "explicit_selection");
+    assert_eq!(v["items"][0]["origin"], "explicit_selection");
+    let back = Plan::from_json(&serde_json::to_string(&p).expect("json")).expect("carga");
+    assert_eq!(back, p);
+}
+
+#[test]
+fn rule_items_serialize_as_before() {
+    let p = build(
+        vec![cand("/Users/ana/Library/Logs/b", "CAT-03", true, None)],
+        &Selection::default(),
+        "",
+    );
+    let v = serde_json::to_value(&p).expect("json");
+    assert_eq!(v["origin"], "rules");
+    assert!(v["items"][0].get("origin").is_none());
+    let back = Plan::from_json(&serde_json::to_string(&p).expect("json")).expect("carga");
+    assert_eq!(back.items()[0].origin, Origin::Rules);
 }
 
 #[test]
