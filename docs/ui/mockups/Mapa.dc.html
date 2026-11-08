@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mapa de funcionalidades</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width: 1360px; height: 1100px; box-sizing: border-box; padding: 48px 56px; display: flex; flex-direction: column; gap: 18px; background: radial-gradient(60% 420px at 50% -140px, rgba(87,78,255,0.40) 0%, rgba(87,78,255,0) 100%), linear-gradient(180deg, #000240 0px, #000000 600px); font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div style="display: flex; align-items: flex-end; gap: 24px;">
+    <div style="flex-grow: 1;">
+      <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Mapa de funcionalidades</h1>
+      <p style="margin: 8px 0 0; font-size: 15px; color: rgba(255,255,255,0.7);">Dónde vive cada función en la interfaz, su comando y su fase. Incluye todos los comandos de Mole y los nuevos.</p>
+    </div>
+    <div style="display: flex; gap: 8px; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 11.5px;">
+      <span style="padding: 3px 9px; border-radius: 999px; background: rgba(95,237,131,0.14); color: #5FED83;">MVP</span>
+      <span style="padding: 3px 9px; border-radius: 999px; background: rgba(167,162,255,0.18); color: #C9C6FF;">v1</span>
+      <span style="padding: 3px 9px; border-radius: 999px; background: rgba(230,183,254,0.16); color: #E6B7FE;">v2</span>
+    </div>
+  </div>
+  <div role="table" aria-label="Funcionalidades" style="display: flex; flex-direction: column;">
+    <div role="row" style="display: grid; grid-template-columns: 27% 35% 28% 10%; padding: 8px 10px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(255,255,255,0.5);">
+      <span role="columnheader">Funcionalidad</span><span role="columnheader">Dónde se presenta</span><span role="columnheader">CLI</span><span role="columnheader">Fase</span>
+    </div>
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="31">
+      <sc-if value="{{r.isGroup}}" hint-placeholder-val="{{false}}">
+        <div role="row" style="padding: 12px 10px 4px; font-size: 13px; font-weight: 600; color: #E6B7FE;"><span role="cell">{{r.name}}</span></div>
+      </sc-if>
+      <sc-if value="{{r.isRow}}" hint-placeholder-val="{{true}}">
+        <div role="row" style="display: grid; grid-template-columns: 27% 35% 28% 10%; align-items: center; min-height: 26px; padding: 3px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13.5px;">
+          <span role="cell" style="font-weight: 600;">{{r.name}}</span>
+          <span role="cell" style="color: rgba(255,255,255,0.78);">{{r.where}}</span>
+          <span role="cell" style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: rgba(255,255,255,0.75);">{{r.cli}}</span>
+          <span role="cell"><span style="{{r.phaseStyle}}">{{r.phase}}</span></span>
+        </div>
+      </sc-if>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const P = {
+      'MVP': 'background: rgba(95,237,131,0.14); color: #5FED83;',
+      'v1': 'background: rgba(167,162,255,0.18); color: #C9C6FF;',
+      'v2': 'background: rgba(230,183,254,0.16); color: #E6B7FE;'
+    };
+    const G = (name) => ({ isGroup: true, isRow: false, name: name });
+    const R = (name, where, cli, phase) => ({
+      isGroup: false, isRow: true, name: name, where: where, cli: cli, phase: phase,
+      phaseStyle: 'padding: 2px 8px; border-radius: 999px; font-family: \'Commit Mono\', ui-monospace, Menlo, monospace; font-size: 11px; ' + P[phase.split(' ')[0]]
+    });
+    const rows = [
+      G('Para todos'),
+      R('Escaneo inteligente y estado de la manzana', 'Escaneo inteligente (portada → resultado)', 'rotten scan', 'MVP'),
+      R('Limpieza del sistema', 'Limpieza › Sistema', 'rotten clean', 'MVP'),
+      R('Instaladores olvidados', 'Limpieza › Instaladores', 'rotten installer', 'MVP'),
+      R('Revisión obligatoria antes de actuar', 'Hoja «Revisa antes de limpiar»', '--dry-run', 'MVP'),
+      R('Liberar ahora · vaciar Papelera', 'Pantalla «Listo» · resultado del escaneo', 'rotten free · rotten trash empty', 'MVP'),
+      R('Historial y deshacer', 'Historial', 'rotten history · rotten undo', 'MVP'),
+      R('Desinstalar apps y sus restos', 'Aplicaciones › Desinstalar', 'rotten uninstall', 'MVP'),
+      R('Quitar código Intel de apps', 'Aplicaciones › Adelgazar', 'rotten slim', 'v1'),
+      R('Explorar qué ocupa espacio', 'Espacio (lista en MVP, mapa en v1)', 'rotten analyze', 'MVP'),
+      R('Duplicados y archivos antiguos', 'Espacio › panel lateral', 'rotten analyze --duplicates', 'v1'),
+      R('Privacidad y rastreo', 'Privacidad', 'rotten privacy', 'v1'),
+      R('Elementos de inicio', 'Mantenimiento › Al iniciar sesión', 'rotten optimize --startup', 'MVP'),
+      R('Tareas de mantenimiento', 'Mantenimiento › Tareas', 'rotten optimize', 'v1'),
+      R('Monitor del sistema', 'Monitor', 'rotten status', 'v1'),
+      R('Manzana en la barra de menús', 'Icono y panel en la barra de menús', 'rotten status --watch', 'v1'),
+      G('Desarrollo (modo desarrollador)'),
+      R('Artefactos de proyectos inactivos', 'Desarrollo › Proyectos', 'rotten purge', 'MVP'),
+      R('Toolchains, cachés, contenedores, Xcode', 'Desarrollo › pestañas', 'rotten dev', 'v1'),
+      R('Comando oficial con simulación', 'Hoja «Ejecutar el comando oficial»', 'rotten dev … --dry-run', 'v1'),
+      R('Vulnerabilidades, prioridad y SBOM', 'Dependencias', 'rotten vulns', 'v1'),
+      R('Secretos y credenciales filtradas', 'Secretos', 'rotten secrets', 'v1'),
+      G('IA (opcional, apagada por defecto)'),
+      R('Organizar Escritorio y Descargas', 'Organizar con IA', 'rotten organize', 'v1'),
+      R('Marcadores: duplicados, enlaces, temas', 'Organizar con IA › Marcadores', 'rotten bookmarks', 'v1'),
+      R('«¿Qué es esto?»', 'Botón en el detalle de Espacio y Limpieza', 'rotten explain', 'v1'),
+      G('Sistema'),
+      R('Permisos y diagnóstico', 'Bienvenida · Ajustes › Permisos', 'rotten doctor', 'MVP'),
+      R('Exclusiones', 'Ajustes › Exclusiones · «Excluir siempre…»', 'rotten exclude', 'MVP'),
+      R('Limpiezas programadas', 'Ajustes › Programación', 'rotten schedule', 'v1'),
+      R('Autocompletado, lanzadores y agentes', 'Ajustes › Línea de comandos', 'rotten completion · launchers', 'v1'),
+      R('Actualizar · desinstalar la app', 'Ajustes › Avanzado', 'rotten update · rotten remove', 'MVP'),
+      R('Touch ID para sudo · servidor MCP', 'Ajustes › Avanzado', 'rotten touchid · rotten mcp', 'v2')
+    ];
+    return { rows: rows };
+  }
+}
+</script>
+</body>
+</html>

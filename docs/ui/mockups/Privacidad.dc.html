@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Privacidad</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:50</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), radial-gradient(40% 50% at 30% 100%, rgba(255,226,154,0.10) 0%, rgba(255,226,154,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="privacidad" mode="simple" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="padding: 44px 48px 18px;">
+        <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Privacidad</h1>
+        <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">Rastros de navegación y de actividad. Cookies e historiales van a la Papelera: se pueden deshacer.</p>
+      </header>
+      <div style="display: flex; gap: 28px; padding: 0 48px; height: 440px;">
+        <section aria-label="Rastros" style="flex: 1 1 auto; min-width: 0; overflow: auto; display: flex; flex-direction: column;">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+            <sc-if value="{{r.isHead}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 14px 12px 6px;">
+                <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: rgba(255,255,255,0.55);">{{r.name}}</span>
+                <span style="font-size: 12.5px; color: {{r.noteColor}};">{{r.note}}</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{r.isItem}}" hint-placeholder-val="{{true}}">
+              <label style="{{r.rowStyle}}">
+                <input type="checkbox" checked="{{r.on}}" disabled="{{r.locked}}" onChange="{{r.toggle}}" style="width: 17px; height: 17px; margin: 0; accent-color: #574EFF;">
+                <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                  <span style="font-size: 15px; font-weight: 600;">{{r.name}}</span>
+                  <span style="font-size: 12.5px; color: rgba(255,255,255,0.6);">{{r.detail}}</span>
+                </span>
+                <span style="{{r.pillStyle}}">{{r.risk}}</span>
+              </label>
+            </sc-if>
+          </sc-for>
+        </section>
+        <aside aria-labelledby="perm-t" style="flex: 0 0 330px; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 18px; background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
+          <h2 id="perm-t" style="margin: 0; font-size: 17px; font-weight: 600;">Quién tiene acceso a qué</h2>
+          <p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: rgba(255,255,255,0.7);">Solo te lo enseñamos: los permisos se cambian en Ajustes del Sistema.</p>
+          <div style="display: flex; flex-direction: column;">
+            <sc-for list="{{perms}}" as="p" hint-placeholder-count="6">
+              <div style="display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+                <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                  <span style="font-size: 14px; font-weight: 600;">{{p.name}}</span>
+                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: rgba(255,255,255,0.55);">{{p.apps}}</span>
+                </span>
+                <span style="{{p.countStyle}}">{{p.count}}</span>
+                <a href="#ajustes" style="font-size: 12.5px; font-weight: 600;">Abrir</a>
+              </div>
+            </sc-for>
+          </div>
+        </aside>
+      </div>
+      <a href="Revision.dc.html" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font-size: 19px; font-weight: 600; text-decoration: none;">Limpiar</a>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.6);"><span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; color: #FFFFFF;">{{count}}</span> seleccionados · los navegadores abiertos se omiten · verás la lista antes</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const checks = st.checks || {};
+    const mono = 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace;';
+    const pills = {
+      'Seguro': 'background: rgba(95,237,131,0.12); color: #5FED83;',
+      'Precaución': 'background: rgba(255,194,122,0.14); color: #FFC27A;',
+      'Revisar': 'background: rgba(230,183,254,0.16); color: #E6B7FE;',
+      'Omitido': 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);'
+    };
+    const H = (name, note, color) => ({ isHead: true, isItem: false, name: name, note: note || '', noteColor: color || 'rgba(255,255,255,0.5)' });
+    const defs = [
+      H('Safari', 'cerrado'),
+      { id: 's-hist', name: 'Historial', detail: '4.812 visitas de los últimos 90 días · va a la Papelera', risk: 'Precaución' },
+      { id: 's-cook', name: 'Cookies y datos de sitios', detail: '318 sitios · cierra tus sesiones · puedes conservar algunos sitios', risk: 'Precaución' },
+      { id: 's-form', name: 'Autocompletado de formularios', detail: 'Nombres, direcciones y búsquedas guardadas', risk: 'Precaución' },
+      H('Google Chrome', 'abierto · ciérralo para incluirlo', '#FFC27A'),
+      { id: 'c-hist', name: 'Historial y lista de descargas', detail: 'Se omitirá mientras Chrome esté abierto', risk: 'Omitido', locked: true },
+      { id: 'c-cook', name: 'Cookies y datos de sitios', detail: '1.204 sitios', risk: 'Omitido', locked: true },
+      H('Sistema'),
+      { id: 'dns', name: 'Caché DNS', detail: 'Direcciones de webs recordadas · inocuo, no reversible · pide contraseña', risk: 'Seguro', on: true },
+      { id: 'ql', name: 'Miniaturas de Vista Rápida', detail: 'Previsualizaciones de archivos que has visto · 210 MB', risk: 'Seguro', on: true },
+      { id: 'quar', name: 'Historial de descargas de macOS', detail: 'macOS anota de dónde vino cada archivo descargado · 2.931 registros', risk: 'Precaución' },
+      { id: 'rec', name: 'Elementos recientes', detail: 'Listas de documentos, apps y servidores recientes', risk: 'Precaución' },
+      { id: 'clip', name: 'Portapapeles', detail: 'Lo último que copiaste · no reversible', risk: 'Precaución' },
+      H('Redes'),
+      { id: 'wifi', name: 'Redes Wi‑Fi conocidas', detail: '23 redes · el Mac dejará de conectarse solo a las que quites', risk: 'Revisar' }
+    ];
+    let count = 0;
+    const rows = defs.map((d) => {
+      if (d.isHead) return d;
+      const on = !d.locked && (checks[d.id] === undefined ? !!d.on : checks[d.id]);
+      if (on) count += 1;
+      return {
+        isHead: false, isItem: true, name: d.name, detail: d.detail, risk: d.risk, on: on, locked: !!d.locked,
+        pillStyle: 'flex-shrink: 0; padding: 2px 9px; border-radius: 999px; font-size: 11px; ' + mono + ' ' + pills[d.risk],
+        rowStyle: 'display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 6px 12px; border-radius: 14px; cursor: pointer; ' + (d.locked ? 'opacity: 0.6;' : ''),
+        toggle: () => { const n = Object.assign({}, checks); n[d.id] = !on; this.setState({ checks: n }); }
+      };
+    });
+    const perms = [
+      { name: 'Cámara', apps: 'Zoom, FaceTime, Teams, Chrome', n: 4 },
+      { name: 'Micrófono', apps: 'Zoom, Teams, Slack, Discord, Chrome, Loom', n: 6 },
+      { name: 'Ubicación', apps: 'Mapas, Tiempo, Chrome', n: 3 },
+      { name: 'Grabación de pantalla', apps: 'Zoom, Loom, Slack, Discord, CleanShot', n: 5 },
+      { name: 'Accesibilidad', apps: 'Raycast, Rectangle, Karabiner y 4 más', n: 7 },
+      { name: 'Acceso total al disco', apps: 'Rotten Apple, Terminal, Backblaze, iTerm', n: 4 }
+    ].map((p) => ({ name: p.name, apps: p.apps, count: String(p.n), countStyle: 'min-width: 24px; text-align: center; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,0.1); font-size: 12px; ' + mono }));
+    return { rows: rows, perms: perms, count: String(count) };
+  }
+}
+</script>
+</body>
+</html>
