@@ -29,7 +29,7 @@
       "required": [
         "version", "macos_version", "arch", "platform_supported", "running_as_root", "home",
         "home_source", "state_dir", "config_path", "config", "journal_dir", "journal_records",
-        "journal_problems", "trash", "exec_lock_free", "full_disk_access", "running_apps_probe",
+        "journal_problems", "trash", "exec_lock_free", "full_disk_access", "running_apps",
         "catalog_version"
       ],
       "additionalProperties": false,
@@ -60,20 +60,20 @@
         },
         "exec_lock_free": { "type": "boolean" },
         "full_disk_access": { "enum": ["granted", "denied", "undetermined"] },
-        "running_apps_probe": {
-          "description": "Result<usize, String> de Rust tal cual: {\"Ok\": n} o {\"Err\": motivo}.",
+        "running_apps": {
+          "description": "Si se pueden saber las apps abiertas: cuántas hay, o por qué no se puede (entonces se omite todo lo que exige una app cerrada).",
           "oneOf": [
             {
               "type": "object",
-              "required": ["Ok"],
+              "required": ["status", "count"],
               "additionalProperties": false,
-              "properties": { "Ok": { "$ref": "#/$defs/count" } }
+              "properties": { "status": { "const": "ok" }, "count": { "$ref": "#/$defs/count" } }
             },
             {
               "type": "object",
-              "required": ["Err"],
+              "required": ["status", "detail"],
               "additionalProperties": false,
-              "properties": { "Err": { "type": "string" } }
+              "properties": { "status": { "const": "unavailable" }, "detail": { "type": "string" } }
             }
           ]
         },

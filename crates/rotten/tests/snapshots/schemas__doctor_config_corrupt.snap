@@ -20,7 +20,7 @@ expression: "redact(fx, &doc)"
     "journal_records": 0,
     "macos_version": "[macos_version]",
     "platform_supported": true,
-    "running_apps_probe": "[running_apps_probe]",
+    "running_apps": "[running_apps]",
     "running_as_root": false,
     "state_dir": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple",
     "trash": "dir:[TRASH]",

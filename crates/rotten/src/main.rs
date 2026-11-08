@@ -15,8 +15,8 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use ra_core::{
-    Action, Core, CoreError, DoctorReport, Env, ExecReport, FdaState, Outcome, Plan, ScanStatus,
-    Selection, UndoState, tilde,
+    Action, AppsProbe, Core, CoreError, DoctorReport, Env, ExecReport, FdaState, Outcome, Plan,
+    ScanStatus, Selection, UndoState, tilde,
 };
 use serde_json::{Value, json};
 
@@ -689,12 +689,12 @@ fn doctor(ui: &Ui, core: &Core) -> Exit {
         ui.t("Cerrojo de ejecución libre:", "Execution lock free:"),
         yes_no(r.exec_lock_free)
     ));
-    match &r.running_apps_probe {
-        Ok(n) => ui.say(format!(
-            "{} {n}",
+    match &r.running_apps {
+        AppsProbe::Ok { count } => ui.say(format!(
+            "{} {count}",
             ui.t("Apps abiertas detectadas:", "Running apps detected:")
         )),
-        Err(e) => ui.say(format!(
+        AppsProbe::Unavailable { detail: e } => ui.say(format!(
             "{} {e}",
             ui.t(
                 "No se pueden detectar las apps abiertas:",

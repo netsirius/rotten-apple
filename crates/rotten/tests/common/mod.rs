@@ -258,7 +258,7 @@ pub const VOLATILE: &[&str] = &[
     "parent_mode",
     "macos_version",
     "arch",
-    "running_apps_probe",
+    "running_apps",
 ];
 
 /// Oculta lo que no es estable: rutas del fixture, fechas, IDs, hashes,

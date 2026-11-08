@@ -21,6 +21,17 @@ pub enum FdaState {
     Undetermined,
 }
 
+/// ¿Se pueden saber las apps abiertas? (RF-SEG-08: si no, todo lo que
+/// exige una app cerrada se omite.)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum AppsProbe {
+    /// Lista obtenida, con cuántas apps hay abiertas.
+    Ok { count: usize },
+    /// No se pudo obtener la lista.
+    Unavailable { detail: String },
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DoctorReport {
     pub version: String,
@@ -47,7 +58,7 @@ pub struct DoctorReport {
     pub trash: String,
     pub exec_lock_free: bool,
     pub full_disk_access: FdaState,
-    pub running_apps_probe: Result<usize, String>,
+    pub running_apps: AppsProbe,
     pub catalog_version: String,
 }
 
@@ -131,11 +142,12 @@ pub(crate) fn run(core: &Core) -> DoctorReport {
         trash: env.trash.describe(),
         exec_lock_free,
         full_disk_access: fda_preflight(&env.home),
-        running_apps_probe: core
-            .apps
-            .running_bundle_ids()
-            .map(|s| s.len())
-            .map_err(|e| e.to_string()),
+        running_apps: match core.apps.running_bundle_ids() {
+            Ok(ids) => AppsProbe::Ok { count: ids.len() },
+            Err(e) => AppsProbe::Unavailable {
+                detail: e.to_string(),
+            },
+        },
         catalog_version: core.catalog().catalog_version.clone(),
     }
 }
