@@ -40,6 +40,29 @@ jobs:
       - name: Pruebas
         run: cargo test --workspace --locked
 
+  forbid-unsafe:
+    name: forbid(unsafe_code) fuera de ra-platform
+    # RNF-ARQ-16: todo el unsafe vive en ra-platform; el resto de crates
+    # declaran #![forbid(unsafe_code)] en su raíz.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Comprobar las raíces de los crates
+        run: |
+          fail=0
+          for f in crates/*/src/lib.rs crates/*/src/main.rs; do
+            [ -e "$f" ] || continue
+            case "$f" in crates/ra-platform/*) continue ;; esac
+            if ! grep -qx '#!\[forbid(unsafe_code)\]' "$f"; then
+              echo "::error file=$f::falta #![forbid(unsafe_code)]"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
   deny:
     name: cargo-deny
     runs-on: ubuntu-latest
@@ -47,6 +70,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # `check` sin argumentos: advisories, bans, licenses y sources (RNF-14,
+      # RNF-ARQ-26). `cargo audit` corre a diario en la nocturna.
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
