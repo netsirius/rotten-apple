@@ -316,7 +316,8 @@ fn doctor_and_history_report_json() {
     assert_eq!(r["home_source"], "ROTTEN_HOME");
     assert_eq!(r["config"], "missing");
     assert_eq!(r["full_disk_access"], "undetermined");
-    assert!(r["trash"].as_str().expect("trash").starts_with("dir:"));
+    assert_eq!(r["trash"]["backend"], "dir");
+    assert_eq!(r["trash"]["path"], fx.trash.to_str().expect("utf-8"));
     let (code, doc) = fx.run(&["history", "--json"]);
     assert_eq!(code, 0);
     assert_eq!(doc["operations"].as_array().expect("ops").len(), 0);

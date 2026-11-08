@@ -22,7 +22,10 @@ expression: "redact(fx, &doc)"
     "running_apps": "[running_apps]",
     "running_as_root": false,
     "state_dir": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple",
-    "trash": "dir:[TRASH]",
+    "trash": {
+      "backend": "dir",
+      "path": "[TRASH]"
+    },
     "version": "[version]"
   },
   "schema_version": 2

@@ -16,7 +16,7 @@ use std::process::ExitCode;
 use clap::Parser;
 use ra_core::{
     Action, AppsProbe, Core, CoreError, DoctorReport, Env, ExecReport, FdaState, Outcome, Plan,
-    ScanStatus, Selection, UndoState, tilde,
+    ScanStatus, Selection, TrashInfo, UndoState, tilde,
 };
 use serde_json::{Value, json};
 
@@ -673,7 +673,11 @@ fn doctor(ui: &Ui, core: &Core) -> Exit {
         r.journal_problems.len(),
         ui.t("líneas ilegibles", "unreadable lines")
     ));
-    ui.say(format!("{} {}", ui.t("Papelera:", "Trash:"), r.trash));
+    let trash = match &r.trash {
+        TrashInfo::System => ui.t("la del sistema", "the system one").to_owned(),
+        TrashInfo::Dir { path } => path.display().to_string(),
+    };
+    ui.say(format!("{} {trash}", ui.t("Papelera:", "Trash:")));
     if !r.trash_unreadable_ops.is_empty() {
         ui.say(format!(
             "  ! {} {}",

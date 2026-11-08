@@ -54,9 +54,21 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "trash": {
-          "description": "«system» o «dir:<ruta>» (ROTTEN_TRASH_DIR en pruebas).",
-          "type": "string",
-          "pattern": "^(system|dir:.+)$"
+          "description": "Papelera que se usa: la del sistema o una carpeta (ROTTEN_TRASH_DIR, en pruebas).",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["backend"],
+              "additionalProperties": false,
+              "properties": { "backend": { "const": "system" } }
+            },
+            {
+              "type": "object",
+              "required": ["backend", "path"],
+              "additionalProperties": false,
+              "properties": { "backend": { "const": "dir" }, "path": { "$ref": "#/$defs/path" } }
+            }
+          ]
         },
         "exec_lock_free": { "type": "boolean" },
         "full_disk_access": { "enum": ["granted", "denied", "undetermined"] },

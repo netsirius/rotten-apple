@@ -16,7 +16,7 @@ mod selection;
 use std::path::Path;
 use std::time::SystemTime;
 
-pub use doctor::{AppsProbe, DoctorReport, FdaState};
+pub use doctor::{AppsProbe, DoctorReport, FdaState, TrashInfo};
 pub use env::{BUNDLE_ID, Env, EnvError};
 pub use ra_catalog::{Catalog, Localized, Risk};
 pub use ra_exec::{ExecReport, ItemReport, Outcome, SkipCause, TrashBackend};
