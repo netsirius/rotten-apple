@@ -410,23 +410,35 @@ pub struct UndoPlan {
     pub not_recoverable: Vec<(u32, String)>,
 }
 
+/// Por qué no se puede preparar un deshacer.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum UndoError {
+    #[error("operation {op} does not exist")]
+    UnknownOperation { op: String },
+    /// Un deshacer no se deshace.
+    #[error("operation {op} cannot be undone")]
+    NotUndoable { op: String },
+    #[error("operation {op} has no item {item}")]
+    UnknownItem { op: String, item: u32 },
+}
+
 /// Prepara el deshacer de `op`, entero (`items = None`) o por elementos.
 pub fn prepare_undo(
     records: &[Record],
     op: &str,
     items: Option<&[u32]>,
-) -> Result<UndoPlan, String> {
-    let m = manifest_for(records, op).ok_or_else(|| format!("no existe la operación {op}"))?;
+) -> Result<UndoPlan, UndoError> {
+    let m = manifest_for(records, op).ok_or_else(|| UndoError::UnknownOperation { op: op.into() })?;
     if m.kind != OpKind::Clean {
-        return Err(format!(
-            "la operación {op} no se puede deshacer ({:?})",
-            m.kind
-        ));
+        return Err(UndoError::NotUndoable { op: op.into() });
     }
     if let Some(ids) = items {
         for id in ids {
             if !m.items.iter().any(|i| i.item_id == *id) {
-                return Err(format!("la operación {op} no tiene el elemento {id}"));
+                return Err(UndoError::UnknownItem {
+                    op: op.into(),
+                    item: *id,
+                });
             }
         }
     }

@@ -5,8 +5,9 @@ expression: "redact(fx, &doc)"
 {
   "command": "undo",
   "error": {
+    "code": "nothing_to_undo",
     "exit_code": 1,
-    "message": "no hay ninguna operación que deshacer"
+    "message": "there is no operation to undo"
   },
   "schema_version": 2
 }

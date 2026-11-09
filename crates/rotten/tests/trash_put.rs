@@ -173,8 +173,9 @@ fn paths_outside_home_exit_5_and_touch_nothing() {
         args.push(&bad);
         let (code, doc) = fx.run(&args);
         assert_eq!(code, 5, "dry-run: {dry}: {doc:#}");
+        assert_eq!(doc["error"]["code"], "selection_protected", "{doc:#}");
         let msg = doc["error"]["message"].as_str().expect("mensaje");
-        assert!(msg.contains("fuera de la carpeta personal"), "{msg}");
+        assert!(msg.contains("outside the home folder"), "{msg}");
     }
     assert!(Path::new(&bad).exists());
     assert_eq!(snapshot(&fx.home, &fx.state), before);

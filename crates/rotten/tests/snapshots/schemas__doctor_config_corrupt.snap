@@ -9,7 +9,7 @@ expression: "redact(fx, &doc)"
     "arch": "[arch]",
     "catalog_version": "2026.11.0",
     "config": "corrupt",
-    "config_error": "TOML no válido: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n",
+    "config_error": "invalid TOML: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n",
     "config_path": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml",
     "exec_lock_free": true,
     "full_disk_access": "undetermined",

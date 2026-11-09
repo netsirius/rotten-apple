@@ -15,8 +15,8 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use ra_core::{
-    Action, AppsProbe, Core, CoreError, DoctorReport, Env, ExecReport, FdaState, Outcome, Plan,
-    ScanStatus, Selection, TrashInfo, UndoState, tilde,
+    Action, AppsProbe, Core, CoreError, DoctorReport, Env, EnvError, ErrorClass, ExecReport,
+    FdaState, Outcome, Plan, ScanStatus, Selection, TrashInfo, UndoState, tilde,
 };
 use serde_json::{Value, json};
 
@@ -71,27 +71,30 @@ impl Ui {
         println!("{text}");
     }
 
-    fn fail(&self, command: &str, code: Exit, msg: &str) -> Exit {
+    /// Error común: en JSON, un código estable y el mensaje en inglés (no
+    /// dependen del idioma); para personas, `human` en su idioma.
+    fn fail(&self, command: &str, exit: Exit, code: &str, message: &str, human: &str) -> Exit {
         if self.json {
             self.emit(
                 command,
-                json!({ "error": { "exit_code": code as u8, "message": msg } }),
+                json!({ "error": { "code": code, "exit_code": exit as u8, "message": message } }),
             );
         } else {
-            eprintln!("rotten: {msg}");
+            eprintln!("rotten: {human}");
         }
-        code
+        exit
     }
 
     fn core_error(&self, command: &str, e: &CoreError) -> Exit {
-        let code = match e {
-            CoreError::Usage(_) => Exit::Usage,
-            CoreError::Permission(_) => Exit::Permission,
-            CoreError::Safety(_) => Exit::Safety,
-            CoreError::Locked => Exit::Locked,
-            CoreError::NotFound(_) | CoreError::Other(_) => Exit::Error,
+        let exit = match e.class() {
+            ErrorClass::Usage => Exit::Usage,
+            ErrorClass::Permission => Exit::Permission,
+            ErrorClass::Safety => Exit::Safety,
+            ErrorClass::Locked => Exit::Locked,
+            ErrorClass::NotFound | ErrorClass::Other => Exit::Error,
         };
-        self.fail(command, code, &e.to_string())
+        let message = e.to_string();
+        self.fail(command, exit, e.code(), &message, &message)
     }
 
     /// Confirmación: `--yes`, o una pregunta si hay terminal; si no, error
@@ -104,6 +107,8 @@ impl Ui {
             return Err(self.fail(
                 command,
                 Exit::Usage,
+                "needs_yes",
+                "no interactive terminal: pass --yes (or --dry-run to only review)",
                 self.t(
                     "sin terminal interactiva hace falta --yes (o --dry-run para solo revisar)",
                     "no interactive terminal: pass --yes (or --dry-run to only review)",
@@ -154,6 +159,8 @@ fn main() -> ExitCode {
             .fail(
                 command,
                 Exit::Safety,
+                "running_as_root",
+                "refusing to run as root: Rotten Apple works with your own permissions (use --allow-root if you really need it)",
                 ui.t(
                     "no se ejecuta como root: Rotten Apple trabaja con tus permisos (usa --allow-root si de verdad lo necesitas)",
                     "refusing to run as root: Rotten Apple works with your own permissions (use --allow-root if you really need it)",
@@ -164,7 +171,14 @@ fn main() -> ExitCode {
 
     let env = match Env::from_env() {
         Ok(e) => e,
-        Err(e) => return ui.fail(command, Exit::Error, &e.to_string()).into(),
+        Err(e) => {
+            let code = match e {
+                EnvError::NoHome => "no_home",
+                EnvError::BadPath { .. } => "invalid_env_path",
+            };
+            let message = e.to_string();
+            return ui.fail(command, Exit::Error, code, &message, &message).into();
+        }
     };
     let core = match Core::new(env) {
         Ok(c) => c,
@@ -328,6 +342,8 @@ fn clean(
         return ui.fail(
             "clean",
             Exit::Usage,
+            "permanent_needs_yes",
+            "--permanent deletes without the Trash and requires --yes",
             ui.t(
                 "--permanent borra sin pasar por la Papelera y exige --yes",
                 "--permanent deletes without the Trash and requires --yes",

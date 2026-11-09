@@ -19,8 +19,8 @@ pub use journal::{
     Event, Journal, JournalError, OpKind, OpMode, OpStatus, Record, StepAction, read_journal,
 };
 pub use manifest::{
-    ItemState, Manifest, ManifestItem, OpSummary, UndoItem, UndoPlan, UndoState, list_ops,
-    manifest_for, prepare_undo,
+    ItemState, Manifest, ManifestItem, OpSummary, UndoError, UndoItem, UndoPlan, UndoState,
+    list_ops, manifest_for, prepare_undo,
 };
 
 use std::path::{Path, PathBuf};

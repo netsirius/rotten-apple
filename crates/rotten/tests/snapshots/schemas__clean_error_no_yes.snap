@@ -5,6 +5,7 @@ expression: "redact(fx, &doc)"
 {
   "command": "clean",
   "error": {
+    "code": "needs_yes",
     "exit_code": 2,
     "message": "no interactive terminal: pass --yes (or --dry-run to only review)"
   },

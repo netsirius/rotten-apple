@@ -60,6 +60,6 @@ expression: "redact(fx, &doc)"
   "scan_status": "complete",
   "schema_version": 2,
   "warnings": [
-    "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml está corrupto (TOML no válido: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n): no se aplican exclusiones y no se podrá limpiar"
+    "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml está corrupto (invalid TOML: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n): no se aplican exclusiones y no se podrá limpiar"
   ]
 }

@@ -56,11 +56,16 @@
         "command": { "const": "scan" },
         "error": {
           "type": "object",
-          "required": ["exit_code", "message"],
+          "required": ["code", "exit_code", "message"],
           "additionalProperties": false,
           "properties": {
+            "code": {
+              "description": "Código estable del error (no depende del idioma).",
+              "type": "string",
+              "pattern": "^[a-z][a-z_]*$"
+            },
             "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
-            "message": { "type": "string" }
+            "message": { "description": "Mensaje en inglés, igual en cualquier idioma.", "type": "string" }
           }
         }
       }

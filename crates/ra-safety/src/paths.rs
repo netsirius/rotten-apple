@@ -12,11 +12,11 @@ use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PathError {
-    #[error("la ruta no es absoluta: {0}")]
+    #[error("the path is not absolute: {0}")]
     NotAbsolute(String),
-    #[error("la ruta contiene componentes «.» o «..»: {0}")]
+    #[error("the path has «.» or «..» components: {0}")]
     NotNormal(String),
-    #[error("la ruta está vacía")]
+    #[error("the path is empty")]
     Empty,
 }
 

@@ -81,7 +81,7 @@ impl Exclusion {
     pub fn parse(s: &str) -> Result<Self, String> {
         let s = s.trim();
         if s.is_empty() {
-            return Err("la exclusión está vacía".into());
+            return Err("the exclusion is empty".into());
         }
         let ex = if let Some(v) = s.strip_prefix("rule:") {
             Exclusion::Rule(v.to_owned())
@@ -110,7 +110,7 @@ impl Exclusion {
             Exclusion::Glob(g) => {
                 let expanded = expand_glob_home(g, probe_home);
                 if !expanded.starts_with('/') {
-                    return Err(format!("el patrón debe ser absoluto o empezar por ~/: {g}"));
+                    return Err(format!("the pattern must be absolute or start with ~/: {g}"));
                 }
                 GlobBuilder::new(&expanded)
                     .build()
@@ -119,7 +119,7 @@ impl Exclusion {
             }
             Exclusion::Rule(v) | Exclusion::Category(v) | Exclusion::BundleId(v) => {
                 if v.trim().is_empty() || v.contains('/') {
-                    Err(format!("valor no válido: «{v}»"))
+                    Err(format!("invalid value: «{v}»"))
                 } else {
                     Ok(())
                 }
@@ -186,7 +186,7 @@ impl Config {
         let text = toml::to_string_pretty(self).map_err(io::Error::other)?;
         let dir = path
             .parent()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ruta sin carpeta"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path without a folder"))?;
         fs::create_dir_all(dir)?;
         let tmp = dir.join(format!(".config.toml.{}.tmp", std::process::id()));
         fs::write(&tmp, text)?;
@@ -208,16 +208,16 @@ impl ConfigState {
         let text = match fs::read_to_string(path) {
             Ok(t) => t,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return ConfigState::Missing,
-            Err(e) => return Self::corrupt(path, format!("no se puede leer: {e}")),
+            Err(e) => return Self::corrupt(path, format!("cannot be read: {e}")),
         };
         let config: Config = match toml::from_str(&text) {
             Ok(c) => c,
-            Err(e) => return Self::corrupt(path, format!("TOML no válido: {e}")),
+            Err(e) => return Self::corrupt(path, format!("invalid TOML: {e}")),
         };
         if config.schema_version != CONFIG_SCHEMA_VERSION {
             return Self::corrupt(
                 path,
-                format!("schema_version {} no soportada", config.schema_version),
+                format!("unsupported schema_version {}", config.schema_version),
             );
         }
         if let Err(e) = Exclusions::compile(&config, home) {
@@ -240,7 +240,7 @@ impl ConfigState {
             ConfigState::Missing => Exclusions::compile(&Config::default(), home),
             ConfigState::Loaded(c) => Exclusions::compile(c, home),
             ConfigState::Corrupt { path, reason } => {
-                Err(format!("{} está corrupto: {reason}", path.display()))
+                Err(format!("{} is corrupt: {reason}", path.display()))
             }
         }
     }
@@ -284,26 +284,26 @@ impl Exclusions {
         let l = &config.exclusions;
         let mut paths_out = Vec::new();
         for p in &l.paths {
-            let abs = paths::expand_home(p, home).map_err(|e| format!("exclusión «{p}»: {e}"))?;
+            let abs = paths::expand_home(p, home).map_err(|e| format!("exclusion «{p}»: {e}"))?;
             paths_out.push((p.clone(), abs));
         }
         let mut builder = GlobSetBuilder::new();
         for g in &l.globs {
             let expanded = expand_glob_home(g, home);
             if !expanded.starts_with('/') {
-                return Err(format!("exclusión «{g}»: el patrón debe ser absoluto"));
+                return Err(format!("exclusion «{g}»: the pattern must be absolute"));
             }
             let glob = GlobBuilder::new(&fold(&expanded))
                 .case_insensitive(true)
                 .literal_separator(true)
                 .build()
-                .map_err(|e| format!("exclusión «{g}»: {e}"))?;
+                .map_err(|e| format!("exclusion «{g}»: {e}"))?;
             builder.add(glob);
         }
         let glob_set = builder.build().map_err(|e| e.to_string())?;
         for v in l.rules.iter().chain(&l.categories).chain(&l.bundle_ids) {
             if v.trim().is_empty() {
-                return Err("hay una exclusión vacía".into());
+                return Err("there is an empty exclusion".into());
             }
         }
         Ok(Self {

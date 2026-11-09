@@ -31,28 +31,28 @@ pub enum Origin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProtectionReason {
-    #[error("ruta protegida ({root})")]
+    #[error("protected path ({root})")]
     InsideProtected { root: PathBuf },
-    #[error("contiene una ruta protegida ({root})")]
+    #[error("contains a protected path ({root})")]
     AncestorOfProtected { root: PathBuf },
-    #[error("carpeta de documentos del usuario ({root}): solo por selección explícita")]
+    #[error("user documents folder ({root}): only by explicit selection")]
     UserFolder { root: PathBuf },
     /// La carpeta de documentos en sí, por selección explícita: se puede
     /// mover su contenido, no la carpeta.
-    #[error("es una carpeta del usuario ({root}): se puede mover su contenido, no la carpeta")]
+    #[error("it is a user folder ({root}): its contents can be moved, not the folder")]
     UserFolderRoot { root: PathBuf },
-    #[error("es la carpeta personal")]
+    #[error("it is the home folder")]
     Home,
-    #[error("es la raíz de un volumen")]
+    #[error("it is the root of a volume")]
     VolumeRoot,
-    #[error("datos o journal de la propia app")]
+    #[error("Rotten Apple's own data or journal")]
     AppState,
-    #[error("fototeca o copia de Time Machine")]
+    #[error("photo library or Time Machine backup")]
     ProtectedBundle,
-    #[error("ruta no válida: {detail}")]
+    #[error("invalid path: {detail}")]
     InvalidPath { detail: String },
     /// Selección explícita fuera de la carpeta personal (RF-SEG-19).
-    #[error("está fuera de la carpeta personal: solo se pueden elegir rutas dentro de ~")]
+    #[error("it is outside the home folder: only paths inside ~ can be chosen")]
     OutsideHome,
 }
 

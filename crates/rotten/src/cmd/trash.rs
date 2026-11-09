@@ -31,7 +31,10 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
     for p in paths {
         match std::path::absolute(p) {
             Ok(a) => abs.push(a),
-            Err(e) => return ui.fail(COMMAND, Exit::Usage, &format!("{}: {e}", p.display())),
+            Err(e) => {
+                let message = format!("{}: {e}", p.display());
+                return ui.fail(COMMAND, Exit::Usage, "invalid_path", &message, &message);
+            }
         }
     }
     let preview = match core.plan_selection(&abs) {

@@ -172,11 +172,11 @@ pub struct Plan {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PlanError {
-    #[error("el hash del plan no coincide (esperado {expected}, calculado {actual})")]
+    #[error("the plan hash does not match (expected {expected}, got {actual})")]
     HashMismatch { expected: String, actual: String },
-    #[error("la revisión ha caducado ({age_secs} s): vuelve a generar el plan")]
+    #[error("the review has expired ({age_secs} s): generate the plan again")]
     Expired { age_secs: u64 },
-    #[error("plan no válido: {0}")]
+    #[error("invalid plan: {0}")]
     Invalid(String),
 }
 
@@ -221,7 +221,7 @@ impl Plan {
             }
             if c.fingerprint.is_none() {
                 skipped.push(skip(SkipReason::Blocked(Block::Unreadable {
-                    detail: "sin huella".into(),
+                    detail: "no fingerprint".into(),
                 })));
                 continue;
             }
@@ -323,7 +323,7 @@ impl Plan {
         let p: Plan = serde_json::from_str(text).map_err(|e| PlanError::Invalid(e.to_string()))?;
         if p.schema != PLAN_SCHEMA || p.schema_version != SCHEMA_VERSION {
             return Err(PlanError::Invalid(format!(
-                "esquema {} no soportado",
+                "unsupported schema {}",
                 p.schema
             )));
         }

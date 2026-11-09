@@ -13,7 +13,9 @@ use std::time::SystemTime;
 
 use proptest::prelude::*;
 use ra_catalog::fixture::{Entry, Link, materialize};
-use ra_core::{Action, Core, CoreError, Env, Origin, Outcome, Preview, Selection, TrashBackend};
+use ra_core::{
+    Action, Core, CoreError, Env, ErrorClass, Origin, Outcome, Preview, Selection, TrashBackend,
+};
 use ra_history::{Event, HistoryPaths, read_journal};
 
 struct World {
@@ -223,9 +225,10 @@ fn explicit_selection_can_reach_user_folders_but_is_never_preselected() {
     );
 }
 
+/// Aborto por seguridad (código 5); devuelve el mensaje (en inglés).
 fn safety(r: Result<Preview, CoreError>) -> String {
     match r {
-        Err(CoreError::Safety(m)) => m,
+        Err(e) if e.class() == ErrorClass::Safety => e.to_string(),
         other => panic!("se esperaba un aborto por seguridad: {other:?}"),
     }
 }
@@ -251,7 +254,7 @@ fn protected_paths_and_their_ancestors_abort_everything() {
         PathBuf::from("/System/Library"),
     ] {
         let m = safety(w.core.plan_selection(&[ok.clone(), bad.clone()]));
-        assert!(m.contains("No se mueve nada"), "{bad:?}: {m}");
+        assert!(m.contains("Nothing is moved"), "{bad:?}: {m}");
     }
     // Un enlace en la carpeta padre se resuelve: no sirve para colarse.
     std::os::unix::fs::symlink(w.p("Library/Keychains"), w.p("Downloads/kc")).expect("enlace");
@@ -266,7 +269,7 @@ fn protected_paths_and_their_ancestors_abort_everything() {
     assert!(matches!(
         w.core
             .plan_selection(&[PathBuf::from("Downloads/setup.dmg")]),
-        Err(CoreError::Usage(_))
+        Err(CoreError::RelativePath(_))
     ));
     // Nada se ha movido.
     assert!(ok.exists());
@@ -283,12 +286,12 @@ fn paths_outside_home_abort_everything() {
     let ok = w.p("Downloads/setup.dmg");
     for bad in [outside.join("x.txt"), outside.clone(), w.trash.clone()] {
         let m = safety(w.core.plan_selection(&[ok.clone(), bad.clone()]));
-        assert!(m.contains("fuera de la carpeta personal"), "{bad:?}: {m}");
+        assert!(m.contains("outside the home folder"), "{bad:?}: {m}");
     }
     // Un enlace en la carpeta padre que sale de `~` tampoco sirve.
     std::os::unix::fs::symlink(&outside, w.p("Downloads/fuera")).expect("enlace");
     let m = safety(w.core.plan_selection(&[w.p("Downloads/fuera/x.txt")]));
-    assert!(m.contains("fuera de la carpeta personal"), "{m}");
+    assert!(m.contains("outside the home folder"), "{m}");
     assert!(ok.exists());
     assert!(outside.join("x.txt").exists());
     assert!(fs::read_dir(&w.trash).expect("trash").next().is_none());
@@ -308,7 +311,7 @@ fn user_folder_roots_abort_but_their_contents_do_not() {
         let m = safety(w.core.plan_selection(std::slice::from_ref(&root)));
         // `~/Music` ya era ancestro de `~/Music/Music`, que es protegida.
         if *f != "Music" {
-            assert!(m.contains("se puede mover su contenido"), "{f}: {m}");
+            assert!(m.contains("its contents can be moved"), "{f}: {m}");
         }
         // `~/Downloads/.` es la misma carpeta.
         safety(w.core.plan_selection(&[root.join(".")]));
@@ -323,7 +326,7 @@ fn user_folder_roots_abort_but_their_contents_do_not() {
     // Un enlace a una de ellas cuenta como la carpeta.
     std::os::unix::fs::symlink(w.p("Downloads"), w.p("Desktop/dl")).expect("enlace");
     let m = safety(w.core.plan_selection(&[w.p("Desktop/dl")]));
-    assert!(m.contains("enlace"), "{m}");
+    assert!(m.contains("it is a link"), "{m}");
     for f in USER_FOLDERS {
         assert!(w.p(f).join("dentro.txt").exists());
     }

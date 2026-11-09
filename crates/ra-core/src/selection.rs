@@ -8,7 +8,7 @@
 //!
 //! Diferencias con el plan del catálogo (RF-SEG-05):
 //! - una ruta protegida, o ancestro de una protegida, **aborta todo** con
-//!   [`CoreError::Safety`] en lugar de omitirse;
+//!   [`CoreError::SelectionProtected`] en lugar de omitirse;
 //! - también aborta una ruta que, ya resuelta, queda fuera de la carpeta
 //!   personal (RF-SEG-19);
 //! - y una de las seis carpetas de documentos del usuario en sí, o un enlace
@@ -28,7 +28,7 @@ use ra_exec::ExecContext;
 use ra_plan::PlanInputs;
 use ra_safety::fingerprint::{fingerprint_path, stat_nofollow_any};
 use ra_safety::identity::check_flags;
-use ra_safety::{AppProbe, Origin, ProtectionReason};
+use ra_safety::{AppProbe, Origin};
 use rustix::fs::{AtFlags, Dir, Mode, OFlags};
 
 use crate::{Action, Core, CoreError, Plan, Preview, Selection, tilde};
@@ -47,17 +47,17 @@ impl Core {
     pub fn plan_selection(&self, paths: &[PathBuf]) -> Result<Preview, CoreError> {
         let exclusions = self.exclusions_or_abort()?;
         if paths.is_empty() {
-            return Err(CoreError::Usage("indica al menos una ruta".into()));
+            return Err(CoreError::NoPaths);
         }
         let protected = self.protected().for_origin(Origin::ExplicitSelection);
         let mut candidates = Vec::with_capacity(paths.len());
         for raw in paths {
             let path = self.resolve(raw)?;
             if let Err(reason) = protected.check(&path, Origin::ExplicitSelection) {
-                return Err(CoreError::Safety(format!(
-                    "{}: {reason}. No se mueve nada.",
-                    tilde(&path, &self.env.home)
-                )));
+                return Err(CoreError::SelectionProtected {
+                    path: tilde(&path, &self.env.home),
+                    reason,
+                });
             }
             // Un enlace a ~/Downloads (o a otra carpeta del usuario) cuenta
             // como la carpeta.
@@ -65,13 +65,10 @@ impl Core {
                 && let Ok(target) = fs::canonicalize(&path)
                 && let Some(root) = protected.user_folder_root(&target)
             {
-                let reason = ProtectionReason::UserFolderRoot {
+                return Err(CoreError::SelectionUserFolderLink {
+                    path: tilde(&path, &self.env.home),
                     root: root.to_path_buf(),
-                };
-                return Err(CoreError::Safety(format!(
-                    "{}: es un enlace a otra ruta que {reason}. No se mueve nada.",
-                    tilde(&path, &self.env.home)
-                )));
+                });
             }
             candidates.push(self.selected(path)?);
         }
@@ -111,16 +108,11 @@ impl Core {
     /// (RF-SEG-05 c).
     fn resolve(&self, raw: &Path) -> Result<PathBuf, CoreError> {
         if !raw.is_absolute() {
-            return Err(CoreError::Usage(format!(
-                "la ruta debe ser absoluta: {}",
-                raw.display()
-            )));
+            return Err(CoreError::RelativePath(raw.to_path_buf()));
         }
-        let unresolvable = |e: std::io::Error| {
-            CoreError::Safety(format!(
-                "no se puede resolver {}: {e}. No se mueve nada.",
-                raw.display()
-            ))
+        let unresolvable = |e: std::io::Error| CoreError::Unresolvable {
+            path: raw.display().to_string(),
+            detail: e.to_string(),
         };
         match (raw.parent(), raw.file_name()) {
             (Some(parent), Some(name)) => {
@@ -136,12 +128,11 @@ impl Core {
     /// Candidato para una ruta elegida a mano: nunca preseleccionado,
     /// nunca regenerable (al deshacer no se omite si ya existe algo).
     fn selected(&self, path: PathBuf) -> Result<Candidate, CoreError> {
-        let (identity, flags) = stat_nofollow_any(&path).map_err(|e| {
-            CoreError::Safety(format!(
-                "no se puede clasificar {}: {e}. No se mueve nada.",
-                tilde(&path, &self.env.home)
-            ))
-        })?;
+        let (identity, flags) =
+            stat_nofollow_any(&path).map_err(|e| CoreError::Unclassifiable {
+                path: tilde(&path, &self.env.home),
+                detail: e.to_string(),
+            })?;
         let mut c = Candidate {
             path,
             rule_id: SELECTION_ID.into(),

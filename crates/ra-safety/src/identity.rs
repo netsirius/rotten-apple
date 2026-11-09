@@ -119,17 +119,17 @@ pub const SF_DATALESS: u32 = 0x4000_0000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(rename_all = "snake_case")]
 pub enum FlagViolation {
-    #[error("inmutable (uchg/schg)")]
+    #[error("immutable (uchg/schg)")]
     Immutable,
-    #[error("solo anexar (uappnd/sappnd)")]
+    #[error("append-only (uappnd/sappnd)")]
     AppendOnly,
-    #[error("protegido por SIP (restricted)")]
+    #[error("protected by SIP (restricted)")]
     Restricted,
-    #[error("no se puede desenlazar (sunlnk)")]
+    #[error("cannot be unlinked (sunlnk)")]
     NoUnlink,
-    #[error("firmlink del sistema")]
+    #[error("system firmlink")]
     Firmlink,
-    #[error("fichero sin descargar de iCloud (dataless)")]
+    #[error("iCloud file not downloaded (dataless)")]
     Dataless,
 }
 

@@ -5,8 +5,9 @@ expression: "redact(fx, &doc)"
 {
   "command": "trash",
   "error": {
+    "code": "selection_protected",
     "exit_code": 5,
-    "message": "~/Library/Keychains/login.keychain-db: ruta protegida ([HOME]/Library/Keychains). No se mueve nada."
+    "message": "~/Library/Keychains/login.keychain-db: protected path ([HOME]/Library/Keychains). Nothing is moved."
   },
   "schema_version": 2
 }
