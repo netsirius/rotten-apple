@@ -3,27 +3,40 @@
 //! Códigos de salida (README §8, 07 §5): `0` ok · `1` error · `2` uso o
 //! falta `--yes` · `3` falta permiso · `4` completado con omisiones · `5`
 //! abortado por seguridad o plan cambiado · `6` otro ejecutor activo.
+//!
+//! Salida: JSON con `--json` o si stdout no es una terminal; si no, texto
+//! en el idioma del usuario (`i18n`). `ROTTEN_HUMAN=1` fuerza el texto
+//! aunque stdout no sea una terminal (`rotten scan | less`, pruebas).
 
 #![forbid(unsafe_code)]
 
 mod args;
 mod cmd;
-mod text;
+mod i18n;
+mod render;
 
+use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::io::{self, BufRead, IsTerminal, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::FromArgMatches;
+use fluent_bundle::FluentArgs;
 use ra_core::{
-    Action, AppsProbe, Core, HistoryKind, CoreError, DoctorReport, Env, EnvError, ErrorClass, ExecReport,
-    FdaState, Outcome, Plan, ScanStatus, Selection, TrashInfo, UndoState, tilde,
+    Action, AppsProbe, CategorySummary, ConfigState, Core, CoreError, DoctorReport, Env, EnvError,
+    ErrorClass, ExecReport, FdaState, HistoryKind, Outcome, Plan, Risk, ScanStatus, Selection,
+    TrashInfo, UndoState, tilde,
 };
 use serde_json::{Value, json};
 
 use args::{Cli, Cmd, ExcludeCmd};
-use text::{Lang, size};
+use i18n::{I18n, Lang, tr};
 
 pub const SCHEMA_VERSION: u32 = 2;
+
+/// Fuerza la salida para personas aunque stdout no sea una terminal.
+const HUMAN_ENV: &str = "ROTTEN_HUMAN";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -48,18 +61,33 @@ struct Ui {
     interactive: bool,
     yes: bool,
     quiet: bool,
-    lang: Lang,
+    i18n: I18n,
+    /// Carpeta personal, para abreviar rutas con `~` (vacía hasta saberla).
+    home: PathBuf,
 }
 
 impl Ui {
-    fn t<'a>(&self, es: &'a str, en: &'a str) -> &'a str {
-        self.lang.t(es, en)
+    fn tr(&self, id: &str, args: Option<&FluentArgs>) -> String {
+        self.i18n.tr(id, args)
+    }
+
+    fn size(&self, bytes: u64) -> String {
+        self.i18n.size(bytes)
+    }
+
+    fn path(&self, p: &Path) -> String {
+        tilde(p, &self.home)
     }
 
     fn say(&self, line: impl AsRef<str>) {
         if !self.quiet {
             println!("{}", line.as_ref());
         }
+    }
+
+    /// Una línea con sangría (`level` niveles de dos espacios).
+    fn say_in(&self, level: usize, line: impl AsRef<str>) {
+        self.say(format!("{}{}", "  ".repeat(level), line.as_ref()));
     }
 
     fn emit(&self, command: &str, body: Value) {
@@ -80,9 +108,16 @@ impl Ui {
                 json!({ "error": { "code": code, "exit_code": exit as u8, "message": message } }),
             );
         } else {
-            eprintln!("rotten: {human}");
+            eprintln!("{}", tr!(self, "error-line", message = human));
         }
         exit
+    }
+
+    /// Error propio del CLI: el mensaje `id` del catálogo, en inglés en el
+    /// JSON y en el idioma del usuario en la terminal.
+    fn fail_with(&self, command: &str, exit: Exit, code: &str, id: &str) -> Exit {
+        let english = I18n::with(Lang::En, false).tr(id, None);
+        self.fail(command, exit, code, &english, &self.tr(id, None))
     }
 
     fn core_error(&self, command: &str, e: &CoreError) -> Exit {
@@ -93,8 +128,8 @@ impl Ui {
             ErrorClass::Locked => Exit::Locked,
             ErrorClass::NotFound | ErrorClass::Other => Exit::Error,
         };
-        let message = e.to_string();
-        self.fail(command, exit, e.code(), &message, &message)
+        let human = render::core_error(&self.i18n, e, &self.home);
+        self.fail(command, exit, e.code(), &e.to_string(), &human)
     }
 
     /// Confirmación: `--yes`, o una pregunta si hay terminal; si no, error
@@ -104,18 +139,9 @@ impl Ui {
             return Ok(());
         }
         if !self.interactive {
-            return Err(self.fail(
-                command,
-                Exit::Usage,
-                "needs_yes",
-                "no interactive terminal: pass --yes (or --dry-run to only review)",
-                self.t(
-                    "sin terminal interactiva hace falta --yes (o --dry-run para solo revisar)",
-                    "no interactive terminal: pass --yes (or --dry-run to only review)",
-                ),
-            ));
+            return Err(self.fail_with(command, Exit::Usage, "needs_yes", "needs-yes"));
         }
-        print!("{question} [{}] ", self.t("s/N", "y/N"));
+        print!("{} ", tr!(self, "confirm-prompt", question = question));
         let _ = io::stdout().flush();
         let mut line = String::new();
         let _ = io::stdin().lock().read_line(&mut line);
@@ -123,26 +149,34 @@ impl Ui {
         if ["s", "si", "sí", "y", "yes"].contains(&a.as_str()) {
             Ok(())
         } else {
-            self.say(self.t(
-                "Cancelado; no se ha tocado nada.",
-                "Cancelled; nothing was touched.",
-            ));
+            self.say(tr!(self, "cancelled"));
             Err(Exit::Ok)
         }
     }
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
-    let lang = Lang::detect(cli.lang.as_deref());
+    // El idioma, antes de analizar los argumentos: la ayuda ya sale en él.
+    let argv: Vec<OsString> = std::env::args_os().collect();
+    let lossy: Vec<String> = argv
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let lang = Lang::detect(args::lang_flag(&lossy).as_deref());
+    let i18n = I18n::new(lang);
+    let matches = args::localized(&i18n).get_matches_from(argv);
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+
     let piped = !io::stdout().is_terminal();
-    let json = cli.json || piped;
-    let ui = Ui {
+    let force_human = std::env::var_os(HUMAN_ENV).is_some_and(|v| v == "1");
+    let json = cli.json || (piped && !force_human);
+    let mut ui = Ui {
         json,
         interactive: !json && io::stdin().is_terminal(),
         yes: cli.yes,
         quiet: cli.quiet,
-        lang,
+        i18n,
+        home: PathBuf::new(),
     };
     let command = match &cli.cmd {
         Cmd::Scan { .. } => "scan",
@@ -156,16 +190,7 @@ fn main() -> ExitCode {
 
     if ra_core::running_as_root() && !cli.allow_root {
         return ui
-            .fail(
-                command,
-                Exit::Safety,
-                "running_as_root",
-                "refusing to run as root: Rotten Apple works with your own permissions (use --allow-root if you really need it)",
-                ui.t(
-                    "no se ejecuta como root: Rotten Apple trabaja con tus permisos (usa --allow-root si de verdad lo necesitas)",
-                    "refusing to run as root: Rotten Apple works with your own permissions (use --allow-root if you really need it)",
-                ),
-            )
+            .fail_with(command, Exit::Safety, "running_as_root", "running-as-root")
             .into();
     }
 
@@ -176,10 +201,13 @@ fn main() -> ExitCode {
                 EnvError::NoHome => "no_home",
                 EnvError::BadPath { .. } => "invalid_env_path",
             };
-            let message = e.to_string();
-            return ui.fail(command, Exit::Error, code, &message, &message).into();
+            let human = render::env_error(&ui.i18n, &e);
+            return ui
+                .fail(command, Exit::Error, code, &e.to_string(), &human)
+                .into();
         }
     };
+    ui.home = env.home.clone();
     let core = match Core::new(env) {
         Ok(c) => c,
         Err(e) => return ui.core_error(command, &e).into(),
@@ -210,6 +238,18 @@ fn opt_categories(c: Vec<String>) -> Option<Vec<String>> {
     if c.is_empty() { None } else { Some(c) }
 }
 
+/// Lo que se liberaría de verdad al vaciar la Papelera: la cifra principal
+/// de `scan`. Hasta integrar T-05 (`reclaimable_bytes`) es el tamaño
+/// asignado, que cuenta dos veces los clones APFS y los enlaces duros.
+fn reclaimable(c: &CategorySummary) -> u64 {
+    c.bytes_allocated
+}
+
+/// Lo mismo para lo preseleccionado (T-05: `preselected_reclaimable_bytes`).
+fn preselected_reclaimable(c: &CategorySummary) -> u64 {
+    c.preselected_bytes
+}
+
 fn scan(ui: &Ui, core: &Core, categories: Vec<String>) -> Exit {
     let cats = opt_categories(categories);
     let report = match core.scan(cats.as_deref()) {
@@ -223,102 +263,185 @@ fn scan(ui: &Ui, core: &Core, categories: Vec<String>) -> Exit {
             m.insert("home".into(), json!(core.env().home));
         }
         ui.emit("scan", body);
-    } else {
-        let status = match report.scan_status {
-            ScanStatus::Complete => ui.t("completo", "complete"),
-            ScanStatus::Partial => ui.t("parcial", "partial"),
-            ScanStatus::Unavailable => ui.t("no disponible", "unavailable"),
+        return Exit::Ok;
+    }
+    let status = match report.scan_status {
+        ScanStatus::Complete => "complete",
+        ScanStatus::Partial => "partial",
+        ScanStatus::Unavailable => "unavailable",
+    };
+    ui.say(tr!(
+        ui,
+        "scan-header",
+        version = report.catalog_version.as_str(),
+        status = status
+    ));
+    let (mut pre_items, mut pre_bytes) = (0, 0);
+    for c in &report.categories {
+        let title = match ui.i18n.lang() {
+            Lang::Es => &c.title_es,
+            Lang::En => &c.title_en,
         };
-        ui.say(format!(
-            "{} · {} {} · {status}",
-            ui.t("Escaneo", "Scan"),
-            ui.t("catálogo", "catalog"),
-            report.catalog_version
-        ));
-        let (mut pre_items, mut pre_bytes) = (0, 0);
-        for c in &report.categories {
-            let title = ui.t(&c.title_es, &c.title_en);
-            ui.say(format!(
-                "  {}  {title:<34} {:>5} {}  {:>9}   {} {}",
-                c.id,
-                c.items,
-                ui.t("elem.", "items"),
-                size(c.bytes_allocated, ui.lang),
-                ui.t("preseleccionado:", "preselected:"),
-                size(c.preselected_bytes, ui.lang),
-            ));
-            for n in &c.notes {
-                ui.say(format!("        ! {n}"));
-            }
-            pre_items += c.preselected_items;
-            pre_bytes += c.preselected_bytes;
-        }
-        for w in &report.warnings {
-            ui.say(format!("! {w}"));
-        }
-        ui.say(format!(
-            "{} {} ({pre_items} {}). {}",
-            ui.t("Preseleccionado:", "Preselected:"),
-            size(pre_bytes, ui.lang),
-            ui.t("elementos", "items"),
-            ui.t(
-                "Revisa con `rotten clean --dry-run`.",
-                "Review with `rotten clean --dry-run`."
+        ui.say_in(
+            1,
+            tr!(
+                ui,
+                "scan-category",
+                id = c.id.as_str(),
+                title = format!("{title:<32}"),
+                reclaimable = ui.size(reclaimable(c)),
+                count = c.items,
+                preselected = ui.size(preselected_reclaimable(c)),
             ),
+        );
+        for n in &c.notes {
+            ui.say_in(3, tr!(ui, "scan-note", note = n.as_str()));
+        }
+        pre_items += c.preselected_items;
+        pre_bytes += preselected_reclaimable(c);
+    }
+    // El aviso del informe (`warnings`) es el del JSON; aquí, traducido.
+    if let ConfigState::Corrupt { path, reason } = core.config_state() {
+        ui.say(tr!(
+            ui,
+            "scan-config-corrupt",
+            path = ui.path(&path),
+            reason = reason
         ));
     }
+    ui.say(tr!(
+        ui,
+        "scan-summary",
+        reclaimable = ui.size(pre_bytes),
+        count = pre_items
+    ));
     Exit::Ok
 }
 
-fn print_plan(ui: &Ui, plan: &Plan, preview: &ExecReport) {
+fn risk_code(r: Risk) -> &'static str {
+    match r {
+        Risk::Safe => "safe",
+        Risk::Caution => "caution",
+        Risk::Review => "review",
+    }
+}
+
+fn print_plan(ui: &Ui, core: &Core, plan: &Plan, preview: &ExecReport) {
     let home = plan.home();
-    let dest = match plan.action() {
-        Action::Trash => ui.t("a la Papelera", "to the Trash"),
-        Action::Delete => ui.t("BORRADO PERMANENTE", "PERMANENT DELETE"),
+    let hash = &plan.plan_hash()[..plan.plan_hash().len().min(19)];
+    let action = match plan.action() {
+        Action::Trash => "trash",
+        Action::Delete => "delete",
     };
-    ui.say(format!(
-        "{} {} · {} {} · {} {dest}",
-        ui.t("Plan", "Plan"),
-        &plan.plan_hash()[..plan.plan_hash().len().min(19)],
-        plan.totals().items,
-        ui.t("elementos", "items"),
-        size(plan.totals().bytes_allocated, ui.lang),
+    ui.say(tr!(
+        ui,
+        "plan-header",
+        hash = hash,
+        count = plan.totals().items,
+        size = ui.size(plan.totals().bytes_allocated),
+        action = action
     ));
     for (item, r) in plan.items().iter().zip(&preview.items) {
-        let note = match &r.outcome {
-            Outcome::Skipped { message, .. } => {
-                format!("  ({} {message})", ui.t("se omitiría:", "would skip:"))
-            }
-            _ => String::new(),
+        let id = item.item_id.to_string();
+        let path = tilde(&item.path, home);
+        let size = ui.size(item.bytes_allocated);
+        let line = match &r.outcome {
+            Outcome::Skipped { cause, .. } => tr!(
+                ui,
+                "plan-item-would-skip",
+                id = id,
+                path = path,
+                category = item.category.as_str(),
+                size = size,
+                reason = render::skip_cause(&ui.i18n, cause, home)
+            ),
+            _ => tr!(
+                ui,
+                "plan-item",
+                id = id,
+                path = path,
+                category = item.category.as_str(),
+                size = size
+            ),
         };
-        ui.say(format!(
-            "  [{}] {}  {}  {}{note}",
-            item.item_id,
-            tilde(&item.path, home),
-            item.category,
-            size(item.bytes_allocated, ui.lang),
-        ));
+        ui.say_in(1, line);
     }
     if !plan.skipped().is_empty() {
-        ui.say(format!(
-            "{} ({}):",
-            ui.t("Omitidos", "Skipped"),
-            plan.skipped().len()
-        ));
+        ui.say(tr!(ui, "plan-skipped", count = plan.skipped().len()));
         for s in plan.skipped() {
-            let why = serde_json::to_string(&s.reason).unwrap_or_default();
-            ui.say(format!("  {} — {why}", tilde(&s.path, home)));
+            ui.say_in(
+                1,
+                tr!(
+                    ui,
+                    "plan-skipped-item",
+                    path = tilde(&s.path, home),
+                    reason = render::skip_reason(&ui.i18n, &s.reason, home)
+                ),
+            );
         }
     }
     for (cat, ns) in plan.not_selected() {
-        ui.say(format!(
-            "{} {cat}: {} {} ({}) — {} --category {cat}",
-            ui.t("Sin marcar en", "Not selected in"),
-            ns.items,
-            ui.t("elementos", "items"),
-            size(ns.bytes_allocated, ui.lang),
-            ui.t("añádelos con", "add them with"),
+        ui.say(tr!(
+            ui,
+            "plan-not-selected",
+            category = cat.as_str(),
+            count = ns.items,
+            size = ui.size(ns.bytes_allocated)
         ));
+    }
+    // RF-LIM-04: qué es cada cosa del plan, qué pasa si se borra, si se
+    // regenera y por qué tiene ese riesgo. Una vez por regla.
+    let lang = ui.i18n.lang().code();
+    let mut seen = BTreeSet::new();
+    let rules: Vec<_> = plan
+        .items()
+        .iter()
+        .filter_map(|i| core.catalog().rule(&i.rule.id))
+        .filter(|r| seen.insert(r.id.clone()))
+        .collect();
+    if !rules.is_empty() {
+        ui.say(tr!(ui, "plan-rules"));
+    }
+    for r in rules {
+        ui.say_in(
+            1,
+            tr!(
+                ui,
+                "plan-rule",
+                title = r.title.get(lang),
+                risk = risk_code(r.risk)
+            ),
+        );
+        ui.say_in(2, tr!(ui, "plan-rule-what", text = r.explain.get(lang)));
+        ui.say_in(
+            2,
+            tr!(ui, "plan-rule-if-deleted", text = r.if_deleted.get(lang)),
+        );
+        ui.say_in(
+            2,
+            tr!(ui, "plan-rule-regenerates", text = r.regenerates.get(lang)),
+        );
+        ui.say_in(
+            2,
+            tr!(ui, "plan-rule-why-risk", text = r.why_risk.get(lang)),
+        );
+    }
+}
+
+/// Los elementos omitidos o fallidos de un informe de ejecución.
+fn print_problems(ui: &Ui, report: &ExecReport) {
+    for r in &report.items {
+        if let Some(problem) = render::problem(&ui.i18n, &r.outcome, &ui.home) {
+            ui.say_in(
+                1,
+                tr!(
+                    ui,
+                    "item-problem",
+                    path = ui.path(&r.path),
+                    problem = problem
+                ),
+            );
+        }
     }
 }
 
@@ -339,15 +462,11 @@ fn clean(
     include_review: bool,
 ) -> Exit {
     if permanent && !ui.yes {
-        return ui.fail(
+        return ui.fail_with(
             "clean",
             Exit::Usage,
             "permanent_needs_yes",
-            "--permanent deletes without the Trash and requires --yes",
-            ui.t(
-                "--permanent borra sin pasar por la Papelera y exige --yes",
-                "--permanent deletes without the Trash and requires --yes",
-            ),
+            "permanent-needs-yes",
         );
     }
     let selection = Selection {
@@ -370,11 +489,8 @@ fn clean(
                 json!({ "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
             );
         } else {
-            print_plan(ui, &preview.plan, &preview.dry_run);
-            ui.say(ui.t(
-                "Simulación: no se ha cambiado nada.",
-                "Dry run: nothing was changed.",
-            ));
+            print_plan(ui, core, &preview.plan, &preview.dry_run);
+            ui.say(tr!(ui, "dry-run-nothing-changed"));
         }
         // Mismo código que tendría la ejecución: 4 si ya se prevén omisiones.
         return exec_exit(&preview.dry_run);
@@ -386,24 +502,20 @@ fn clean(
                 json!({ "dry_run": false, "plan": preview.plan, "report": ExecReport::default() }),
             );
         } else {
-            print_plan(ui, &preview.plan, &preview.dry_run);
-            ui.say(ui.t("Nada que limpiar.", "Nothing to clean."));
+            print_plan(ui, core, &preview.plan, &preview.dry_run);
+            ui.say(tr!(ui, "clean-nothing"));
         }
         return Exit::Ok;
     }
     if !ui.json {
-        print_plan(ui, &preview.plan, &preview.dry_run);
+        print_plan(ui, core, &preview.plan, &preview.dry_run);
     }
-    let question = format!(
-        "{} {} {} ({})?",
-        match action {
-            Action::Trash => ui.t("¿Mover a la Papelera", "Move to the Trash"),
-            Action::Delete => ui.t("¿BORRAR PARA SIEMPRE", "DELETE FOREVER"),
-        },
-        preview.plan.totals().items,
-        ui.t("elementos", "items"),
-        size(preview.plan.totals().bytes_allocated, ui.lang)
-    );
+    let count = preview.plan.totals().items;
+    let size = ui.size(preview.plan.totals().bytes_allocated);
+    let question = match action {
+        Action::Trash => tr!(ui, "confirm-trash", count = count, size = size.as_str()),
+        Action::Delete => tr!(ui, "confirm-delete", count = count, size = size.as_str()),
+    };
     if let Err(code) = ui.confirm("clean", &question) {
         return code;
     }
@@ -419,43 +531,24 @@ fn clean(
             json!({ "dry_run": false, "plan": plan_json, "report": report }),
         );
     } else {
-        for r in &report.items {
-            if let Outcome::Skipped { message, .. } | Outcome::Failed { error: message } =
-                &r.outcome
-            {
-                ui.say(format!(
-                    "  ! {} — {message}",
-                    tilde(&r.path, &core.env().home)
-                ));
-            }
-        }
+        print_problems(ui, &report);
+        let size = ui.size(report.bytes_done);
         match action {
-            Action::Trash => ui.say(format!(
-                "{} {} {} ({}). {}",
-                ui.t("Movido a la Papelera:", "Moved to the Trash:"),
-                report.done,
-                ui.t("elementos", "items"),
-                size(report.bytes_done, ui.lang),
-                ui.t(
-                    "Aún no se ha liberado espacio: eso ocurre al vaciar la Papelera.",
-                    "No space is freed yet: that happens when the Trash is emptied.",
-                ),
-            )),
-            Action::Delete => ui.say(format!(
-                "{} {} {} ({}).",
-                ui.t("Borrado permanentemente:", "Permanently deleted:"),
-                report.done,
-                ui.t("elementos", "items"),
-                size(report.bytes_done, ui.lang),
+            Action::Trash => {
+                ui.say(tr!(ui, "moved-to-trash", count = report.done, size = size));
+                ui.say(tr!(ui, "not-freed-yet"));
+            }
+            Action::Delete => ui.say(tr!(
+                ui,
+                "deleted-permanently",
+                count = report.done,
+                size = size
             )),
         }
         if let Some(op) = &report.op_id
             && action == Action::Trash
         {
-            ui.say(format!(
-                "{} rotten undo {op}",
-                ui.t("Para deshacer:", "To undo:")
-            ));
+            ui.say(tr!(ui, "to-undo", op = op.as_str()));
         }
     }
     exec_exit(&report)
@@ -474,33 +567,36 @@ fn history(ui: &Ui, core: &Core) -> Exit {
         return Exit::Ok;
     }
     if ops.is_empty() {
-        ui.say(ui.t("Aún no hay operaciones.", "No operations yet."));
+        ui.say(tr!(ui, "history-empty"));
     }
     for o in &ops {
         let state = match o.undo_state {
-            UndoState::Restorable => ui.t("se puede deshacer", "can be undone"),
-            UndoState::Partial => ui.t("se puede deshacer en parte", "can be partly undone"),
-            UndoState::Irreversible => ui.t("ya no es reversible", "no longer reversible"),
-            UndoState::Restored => ui.t("restaurada", "restored"),
-            UndoState::PartlyRestored => ui.t("restaurada en parte", "partly restored"),
-            UndoState::NotApplicable => "—",
+            UndoState::Restorable => "restorable",
+            UndoState::Partial => "partial",
+            UndoState::Irreversible => "irreversible",
+            UndoState::Restored => "restored",
+            UndoState::PartlyRestored => "partly_restored",
+            UndoState::NotApplicable => "not_applicable",
         };
-        let kind = match (o.kind, &o.undo_of) {
-            (_, Some(of)) => format!("{} {of}", ui.t("deshacer", "undo")),
-            (HistoryKind::TrashPut, None) => ui.t("a la Papelera", "trash put").to_owned(),
-            _ => ui.t("limpieza", "clean").to_owned(),
+        let kind = match o.kind {
+            HistoryKind::Clean => "clean",
+            HistoryKind::TrashPut => "trash_put",
+            HistoryKind::Undo => "undo",
         };
-        ui.say(format!(
-            "{}  {}  {kind:<28} {:>4} {}  {:>9}  {state}",
-            o.op_id,
-            o.started_at,
-            o.items_done,
-            ui.t("elem.", "items"),
-            size(o.bytes_done, ui.lang),
+        ui.say(tr!(
+            ui,
+            "history-op",
+            op = o.op_id.as_str(),
+            date = ui.i18n.date(&o.started_at),
+            kind = kind,
+            of = o.undo_of.as_deref().unwrap_or_default(),
+            count = o.items_done,
+            size = ui.size(o.bytes_done),
+            state = state
         ));
     }
     for p in &problems {
-        ui.say(format!("! journal: {p}"));
+        ui.say(tr!(ui, "history-journal-problem", problem = p.as_str()));
     }
     Exit::Ok
 }
@@ -511,25 +607,34 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
         Ok(p) => p,
         Err(e) => return ui.core_error("undo", &e),
     };
-    let home = &core.env().home;
     if !ui.json {
-        ui.say(format!(
-            "{} {} · {} {}",
-            ui.t("Deshacer", "Undo"),
-            preview.plan.undo_of,
-            preview.plan.ready.len(),
-            ui.t("elementos para restaurar", "items to restore"),
+        ui.say(tr!(
+            ui,
+            "undo-header",
+            op = preview.plan.undo_of.as_str(),
+            count = preview.plan.ready.len()
         ));
         for u in &preview.plan.ready {
-            ui.say(format!("  [{}] {}", u.item_id, tilde(&u.to, home)));
+            ui.say_in(
+                1,
+                tr!(
+                    ui,
+                    "undo-ready",
+                    id = u.item_id.to_string(),
+                    path = ui.path(&u.to)
+                ),
+            );
         }
         for n in &preview.plan.not_recoverable {
-            ui.say(format!(
-                "  [{}] {} — {}",
-                n.item_id,
-                ui.t("no recuperable", "not recoverable"),
-                n.reason
-            ));
+            ui.say_in(
+                1,
+                tr!(
+                    ui,
+                    "undo-not-recoverable",
+                    id = n.item_id.to_string(),
+                    reason = render::not_recoverable(&ui.i18n, &n.reason)
+                ),
+            );
         }
     }
     if dry_run {
@@ -539,10 +644,7 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
                 json!({ "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
             );
         } else {
-            ui.say(ui.t(
-                "Simulación: no se ha movido nada.",
-                "Dry run: nothing was moved.",
-            ));
+            ui.say(tr!(ui, "dry-run-nothing-moved"));
         }
         return Exit::Ok;
     }
@@ -554,7 +656,7 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
                 json!({ "dry_run": false, "plan": preview.plan, "report": ExecReport::default() }),
             );
         } else {
-            ui.say(ui.t("Nada que restaurar.", "Nothing to restore."));
+            ui.say(tr!(ui, "undo-nothing"));
         }
         return if partial_upfront {
             Exit::Partial
@@ -562,12 +664,7 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
             Exit::Ok
         };
     }
-    let question = format!(
-        "{} {} {}?",
-        ui.t("¿Restaurar", "Restore"),
-        preview.plan.ready.len(),
-        ui.t("elementos", "items")
-    );
+    let question = tr!(ui, "undo-confirm", count = preview.plan.ready.len());
     if let Err(code) = ui.confirm("undo", &question) {
         return code;
     }
@@ -582,34 +679,32 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
         );
     } else {
         for r in &report.items {
+            let id = r.item_id.to_string();
             match &r.outcome {
                 Outcome::Done {
                     result_path: Some(p),
                     ..
-                } if p != &r.path => ui.say(format!(
-                    "  [{}] {} {}",
-                    r.item_id,
-                    ui.t("restaurado como", "restored as"),
-                    tilde(p, home)
-                )),
-                Outcome::Skipped { message, .. } | Outcome::Failed { error: message } => {
-                    ui.say(format!("  ! [{}] {message}", r.item_id));
+                } if p != &r.path => {
+                    ui.say_in(1, tr!(ui, "undo-restored-as", id = id, path = ui.path(p)));
                 }
-                _ => {}
+                o => {
+                    if let Some(problem) = render::problem(&ui.i18n, o, &ui.home) {
+                        ui.say_in(1, tr!(ui, "undo-item-problem", id = id, problem = problem));
+                    }
+                }
             }
         }
-        ui.say(format!(
-            "{} {} {}.",
-            ui.t("Restaurados:", "Restored:"),
-            report.done,
-            ui.t("elementos", "items")
-        ));
+        ui.say(tr!(ui, "undo-done", count = report.done));
     }
     if partial_upfront {
         Exit::Partial
     } else {
         exec_exit(&report)
     }
+}
+
+fn yes_no(b: bool) -> &'static str {
+    if b { "yes" } else { "no" }
 }
 
 fn doctor(ui: &Ui, core: &Core) -> Exit {
@@ -627,99 +722,82 @@ fn doctor(ui: &Ui, core: &Core) -> Exit {
         ui.emit("doctor", json!({ "report": r }));
         return code;
     }
-    let yes_no = |b: bool| {
-        if b {
-            ui.t("sí", "yes")
-        } else {
-            ui.t("no", "no")
-        }
-    };
     let fda = match r.full_disk_access {
-        FdaState::Granted => ui.t("concedido", "granted"),
-        FdaState::Denied => ui.t(
-            "NO concedido (concédelo a tu terminal en Ajustes del Sistema › Privacidad y seguridad)",
-            "NOT granted (grant it to your terminal in System Settings › Privacy & Security)",
-        ),
-        FdaState::Undetermined => ui.t("no determinable", "undetermined"),
+        FdaState::Granted => "granted",
+        FdaState::Denied => "denied",
+        FdaState::Undetermined => "undetermined",
     };
-    ui.say(format!(
-        "rotten {} · {} {}",
-        r.version,
-        ui.t("catálogo", "catalog"),
-        r.catalog_version
+    ui.say(tr!(
+        ui,
+        "doctor-version",
+        version = r.version.as_str(),
+        catalog = r.catalog_version.as_str()
     ));
-    ui.say(format!(
-        "macOS {} · {} · {} {}",
-        r.macos_version.as_deref().unwrap_or("?"),
-        r.arch,
-        ui.t("plataforma soportada (D-01):", "supported platform (D-01):"),
-        yes_no(r.platform_supported)
+    ui.say(tr!(
+        ui,
+        "doctor-platform",
+        macos = r.macos_version.as_deref().unwrap_or("?"),
+        arch = r.arch.as_str(),
+        supported = yes_no(r.platform_supported)
     ));
-    ui.say(format!(
-        "{} {fda}",
-        ui.t("Acceso total al disco:", "Full Disk Access:")
+    ui.say(tr!(ui, "doctor-fda", state = fda));
+    ui.say(tr!(
+        ui,
+        "doctor-home",
+        path = r.home.display().to_string(),
+        source = r.home_source.as_str()
     ));
-    ui.say(format!(
-        "{} {} ({})",
-        ui.t("Carpeta personal:", "Home:"),
-        r.home.display(),
-        r.home_source
+    ui.say(tr!(
+        ui,
+        "doctor-state",
+        path = r.state_dir.display().to_string()
     ));
-    ui.say(format!(
-        "{} {}",
-        ui.t("Estado de la app:", "App state:"),
-        r.state_dir.display()
-    ));
-    ui.say(format!(
-        "{} {} ({}{})",
-        ui.t("Configuración:", "Config:"),
-        r.config_path.display(),
-        r.config,
-        r.config_error
-            .as_deref()
-            .map(|e| format!(": {e}"))
-            .unwrap_or_default()
-    ));
-    ui.say(format!(
-        "Journal: {} ({} {}, {} {})",
-        r.journal_dir.display(),
-        r.journal_records,
-        ui.t("registros", "records"),
-        r.journal_problems.len(),
-        ui.t("líneas ilegibles", "unreadable lines")
-    ));
-    let trash = match &r.trash {
-        TrashInfo::System => ui.t("la del sistema", "the system one").to_owned(),
-        TrashInfo::Dir { path } => path.display().to_string(),
-    };
-    ui.say(format!("{} {trash}", ui.t("Papelera:", "Trash:")));
-    if !r.trash_unreadable_ops.is_empty() {
-        ui.say(format!(
-            "  ! {} {}",
-            ui.t(
-                "Operaciones interrumpidas con elementos que no se pudieron buscar en la Papelera (falta Acceso total al disco):",
-                "Interrupted operations with items that could not be looked up in the Trash (Full Disk Access missing):"
-            ),
-            r.trash_unreadable_ops.join(", ")
-        ));
+    let config_path = r.config_path.display().to_string();
+    match &r.config_error {
+        Some(e) => ui.say(tr!(
+            ui,
+            "doctor-config-error",
+            path = config_path,
+            error = e.as_str()
+        )),
+        None => ui.say(tr!(
+            ui,
+            "doctor-config",
+            path = config_path,
+            state = r.config.as_str()
+        )),
     }
-    ui.say(format!(
-        "{} {}",
-        ui.t("Cerrojo de ejecución libre:", "Execution lock free:"),
-        yes_no(r.exec_lock_free)
+    ui.say(tr!(
+        ui,
+        "doctor-journal",
+        path = r.journal_dir.display().to_string(),
+        records = r.journal_records,
+        problems = r.journal_problems.len()
     ));
+    match &r.trash {
+        TrashInfo::System => ui.say(tr!(ui, "doctor-trash-system")),
+        TrashInfo::Dir { path } => ui.say(tr!(
+            ui,
+            "doctor-trash-dir",
+            path = path.display().to_string()
+        )),
+    }
+    if !r.trash_unreadable_ops.is_empty() {
+        ui.say_in(
+            1,
+            tr!(
+                ui,
+                "doctor-trash-unreadable",
+                ops = r.trash_unreadable_ops.join(", ")
+            ),
+        );
+    }
+    ui.say(tr!(ui, "doctor-lock", free = yes_no(r.exec_lock_free)));
     match &r.running_apps {
-        AppsProbe::Ok { count } => ui.say(format!(
-            "{} {count}",
-            ui.t("Apps abiertas detectadas:", "Running apps detected:")
-        )),
-        AppsProbe::Unavailable { detail: e } => ui.say(format!(
-            "{} {e}",
-            ui.t(
-                "No se pueden detectar las apps abiertas:",
-                "Cannot detect running apps:"
-            )
-        )),
+        AppsProbe::Ok { count } => ui.say(tr!(ui, "doctor-apps", count = *count)),
+        AppsProbe::Unavailable { detail } => {
+            ui.say(tr!(ui, "doctor-apps-unavailable", detail = detail.as_str()))
+        }
     }
     code
 }
@@ -733,10 +811,10 @@ fn exclude(ui: &Ui, core: &Core, action: ExcludeCmd) -> Exit {
                         let items: Vec<String> = list.iter().map(ToString::to_string).collect();
                         ui.emit("exclude", json!({ "action": "list", "exclusions": items }));
                     } else if list.is_empty() {
-                        ui.say(ui.t("No hay exclusiones.", "No exclusions."));
+                        ui.say(tr!(ui, "exclude-none"));
                     } else {
                         for e in list {
-                            ui.say(e.to_string());
+                            ui.say(tr!(ui, "exclude-item", value = e.to_string()));
                         }
                     }
                     Exit::Ok
@@ -755,18 +833,18 @@ fn exclude(ui: &Ui, core: &Core, action: ExcludeCmd) -> Exit {
                     json!({ "action": if add { "add" } else { "remove" }, "exclusion": ex.to_string(), "changed": changed, "dry_run": dry_run }),
                 );
             } else {
-                let msg = match (add, changed) {
-                    (true, true) => ui.t("Añadida:", "Added:"),
-                    (true, false) => ui.t("Ya estaba:", "Already present:"),
-                    (false, true) => ui.t("Quitada:", "Removed:"),
-                    (false, false) => ui.t("No estaba:", "Not present:"),
+                let change = match (add, changed) {
+                    (true, true) => "added",
+                    (true, false) => "present",
+                    (false, true) => "removed",
+                    (false, false) => "absent",
                 };
-                let suffix = if dry_run && changed {
-                    ui.t(" (simulación)", " (dry run)")
+                let value = ex.to_string();
+                ui.say(if dry_run {
+                    tr!(ui, "exclude-result-dry", change = change, value = value)
                 } else {
-                    ""
-                };
-                ui.say(format!("{msg} {ex}{suffix}"));
+                    tr!(ui, "exclude-result", change = change, value = value)
+                });
             }
             Exit::Ok
         }

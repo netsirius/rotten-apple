@@ -9,12 +9,12 @@
 
 use std::path::PathBuf;
 
-use ra_core::{Core, ExecReport, Outcome, SkipReason, tilde};
+use ra_core::{Core, ExecReport, SkipReason};
 use serde_json::{Value, json};
 
 use crate::args::TrashCmd;
-use crate::text::size;
-use crate::{Exit, Ui, exec_exit, print_plan};
+use crate::i18n::tr;
+use crate::{Exit, Ui, exec_exit, print_plan, print_problems};
 
 const COMMAND: &str = "trash";
 
@@ -33,7 +33,13 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
             Ok(a) => abs.push(a),
             Err(e) => {
                 let message = format!("{}: {e}", p.display());
-                return ui.fail(COMMAND, Exit::Usage, "invalid_path", &message, &message);
+                let human = tr!(
+                    ui,
+                    "invalid-path",
+                    path = p.display().to_string(),
+                    detail = e.to_string()
+                );
+                return ui.fail(COMMAND, Exit::Usage, "invalid_path", &message, &human);
             }
         }
     }
@@ -57,11 +63,8 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
                 json!({ "action": "put", "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
             );
         } else {
-            print_plan(ui, &preview.plan, &preview.dry_run);
-            ui.say(ui.t(
-                "Simulación: no se ha cambiado nada.",
-                "Dry run: nothing was changed.",
-            ));
+            print_plan(ui, core, &preview.plan, &preview.dry_run);
+            ui.say(tr!(ui, "dry-run-nothing-changed"));
         }
         // Mismo código que tendría la ejecución: 4 si ya se prevén omisiones.
         return if left_out {
@@ -77,23 +80,19 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
                 json!({ "action": "put", "dry_run": false, "plan": preview.plan, "report": ExecReport::default() }),
             );
         } else {
-            print_plan(ui, &preview.plan, &preview.dry_run);
-            ui.say(ui.t(
-                "Nada que mover a la Papelera.",
-                "Nothing to move to the Trash.",
-            ));
+            print_plan(ui, core, &preview.plan, &preview.dry_run);
+            ui.say(tr!(ui, "trash-nothing"));
         }
         return if left_out { Exit::Partial } else { Exit::Ok };
     }
     if !ui.json {
-        print_plan(ui, &preview.plan, &preview.dry_run);
+        print_plan(ui, core, &preview.plan, &preview.dry_run);
     }
-    let question = format!(
-        "{} {} {} ({})?",
-        ui.t("¿Mover a la Papelera", "Move to the Trash"),
-        preview.plan.totals().items,
-        ui.t("elementos", "items"),
-        size(preview.plan.totals().bytes_allocated, ui.lang)
+    let question = tr!(
+        ui,
+        "confirm-trash",
+        count = preview.plan.totals().items,
+        size = ui.size(preview.plan.totals().bytes_allocated)
     );
     if let Err(code) = ui.confirm(COMMAND, &question) {
         return code;
@@ -110,32 +109,16 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
             json!({ "action": "put", "dry_run": false, "plan": plan_json, "report": report }),
         );
     } else {
-        for r in &report.items {
-            if let Outcome::Skipped { message, .. } | Outcome::Failed { error: message } =
-                &r.outcome
-            {
-                ui.say(format!(
-                    "  ! {} — {message}",
-                    tilde(&r.path, &core.env().home)
-                ));
-            }
-        }
-        ui.say(format!(
-            "{} {} {} ({}). {}",
-            ui.t("Movido a la Papelera:", "Moved to the Trash:"),
-            report.done,
-            ui.t("elementos", "items"),
-            size(report.bytes_done, ui.lang),
-            ui.t(
-                "Aún no se ha liberado espacio: eso ocurre al vaciar la Papelera.",
-                "No space is freed yet: that happens when the Trash is emptied.",
-            ),
+        print_problems(ui, &report);
+        ui.say(tr!(
+            ui,
+            "moved-to-trash",
+            count = report.done,
+            size = ui.size(report.bytes_done)
         ));
+        ui.say(tr!(ui, "not-freed-yet"));
         if let Some(op) = &report.op_id {
-            ui.say(format!(
-                "{} rotten undo {op}",
-                ui.t("Para deshacer:", "To undo:")
-            ));
+            ui.say(tr!(ui, "to-undo", op = op.as_str()));
         }
     }
     if left_out {

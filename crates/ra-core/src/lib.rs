@@ -20,13 +20,17 @@ use std::time::SystemTime;
 pub use doctor::{AppsProbe, DoctorReport, FdaState, TrashInfo};
 pub use env::{BUNDLE_ID, Env, EnvError};
 pub use error::{CoreError, ErrorClass};
-pub use ra_catalog::{Catalog, Localized, Risk};
-pub use ra_exec::{ExecReport, ItemReport, Outcome, SkipCause, TrashBackend};
+pub use ra_catalog::{Block, Catalog, Localized, Risk};
+pub use ra_exec::{ExecReport, InUseDetail, ItemReport, Outcome, SkipCause, TrashBackend};
 pub use ra_history::{
     HistoryKind, NotRecoverable, NotRecoverableReason, OpSummary, UndoError, UndoPlan, UndoState,
 };
 pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};
-pub use ra_safety::{ConfigState, Exclusion, FileKind, Origin, RunningApps, SystemApps};
+pub use ra_safety::apps::AppBlock;
+pub use ra_safety::{
+    ConfigState, Exclusion, ExclusionMatch, FileKind, FlagViolation, Origin, ProtectionReason,
+    RunningApps, SystemApps,
+};
 pub use scan::{CategorySummary, ScanReport, ScanStatus};
 
 use ra_exec::{ExecContext, ExecLock};
