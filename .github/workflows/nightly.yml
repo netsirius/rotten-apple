@@ -1,0 +1,133 @@
+# Ejecución nocturna (T-09): propiedades con 10 000 casos (05 §10.3,
+# RNF-ARQ-03), arnés kill -9 con 1 000 rondas (T-07, RNF-09) y `cargo audit`
+# diario sobre `Cargo.lock` (05 §9.1, RNF-14, RNF-ARQ-26). Acciones fijadas
+# por SHA (05 §9.2) y permisos mínimos.
+name: Nocturna
+
+on:
+  schedule:
+    # 03:17 UTC todos los días.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  properties:
+    name: propiedades (10 000 casos)
+    # D-01: macOS 26 o posterior en Apple silicon.
+    runs-on: macos-26
+    # 1 000 casos tardan ~7,5 min en un M-series con 6 pruebas en paralelo;
+    # 10 000 rondan los 75 min allí y más en un runner de 3 núcleos.
+    timeout-minutes: 240
+    env:
+      PROPTEST_CASES: "10000"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain de Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+      - name: Pruebas con 10 000 casos por propiedad
+        run: cargo test --workspace --locked
+
+  crash:
+    name: arnés kill -9 (1 000 rondas)
+    runs-on: macos-26
+    # 50 rondas tardan ~16 s en un M-series: 1 000, unos 6 min.
+    timeout-minutes: 30
+    env:
+      ROTTEN_CRASH_ROUNDS: "1000"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain de Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+      # crash.rs lanza target/debug/rotten: hay que compilarlo antes para no
+      # probar un binario desactualizado (08 §2.2).
+      - name: Compilar rotten
+        run: cargo build -p rotten --locked
+      - name: Arnés kill -9
+        run: cargo test -p ra-core --test crash --locked -- --nocapture
+
+  audit:
+    name: cargo-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Instalar cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit
+        run: cargo audit
+
+  coverage:
+    name: cobertura (cargo-llvm-cov)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain de Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component llvm-tools-preview
+          rustup default stable
+          rustc --version
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-llvm-cov
+      - name: Pruebas instrumentadas
+        run: cargo llvm-cov --workspace --locked --no-report
+      - name: Informes
+        run: |
+          mkdir -p coverage
+          cargo llvm-cov report --html --output-dir coverage
+          cargo llvm-cov report --lcov --output-path coverage/lcov.info
+          cargo llvm-cov report --json --summary-only --output-path coverage/summary.json
+          cargo llvm-cov report --summary-only
+      # Objetivo de RNF-31: ≥ 80 % de líneas en los módulos de seguridad. De
+      # momento solo se informa; no hace fallar el job.
+      - name: Resumen por crate
+        run: |
+          {
+            echo "### Cobertura de líneas por crate"
+            echo
+            echo "| Crate | Líneas cubiertas | % |"
+            echo "|---|---|---|"
+            jq -r '
+              [.data[0].files[]
+               | select(.filename | test("/crates/[^/]+/"))
+               | {crate: (.filename | capture("/crates/(?<c>[^/]+)/").c),
+                  c: .summary.lines.covered, n: .summary.lines.count}]
+              | group_by(.crate)[]
+              | {crate: .[0].crate, c: (map(.c) | add), n: (map(.n) | add)}
+              | (if .crate | IN("ra-safety", "ra-plan", "ra-exec", "ra-history")
+                 then "**\(.crate)**" else .crate end) as $name
+              | "| \($name) | \(.c)/\(.n) | \(if .n > 0 then (1000 * .c / .n | round) / 10 else 0 end) |"
+            ' coverage/summary.json
+            echo
+            echo "En negrita, los crates de RNF-31 (objetivo ≥ 80 %)."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cobertura
+          path: coverage/
+          if-no-files-found: error
