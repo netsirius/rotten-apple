@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "update",
+  "error": {
+    "code": "brew_failed",
+    "exit_code": 1,
+    "message": "brew upgrade exited with code 3"
+  },
+  "schema_version": 2
+}

@@ -2,3 +2,4 @@
 
 pub mod free;
 pub mod trash;
+pub mod update;

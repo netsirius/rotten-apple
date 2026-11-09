@@ -24,6 +24,8 @@ pub struct Fx {
     pub home: PathBuf,
     pub trash: PathBuf,
     pub state: PathBuf,
+    /// Variables de entorno de más para cada ejecución (`rotten update`).
+    pub env: Vec<(String, String)>,
 }
 
 fn e(path: &str, size: u64, age_days: u32) -> Entry {
@@ -77,6 +79,7 @@ pub fn fixture() -> Fx {
         home,
         trash,
         state,
+        env: Vec::new(),
     }
 }
 
@@ -95,6 +98,9 @@ impl Fx {
             .env_remove("LC_ALL")
             .env_remove("LC_MESSAGES")
             .env("LANG", lang);
+        for (k, v) in &self.env {
+            c.env(k, v);
+        }
         c
     }
 
@@ -311,5 +317,86 @@ fn redact_in(fx: &Fx, v: &Value, key: Option<&str>) -> Value {
             Value::Object(out)
         }
         _ => v.clone(),
+    }
+}
+
+/// Vías de instalación simuladas para `rotten update` (T-15).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Install {
+    /// `<home>/homebrew/Cellar/rotten/0.1.0/bin/rotten`.
+    Homebrew,
+    /// `<home>/homebrew/bin/rotten`, enlace al Cellar (como lo deja `brew`).
+    HomebrewLink,
+    /// `<home>/Applications/Rotten Apple.app/Contents/MacOS/rotten`.
+    App,
+    /// `<home>/.cargo/bin/rotten`.
+    Cargo,
+    /// `<home>/bin/rotten`.
+    Other,
+}
+
+/// `brew` falso del prefijo de prueba: apunta sus argumentos en
+/// [`Fx::brew_log`], escribe `$FAKE_BREW_SAY` en stdout si está y sale con
+/// `$FAKE_BREW_EXIT` (0 por defecto).
+const FAKE_BREW: &str = "#!/bin/sh\n\
+printf '%s\\n' \"$*\" >> \"$0.log\"\n\
+if [ -n \"$FAKE_BREW_SAY\" ]; then echo \"$FAKE_BREW_SAY\"; fi\n\
+exit \"${FAKE_BREW_EXIT:-0}\"\n";
+
+impl Fx {
+    /// Prefijo de Homebrew de prueba (bajo la carpeta personal, para que
+    /// `redact` lo oculte).
+    pub fn brew_prefix(&self) -> PathBuf {
+        self.home.join("homebrew")
+    }
+
+    /// El fichero donde el `brew` falso apunta cada llamada.
+    pub fn brew_log(&self) -> PathBuf {
+        self.brew_prefix().join("bin/brew.log")
+    }
+
+    /// Crea la instalación simulada `kind` (y el `brew` falso del prefijo)
+    /// y hace que las ejecuciones siguientes la vean: `ROTTEN_UPDATE_EXE`
+    /// apunta a ella y `HOMEBREW_PREFIX`, `CARGO_HOME` y `HOME` quedan
+    /// fijados dentro de la carpeta personal de prueba, sin depender del
+    /// entorno de quien ejecuta las pruebas.
+    pub fn use_install(&mut self, kind: Install) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let prefix = self.brew_prefix();
+        let cellar_exe = prefix.join("Cellar/rotten/0.1.0/bin/rotten");
+        let exe = match kind {
+            Install::Homebrew => cellar_exe.clone(),
+            Install::HomebrewLink => prefix.join("bin/rotten"),
+            Install::App => self.p("Applications/Rotten Apple.app/Contents/MacOS/rotten"),
+            Install::Cargo => self.p(".cargo/bin/rotten"),
+            Install::Other => self.p("bin/rotten"),
+        };
+        let brew = prefix.join("bin/brew");
+        fs::create_dir_all(brew.parent().expect("bin")).expect("mkdir");
+        fs::write(&brew, FAKE_BREW).expect("brew falso");
+        fs::set_permissions(&brew, fs::Permissions::from_mode(0o755)).expect("chmod");
+        if kind == Install::HomebrewLink {
+            fs::create_dir_all(cellar_exe.parent().expect("bin")).expect("mkdir");
+            fs::write(&cellar_exe, b"").expect("write");
+            if !exe.exists() {
+                std::os::unix::fs::symlink("../Cellar/rotten/0.1.0/bin/rotten", &exe)
+                    .expect("enlace");
+            }
+        } else {
+            fs::create_dir_all(exe.parent().expect("carpeta")).expect("mkdir");
+            fs::write(&exe, b"").expect("write");
+        }
+        let vars = [
+            ("ROTTEN_UPDATE_EXE", exe.clone()),
+            ("HOMEBREW_PREFIX", prefix),
+            ("CARGO_HOME", self.p(".cargo")),
+            ("HOME", self.home.clone()),
+        ];
+        self.env.retain(|(k, _)| !vars.iter().any(|(v, _)| k == v));
+        for (k, v) in vars {
+            self.env
+                .push((k.to_owned(), v.to_str().expect("UTF-8").to_owned()));
+        }
+        exe
     }
 }

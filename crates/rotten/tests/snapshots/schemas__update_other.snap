@@ -1,0 +1,14 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "argv": null,
+  "automatic": false,
+  "command": "update",
+  "dry_run": false,
+  "executable": "[HOME]/bin/rotten",
+  "method": "other",
+  "ran": false,
+  "schema_version": 2
+}

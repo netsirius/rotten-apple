@@ -15,7 +15,7 @@ mod common;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
-use common::{Fx, fixture, redact, schema_files, validate};
+use common::{Fx, Install, fixture, redact, schema_files, validate};
 use serde_json::{Map, Value, json};
 
 /// Ejecuta, comprueba el código de salida y guarda el *snapshot*. `Fx::run`
@@ -39,7 +39,7 @@ fn schemas_are_valid_and_match_their_file_name() {
     assert_eq!(
         commands,
         [
-            "clean", "doctor", "exclude", "free", "history", "scan", "trash", "undo"
+            "clean", "doctor", "exclude", "free", "history", "scan", "trash", "undo", "update"
         ]
     );
     for ((command, version), (path, schema)) in &files {
@@ -421,9 +421,59 @@ fn exclude() {
     );
 }
 
+/// `rotten update` (T-15) con cada vía de instalación y un `brew` falso.
+#[test]
+fn update() {
+    let mut fx = fixture();
+    fx.use_install(Install::HomebrewLink);
+    // Aceptación de T-15: el método y el comando exacto, sin ejecutar nada.
+    let doc = check(
+        &fx,
+        "update_dry_run_homebrew",
+        &["update", "--dry-run", "--json"],
+        0,
+    );
+    assert_eq!(doc["argv"][1], "upgrade");
+    assert!(!fx.brew_log().exists(), "--dry-run ha ejecutado brew");
+    check(&fx, "update_error_no_yes", &["update", "--json"], 2);
+    assert!(!fx.brew_log().exists(), "sin --yes ha ejecutado brew");
+    check(
+        &fx,
+        "update_executed_homebrew",
+        &["update", "--yes", "--json"],
+        0,
+    );
+    fx.env.push(("FAKE_BREW_EXIT".into(), "3".into()));
+    check(
+        &fx,
+        "update_error_brew_failed",
+        &["update", "--yes", "--json"],
+        1,
+    );
+    fs::remove_file(fx.brew_prefix().join("bin/brew")).expect("rm brew");
+    check(
+        &fx,
+        "update_error_brew_not_found",
+        &["update", "--dry-run", "--json"],
+        1,
+    );
+    fx.use_install(Install::App);
+    check(&fx, "update_app", &["update", "--json"], 0);
+    fx.use_install(Install::Cargo);
+    check(&fx, "update_cargo", &["update", "--json"], 0);
+    check(
+        &fx,
+        "update_dry_run_cargo",
+        &["update", "--dry-run", "--json"],
+        0,
+    );
+    fx.use_install(Install::Other);
+    check(&fx, "update_other", &["update", "--json"], 0);
+}
+
 /// Un documento de cada forma: éxito y error de cada comando.
 fn sample_documents() -> Vec<Value> {
-    let fx = fixture();
+    let mut fx = fixture();
     let mut docs = vec![
         fx.run(&["scan", "--json"]).1,
         fx.run(&["doctor", "--json"]).1,
@@ -454,6 +504,14 @@ fn sample_documents() -> Vec<Value> {
     docs.push(fx.run(&["trash", "empty", "--dry-run", "--json"]).1);
     docs.push(fx.run(&["trash", "empty", "--yes", "--json"]).1);
     docs.push(fx.run(&["history", "--json"]).1);
+    fx.use_install(Install::Homebrew);
+    docs.push(fx.run(&["update", "--dry-run", "--json"]).1);
+    docs.push(fx.run(&["update", "--yes", "--json"]).1);
+    docs.push(fx.run(&["update", "--json"]).1);
+    fx.use_install(Install::Cargo);
+    docs.push(fx.run(&["update", "--json"]).1);
+    fx.use_install(Install::App);
+    docs.push(fx.run(&["update", "--json"]).1);
     docs
 }
 

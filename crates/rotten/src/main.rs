@@ -187,6 +187,7 @@ fn main() -> ExitCode {
         Cmd::Doctor => "doctor",
         Cmd::Exclude { .. } => "exclude",
         Cmd::Trash { .. } => "trash",
+        Cmd::Update { .. } => "update",
     };
 
     if ra_core::running_as_root() && !cli.allow_root {
@@ -209,6 +210,10 @@ fn main() -> ExitCode {
         }
     };
     ui.home = env.home.clone();
+    // `update` no usa el estado de la app (T-15).
+    if let Cmd::Update { dry_run } = cli.cmd {
+        return cmd::update::run(&ui, dry_run).into();
+    }
     let core = match Core::new(env) {
         Ok(c) => c,
         Err(e) => return ui.core_error(command, &e).into(),
@@ -232,6 +237,7 @@ fn main() -> ExitCode {
         Cmd::Doctor => doctor(&ui, &core),
         Cmd::Exclude { action } => exclude(&ui, &core, action),
         Cmd::Trash { action } => cmd::trash::run(&ui, &core, action),
+        Cmd::Update { .. } => unreachable!("se despacha antes de abrir el núcleo"),
     };
     exit.into()
 }

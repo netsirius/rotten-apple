@@ -99,6 +99,12 @@ pub enum Cmd {
         #[command(subcommand)]
         action: Option<TrashCmd>,
     },
+    /// Actualiza Rotten Apple por la vía con la que se instaló (Homebrew, app o cargo).
+    Update {
+        /// Dice qué se haría y con qué comando, sin ejecutar nada.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
