@@ -1148,15 +1148,32 @@ pub fn recover_incomplete(
                 // medias: falta parte de su contenido y no se sabe cuánto.
                 Ok(Some(id)) if id.same_object(identity) => {
                     let changed = !id.same_after_move(identity);
-                    if delete && identity.kind == FileKind::Dir && changed {
-                        unknown += 1;
-                        let detail = "borrado interrumpido: contenido parcial";
-                        (PARTIAL, None, Some(detail.to_owned()))
+                    let deleting_dir = delete && identity.kind == FileKind::Dir;
+                    // `remove_at` borra en profundidad: un corte tras borrar
+                    // `sub/x` cambia `sub`, no la carpeta de arriba, así que
+                    // también se mira dentro.
+                    let inside = if deleting_dir && !changed {
+                        changed_inside_since(path, &r.ts)
                     } else {
-                        skipped += 1;
-                        let detail = changed
-                            .then(|| "sigue en su sitio, pero cambió desde la revisión".to_owned());
-                        ("not_moved", None, detail)
+                        Ok(false)
+                    };
+                    match inside {
+                        Err(e) => {
+                            unknown += 1;
+                            ("unknown", None, Some(format!("no se pudo comprobar: {e}")))
+                        }
+                        Ok(inside) if deleting_dir && (changed || inside) => {
+                            unknown += 1;
+                            let detail = "borrado interrumpido: contenido parcial";
+                            (PARTIAL, None, Some(detail.to_owned()))
+                        }
+                        Ok(_) => {
+                            skipped += 1;
+                            let detail = changed.then(|| {
+                                "sigue en su sitio, pero cambió desde la revisión".to_owned()
+                            });
+                            ("not_moved", None, detail)
+                        }
                     }
                 }
                 // Un borrado permanente cuyo original ya no está (en su
@@ -1240,6 +1257,51 @@ const PARTIAL: &str = "partial";
 /// dentro de su carpeta, que sí se pudo abrir sin seguir enlaces). Si la
 /// carpeta no se puede abrir (sin permiso, volumen desmontado, enlace en la
 /// ruta) o falla otra cosa, error: no se sabe.
+/// ¿Ha cambiado alguna carpeta dentro de `path` (sin contar `path`, que
+/// ya compara la identidad) desde `since`, la hora RFC 3339 de la intención
+/// de borrarla? Cualquier `unlink` de `remove_at` llega después de esa
+/// intención y cambia la fecha de cambio (ctime) de su carpeta. La hora
+/// del journal va truncada a milisegundos: el error cae del lado de dar la
+/// carpeta por incierta. No sigue enlaces ni cruza puntos de montaje
+/// (`remove_at` no borra más allá). Si el reloj retrocede entre la
+/// intención y el borrado, el cambio puede pasar inadvertido.
+fn changed_inside_since(path: &Path, since: &str) -> io::Result<bool> {
+    let since = humantime::parse_rfc3339(since)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let since = (since.as_secs() as i64, i64::from(since.subsec_nanos()));
+    let (parent, name) = open_parent_nofollow(path)?;
+    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let dir = rustix::fs::openat(parent.as_fd(), name, flags, Mode::empty())?;
+    let dev = rustix::fs::fstat(&dir)?.st_dev;
+    fn walk(dir: &OwnedFd, dev: u64, since: (i64, i64), flags: OFlags) -> io::Result<bool> {
+        for e in Dir::read_from(dir)? {
+            let e = e?;
+            let n = e.file_name();
+            if matches!(n.to_bytes(), b"." | b"..") {
+                continue;
+            }
+            let st = rustix::fs::statat(dir, n, AtFlags::SYMLINK_NOFOLLOW)?;
+            if ra_safety::Identity::from_stat(&st).kind != FileKind::Dir || st.st_dev as u64 != dev
+            {
+                continue;
+            }
+            let ctime = (st.st_ctime, st.st_ctime_nsec);
+            let mtime = (st.st_mtime, st.st_mtime_nsec);
+            if ctime >= since || mtime >= since {
+                return Ok(true);
+            }
+            let child = rustix::fs::openat(dir, n, flags, Mode::empty())?;
+            if walk(&child, dev, since, flags)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+    walk(&dir, dev as u64, since, flags)
+}
+
 fn what_is_at(path: &Path) -> io::Result<Option<ra_safety::Identity>> {
     let (parent, name) = open_parent_nofollow(path)?;
     match rustix::fs::statat(parent.as_fd(), name, AtFlags::SYMLINK_NOFOLLOW) {
@@ -1930,6 +1992,61 @@ mod batch_tests {
         assert_eq!(original[&1], ItemState::Trashed);
         assert!(partial(&original[&2]), "{:?}", original[&2]);
         assert!(dir.join("b.log").exists());
+    }
+
+    /// Una liberación cortada con una carpeta anidada (`n-dir/sub/{x,y}`) en
+    /// la Papelera. Devuelve el estado de esa carpeta en la liberación y en
+    /// la operación original tras recuperar; `cut` es lo que llegó a hacer
+    /// `remove_at` antes del corte.
+    fn nested_folder_after_cut(cut: impl FnOnce(&Path)) -> (ItemState, ItemState) {
+        let fx = Fx::new();
+        let mut paths = fx.files(1);
+        let nested = fx.logs.join("n-dir");
+        fs::create_dir_all(nested.join("sub")).expect("mkdir");
+        for f in ["x", "y"] {
+            fs::write(nested.join("sub").join(f), b"x").expect("write");
+        }
+        paths.push(nested);
+        // La hora del journal va en milisegundos: que la intención llegue
+        // claramente después de crear la carpeta.
+        std::thread::sleep(Duration::from_millis(5));
+        let (op, plan) = interrupted_free(&fx, &paths);
+        let it = plan
+            .ready
+            .iter()
+            .find(|it| {
+                it.path
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("n-dir"))
+            })
+            .expect("n-dir en la Papelera");
+        cut(&it.path);
+        recover_incomplete(&fx.ctx(), &fx.lock()).expect("recover");
+        (
+            states(&fx, "op-free")[&it.item_id].clone(),
+            states(&fx, &op)[&it.of.item].clone(),
+        )
+    }
+
+    /// `remove_at` borra en profundidad: un corte tras borrar `sub/x` deja
+    /// intacta la carpeta de arriba (su identidad no cambia), pero le falta
+    /// contenido. No puede quedar como «no tocada».
+    #[test]
+    fn a_folder_cut_deep_inside_is_unknown_in_both_operations() {
+        let (freed, original) = nested_folder_after_cut(|dir| {
+            fs::remove_file(dir.join("sub/x")).expect("rm");
+        });
+        let partial = |s: &ItemState| matches!(s, ItemState::Unknown { detail: Some(d) } if d.contains("contenido parcial"));
+        assert!(partial(&freed), "{freed:?}");
+        assert!(partial(&original), "{original:?}");
+    }
+
+    /// Y si el corte llegó antes de tocarla, sigue siendo «no tocada».
+    #[test]
+    fn a_nested_folder_untouched_by_the_cut_is_not_moved() {
+        let (freed, original) = nested_folder_after_cut(|_| {});
+        assert_eq!(freed, not_moved());
+        assert_eq!(original, ItemState::Trashed);
     }
 
     /// I2 (PoC C del revisor): si la recuperación no puede mirar en la

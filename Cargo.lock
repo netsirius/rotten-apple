@@ -1078,6 +1078,7 @@ name = "ra-exec"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "humantime",
  "objc2",
  "objc2-foundation",
  "ra-catalog",
