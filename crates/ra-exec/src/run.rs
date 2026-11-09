@@ -1162,7 +1162,13 @@ pub fn recover_incomplete(
                             unknown += 1;
                             ("unknown", None, Some(format!("no se pudo comprobar: {e}")))
                         }
-                        Ok(inside) if deleting_dir && (changed || inside) => {
+                        Ok(true) => {
+                            unknown += 1;
+                            let detail = "cambió por dentro tras la intención de borrarla: \
+                                          puede faltar contenido";
+                            (PARTIAL, None, Some(detail.to_owned()))
+                        }
+                        Ok(false) if deleting_dir && changed => {
                             unknown += 1;
                             let detail = "borrado interrumpido: contenido parcial";
                             (PARTIAL, None, Some(detail.to_owned()))
@@ -1253,55 +1259,51 @@ pub fn recover_incomplete(
 /// Estado reconciliado de una carpeta cuyo borrado se cortó a medias.
 const PARTIAL: &str = "partial";
 
-/// Lo que hay en `path`: `None` si no hay nada (ENOENT o ENOTDIR al mirar
-/// dentro de su carpeta, que sí se pudo abrir sin seguir enlaces). Si la
-/// carpeta no se puede abrir (sin permiso, volumen desmontado, enlace en la
-/// ruta) o falla otra cosa, error: no se sabe.
-/// ¿Ha cambiado alguna carpeta dentro de `path` (sin contar `path`, que
-/// ya compara la identidad) desde `since`, la hora RFC 3339 de la intención
-/// de borrarla? Cualquier `unlink` de `remove_at` llega después de esa
-/// intención y cambia la fecha de cambio (ctime) de su carpeta. La hora
-/// del journal va truncada a milisegundos: el error cae del lado de dar la
-/// carpeta por incierta. No sigue enlaces ni cruza puntos de montaje
-/// (`remove_at` no borra más allá). Si el reloj retrocede entre la
-/// intención y el borrado, el cambio puede pasar inadvertido.
+/// ¿Ha cambiado algo dentro de `path` (sin contar `path`, que ya compara
+/// la identidad) desde `since`, la hora RFC 3339 de la intención de
+/// borrarla? Cualquier `unlink` de `remove_at` llega después de esa
+/// intención y cambia la fecha de cambio de su carpeta. Las fechas se
+/// comparan con un margen por debajo de `since` según la resolución del
+/// volumen (la hora del journal ya va truncada a milisegundos): el error cae
+/// del lado de dar la carpeta por incierta. No sigue enlaces ni cruza puntos
+/// de montaje (`remove_at` no borra más allá). Si el reloj retrocede entre
+/// la intención y el borrado, el cambio puede pasar inadvertido.
 fn changed_inside_since(path: &Path, since: &str) -> io::Result<bool> {
     let since = humantime::parse_rfc3339(since)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
         .duration_since(UNIX_EPOCH)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let since = (since.as_secs() as i64, i64::from(since.subsec_nanos()));
     let (parent, name) = open_parent_nofollow(path)?;
-    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
-    let dir = rustix::fs::openat(parent.as_fd(), name, flags, Mode::empty())?;
-    let dev = rustix::fs::fstat(&dir)?.st_dev;
-    fn walk(dir: &OwnedFd, dev: u64, since: (i64, i64), flags: OFlags) -> io::Result<bool> {
-        for e in Dir::read_from(dir)? {
-            let e = e?;
-            let n = e.file_name();
-            if matches!(n.to_bytes(), b"." | b"..") {
-                continue;
-            }
-            let st = rustix::fs::statat(dir, n, AtFlags::SYMLINK_NOFOLLOW)?;
-            if ra_safety::Identity::from_stat(&st).kind != FileKind::Dir || st.st_dev as u64 != dev
-            {
-                continue;
-            }
-            let ctime = (st.st_ctime, st.st_ctime_nsec);
-            let mtime = (st.st_mtime, st.st_mtime_nsec);
-            if ctime >= since || mtime >= since {
-                return Ok(true);
-            }
-            let child = rustix::fs::openat(dir, n, flags, Mode::empty())?;
-            if walk(&child, dev, since, flags)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-    walk(&dir, dev as u64, since, flags)
+    let since = since.saturating_sub(timestamp_slack(parent.as_fd()));
+    let since = (since.as_secs() as i64, i64::from(since.subsec_nanos()));
+    let inside = ra_safety::fingerprint::trash_contents_at(parent.as_fd(), name)?;
+    Ok(inside.newest_change.is_some_and(|t| t >= since))
 }
 
+/// Margen para comparar fechas de ficheros con la hora del journal: APFS
+/// guarda nanosegundos; HFS+ (1 s), FAT32 (2 s), exFAT (10 ms) y lo que no
+/// se pueda identificar redondean hacia abajo hasta 2 s.
+fn timestamp_slack(fd: BorrowedFd<'_>) -> Duration {
+    let apfs = rustix::fs::fstatfs(fd).is_ok_and(|sf| {
+        let name: Vec<u8> = sf
+            .f_fstypename
+            .iter()
+            .take_while(|&&c| c != 0)
+            .map(|&c| c as u8)
+            .collect();
+        name == b"apfs"
+    });
+    if apfs {
+        Duration::ZERO
+    } else {
+        Duration::from_secs(2)
+    }
+}
+
+/// Lo que hay en `path`: `None` si no hay nada (ENOENT o ENOTDIR al mirar
+/// dentro de su carpeta, que sí se pudo abrir sin seguir enlaces). Si la
+/// carpeta no se puede abrir (sin permiso, volumen desmontado, enlace en la
+/// ruta) o falla otra cosa, error: no se sabe.
 fn what_is_at(path: &Path) -> io::Result<Option<ra_safety::Identity>> {
     let (parent, name) = open_parent_nofollow(path)?;
     match rustix::fs::statat(parent.as_fd(), name, AtFlags::SYMLINK_NOFOLLOW) {
@@ -2035,6 +2037,18 @@ mod batch_tests {
     fn a_folder_cut_deep_inside_is_unknown_in_both_operations() {
         let (freed, original) = nested_folder_after_cut(|dir| {
             fs::remove_file(dir.join("sub/x")).expect("rm");
+        });
+        let partial = |s: &ItemState| matches!(s, ItemState::Unknown { detail: Some(d) } if d.contains("puede faltar contenido"));
+        assert!(partial(&freed), "{freed:?}");
+        assert!(partial(&original), "{original:?}");
+    }
+
+    /// Si el corte llegó tras quitar `sub` entera, cambia la carpeta de
+    /// arriba: también queda incierta.
+    #[test]
+    fn a_folder_cut_after_removing_a_subfolder_is_unknown_in_both_operations() {
+        let (freed, original) = nested_folder_after_cut(|dir| {
+            fs::remove_dir_all(dir.join("sub")).expect("rm");
         });
         let partial = |s: &ItemState| matches!(s, ItemState::Unknown { detail: Some(d) } if d.contains("contenido parcial"));
         assert!(partial(&freed), "{freed:?}");
