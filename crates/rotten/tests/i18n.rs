@@ -11,6 +11,7 @@
 mod common;
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Output;
 
@@ -60,6 +61,15 @@ fn mask_op_ids(v: &Value) -> Value {
         }
         other => other.clone(),
     }
+}
+
+/// La operación más reciente del historial (sin pasar por los pasos).
+fn last_op(fx: &Fx) -> String {
+    let (_, doc) = fx.run(&["history", "--json"]);
+    doc["operations"][0]["op_id"]
+        .as_str()
+        .expect("op")
+        .to_owned()
 }
 
 /// Todos los comandos, con éxito y con cada error que se puede provocar,
@@ -139,6 +149,18 @@ fn scenario<T>(mut run: impl FnMut(&Fx, &[&str]) -> T) -> Vec<(String, T)> {
     step(&fx, &["trash", "put", cache, "--yes"]);
     step(&fx, &["history"]);
 
+    // «Liberar ahora» (T-11) de esa última operación.
+    let op = last_op(&fx);
+    step(&fx, &["free", "no-such-op", "--yes"]);
+    step(&fx, &["free", &op, "--dry-run"]);
+    step(&fx, &["free", &op]);
+    fs::set_permissions(&fx.trash, fs::Permissions::from_mode(0o000)).expect("chmod");
+    step(&fx, &["free", &op, "--yes"]);
+    fs::set_permissions(&fx.trash, fs::Permissions::from_mode(0o755)).expect("chmod");
+    step(&fx, &["free", &op, "--yes"]);
+    step(&fx, &["free", &op, "--yes"]);
+    step(&fx, &["history"]);
+
     // Configuración corrupta.
     fs::write(fx.state.join("config.toml"), "[exclusions\npaths = [").expect("write");
     step(&fx, &["scan"]);
@@ -198,7 +220,7 @@ fn json_is_identical_in_spanish_and_english() {
     assert_eq!(
         commands.into_iter().collect::<Vec<_>>(),
         [
-            "clean", "doctor", "exclude", "history", "scan", "trash", "undo"
+            "clean", "doctor", "exclude", "free", "history", "scan", "trash", "undo"
         ]
     );
 }
@@ -314,6 +336,7 @@ fn help_in_both_languages() {
         &["exclude", "add"],
         &["exclude", "list"],
         &["exclude", "remove"],
+        &["free"],
         &["trash"],
         &["trash", "put"],
     ];

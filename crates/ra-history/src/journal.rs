@@ -17,6 +17,9 @@ pub const JOURNAL_SCHEMA_VERSION: u32 = 1;
 pub enum OpKind {
     Clean,
     Undo,
+    /// «Liberar ahora» (`rotten free`): borra para siempre de la Papelera
+    /// elementos que otras operaciones mandaron allí.
+    Free,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,6 +87,10 @@ pub enum Event {
         /// las restauraciones.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         origin: Option<Origin>,
+        /// Solo al liberar: el elemento de otra operación que se borra de la
+        /// Papelera. Falta en el resto de intenciones.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        of: Option<ItemRef>,
     },
     ItemDone {
         item: u32,
@@ -124,6 +131,13 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "is_zero")]
         unknown: u64,
     },
+}
+
+/// Un elemento de una operación del journal.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct ItemRef {
+    pub op: String,
+    pub item: u32,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -314,6 +328,7 @@ mod tests {
                 bytes: 10,
                 parent_mode: Some(0o755),
                 origin: Some(Origin::ExplicitSelection),
+                of: None,
             },
             true,
         )
@@ -389,6 +404,13 @@ mod tests {
         // Línea de un journal anterior a T-10: sin `origin`.
         let line = r#"{"schema_version":1,"ts":"2026-11-01T10:00:00.000Z","op":"o","ev":"item_intent","item":1,"action":"trash","path":"/a","identity":{"dev":1,"ino":2,"kind":"file","size":3,"mtime":4,"mtime_nsec":0,"ctime":5,"ctime_nsec":0},"category":"CAT-03","regenerable":false,"bytes":10}"#;
         let r: Record = serde_json::from_str(line).expect("parse");
-        assert!(matches!(r.event, Event::ItemIntent { origin: None, .. }));
+        assert!(matches!(
+            r.event,
+            Event::ItemIntent {
+                origin: None,
+                of: None,
+                ..
+            }
+        ));
     }
 }

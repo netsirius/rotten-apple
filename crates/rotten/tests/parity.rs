@@ -83,13 +83,14 @@ impl Entry {
 }
 
 /// Argumentos de `run` o `setup`, con `$HOME` sustituido por la carpeta
-/// personal de prueba: los comandos que reciben rutas (`trash put`) no
-/// expanden `~`, eso lo hace la shell.
-fn args_in<'a>(raw: &'a [String], home: &str) -> Vec<std::borrow::Cow<'a, str>> {
+/// personal de prueba (los comandos que reciben rutas, como `trash put`, no
+/// expanden `~`: eso lo hace la shell) y `$OP` por la operación de la
+/// última preparación (`free <op-id>`).
+fn args_in<'a>(raw: &'a [String], home: &str, op: &str) -> Vec<std::borrow::Cow<'a, str>> {
     raw.iter()
         .map(|a| {
-            if a.contains("$HOME") {
-                a.replace("$HOME", home).into()
+            if a.contains("$HOME") || a.contains("$OP") {
+                a.replace("$HOME", home).replace("$OP", op).into()
             } else {
                 a.as_str().into()
             }
@@ -170,13 +171,22 @@ fn done_commands_run_and_validate() {
     for e in table().iter().filter(|e| e.status == Status::Done) {
         let fx = fixture();
         let home = fx.home.to_str().expect("ruta UTF-8");
+        let mut op = String::new();
         for s in &e.setup {
-            let args = args_in(s, home);
+            let args = args_in(s, home, &op);
             let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
             let (code, doc) = fx.run(&args);
             assert_eq!(code, 0, "{}: preparación {args:?} falló: {doc:#}", e.id);
+            if let Some(o) = doc["report"]["op_id"].as_str() {
+                op = o.to_owned();
+            }
         }
-        let args = args_in(e.run.as_deref().expect("run"), home);
+        assert!(
+            !e.run.iter().flatten().any(|a| a.contains("$OP")) || !op.is_empty(),
+            "{}: `$OP` sin una preparación que cree una operación",
+            e.id
+        );
+        let args = args_in(e.run.as_deref().expect("run"), home, &op);
         let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
         if e.json {
             let (code, doc) = fx.run(&args);

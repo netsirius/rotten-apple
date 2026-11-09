@@ -100,6 +100,7 @@ fn interrupted_undo_is_reconciled_as_restored() {
             bytes: first.bytes,
             parent_mode: None,
             origin: None,
+            of: None,
         },
         true,
     )
@@ -162,6 +163,7 @@ fn interrupted_clean_before_acting_is_not_moved() {
             bytes: item.bytes_allocated,
             parent_mode: None,
             origin: None,
+            of: None,
         },
         true,
     )
@@ -216,6 +218,7 @@ fn interrupted(w: &World, op: &str, mode: OpMode, action: StepAction) -> PathBuf
             bytes: item.bytes_allocated,
             parent_mode: None,
             origin: None,
+            of: None,
         },
         true,
     )
@@ -324,6 +327,7 @@ fn unreadable_trash_leaves_unknown_with_a_reason_and_doctor_warns() {
             bytes: item.bytes_allocated,
             parent_mode: None,
             origin: None,
+            of: None,
         },
         true,
     )

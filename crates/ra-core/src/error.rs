@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use ra_history::UndoError;
+use ra_history::{FreeError, UndoError};
 use ra_plan::PlanError;
 use ra_safety::ProtectionReason;
 
@@ -79,6 +79,12 @@ pub enum CoreError {
     NothingToUndo,
     #[error(transparent)]
     Undo(#[from] UndoError),
+    #[error(transparent)]
+    Free(#[from] FreeError),
+    /// La Papelera no se puede leer (sin Acceso total al disco): no se
+    /// adivina ni se borra nada (CU-08 A1).
+    #[error("cannot read the Trash ({}): grant Full Disk Access to your terminal and run `rotten doctor`. Nothing is deleted.", path.display())]
+    TrashUnreadable { path: PathBuf },
 }
 
 impl CoreError {
@@ -90,7 +96,8 @@ impl CoreError {
             | E::InvalidExclusion(_)
             | E::NoPaths
             | E::RelativePath(_) => ErrorClass::Usage,
-            E::Permission(_) => ErrorClass::Permission,
+            E::Permission(_) | E::TrashUnreadable { .. } => ErrorClass::Permission,
+            E::Free(FreeError::NoOperations) => ErrorClass::Usage,
             E::Safety(_)
             | E::ConfigCorrupt { .. }
             | E::WrongHome(_)
@@ -100,7 +107,7 @@ impl CoreError {
             | E::Unresolvable { .. }
             | E::Unclassifiable { .. } => ErrorClass::Safety,
             E::Locked => ErrorClass::Locked,
-            E::NotFound(_) | E::NothingToUndo | E::Undo(_) => ErrorClass::NotFound,
+            E::NotFound(_) | E::NothingToUndo | E::Undo(_) | E::Free(_) => ErrorClass::NotFound,
             E::Other(_) => ErrorClass::Other,
         }
     }
@@ -132,6 +139,10 @@ impl CoreError {
             E::Undo(UndoError::UnknownOperation { .. }) => "unknown_operation",
             E::Undo(UndoError::NotUndoable { .. }) => "not_undoable",
             E::Undo(UndoError::UnknownItem { .. }) => "unknown_item",
+            E::Free(FreeError::NoOperations) => "no_operations",
+            E::Free(FreeError::UnknownOperation { .. }) => "unknown_operation",
+            E::Free(FreeError::NotFreeable { .. }) => "not_freeable",
+            E::TrashUnreadable { .. } => "trash_unreadable",
         }
     }
 }

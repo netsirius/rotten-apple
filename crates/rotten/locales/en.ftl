@@ -30,6 +30,7 @@ dry-run-nothing-moved = Dry run: nothing was moved.
 item-problem = ! { $path } — { $problem }
 not-freed-yet = No space is freed yet: that happens when the Trash is emptied.
 to-undo = To undo: rotten undo { $op }
+to-free = To free the space now (cannot be undone): rotten free { $op }
 moved-to-trash = Moved to the Trash: { $count ->
     [one] { $count } item
    *[other] { $count } items
@@ -105,12 +106,36 @@ deleted-permanently = Permanently deleted: { $count ->
 
 trash-nothing = Nothing to move to the Trash.
 
+## free
+
+free-header = Free { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+} ({ $size }): they will be deleted from the Trash for good
+free-item = [{ $id }] { $path }  (was { $original })  { $size }
+free-item-would-skip = [{ $id }] { $path }  { $size }  (would be skipped: { $reason })
+free-not-freeable = { $op } [{ $item }] cannot be freed — { $reason }
+confirm-free = Delete { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+} ({ $size }) from the Trash for good? This cannot be undone.
+free-nothing = Nothing to free.
+freed = Deleted for good: { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+} ({ $size }).
+# $measured: how much the volume's free space grew (statfs).
+freed-space = Space freed: { $measured } measured · { $estimated } estimated
+freed-space-unmeasured = Space freed: { $estimated } estimated (could not be measured)
+freed-space-less = ! Much less was freed than estimated: hard links, APFS clones or snapshots may be holding the blocks
+
 ## history
 
 history-empty = No operations yet.
 history-op = { $op }  { $date }  { $kind ->
     [clean] clean
     [trash_put] trash put
+    [free] free
    *[undo] undo { $of }
 }  { $count ->
     [one] { $count } item
@@ -275,6 +300,9 @@ error-nothing-to-undo = there is no operation to undo
 error-unknown-operation = operation { $op } does not exist
 error-not-undoable = operation { $op } cannot be undone
 error-unknown-item = operation { $op } has no item { $item }
+error-no-operations = give at least one operation
+error-not-freeable = operation { $op } did not move anything to the Trash
+error-trash-unreadable = cannot read the Trash ({ $path }): grant Full Disk Access to your terminal and run `rotten doctor`. Nothing is deleted.
 error-no-home = the home folder is unknown: set HOME
 error-env-path = { $var }: { $path }: { $detail }
 
@@ -308,6 +336,9 @@ cli-cmd-undo = Puts back what an operation sent to the Trash
 cli-cmd-undo-arg-op_id = Operation (by default, the last one that can be undone)
 cli-cmd-undo-arg-items = Only these items (comma-separated ids)
 cli-cmd-undo-arg-dry_run = Shows what would be restored without moving anything
+cli-cmd-free = Delete from the Trash for good what these operations moved there (cannot be undone)
+cli-cmd-free-arg-op_ids = Operations whose items to free
+cli-cmd-free-arg-dry_run = Show the exact plan without deleting anything
 cli-cmd-doctor = Permissions, platform, configuration and journal integrity
 cli-cmd-exclude = Exclusions: what is never touched
 cli-cmd-exclude-add = Adds an exclusion: path, glob pattern, rule:<id>, cat:<CAT-xx> or bundle:<id>
@@ -324,6 +355,7 @@ cli-cmd-trash-put-arg-dry_run = Shows the exact plan without changing anything
 cli-value-categories = ID
 cli-value-items = IDS
 cli-value-op_id = OPERATION
+cli-value-op_ids = OPERATION
 cli-value-paths = PATH
 cli-value-value = EXCLUSION
 cli-value-lang = LANG

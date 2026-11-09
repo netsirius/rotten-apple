@@ -13,6 +13,7 @@
 mod common;
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 
 use common::{Fx, fixture, redact, schema_files, validate};
 use serde_json::{Map, Value, json};
@@ -38,7 +39,7 @@ fn schemas_are_valid_and_match_their_file_name() {
     assert_eq!(
         commands,
         [
-            "clean", "doctor", "exclude", "history", "scan", "trash", "undo"
+            "clean", "doctor", "exclude", "free", "history", "scan", "trash", "undo"
         ]
     );
     for ((command, version), (path, schema)) in &files {
@@ -250,6 +251,75 @@ fn trash_put() {
 }
 
 #[test]
+fn free() {
+    let fx = fixture();
+    check(
+        &fx,
+        "free_error_unknown_op",
+        &["free", "no-such-op", "--yes", "--json"],
+        1,
+    );
+    let (_, doc) = fx.run(&["clean", "--yes", "--json"]);
+    let op = doc["report"]["op_id"].as_str().expect("op").to_owned();
+    check(
+        &fx,
+        "free_dry_run",
+        &["free", &op, "--dry-run", "--json"],
+        0,
+    );
+    check(&fx, "free_error_no_yes", &["free", &op, "--json"], 2);
+    fs::set_permissions(&fx.trash, fs::Permissions::from_mode(0o000)).expect("chmod");
+    let unreadable = fx.run(&["free", &op, "--yes", "--json"]);
+    fs::set_permissions(&fx.trash, fs::Permissions::from_mode(0o755)).expect("chmod");
+    assert_eq!(unreadable.0, 3, "{:#}", unreadable.1);
+    insta::assert_json_snapshot!("free_error_trash_unreadable", redact(&fx, &unreadable.1));
+    // El primer elemento cambia dentro de la Papelera: se omite (4).
+    let first = doc["report"]["items"][0]["result_path"]
+        .as_str()
+        .expect("ruta")
+        .to_owned();
+    let first = std::path::Path::new(&first);
+    if first.is_dir() {
+        fs::write(first.join("nuevo.txt"), b"x").expect("write");
+    } else {
+        fs::write(first, b"cambiado").expect("write");
+    }
+    check(
+        &fx,
+        "free_executed_partial",
+        &["free", &op, "--yes", "--json"],
+        4,
+    );
+    check(&fx, "history_freed", &["history", "--json"], 0);
+    let (code, undo) = fx.run(&["undo", "--yes", "--json"]);
+    assert_eq!(
+        (code, &undo["error"]["code"]),
+        (1, &json!("nothing_to_undo"))
+    );
+}
+
+#[test]
+fn free_everything() {
+    let fx = fixture();
+    let (_, doc) = fx.run(&["clean", "--yes", "--json"]);
+    let op = doc["report"]["op_id"].as_str().expect("op").to_owned();
+    let freed = check(&fx, "free_executed", &["free", &op, "--yes", "--json"], 0);
+    let (code, undo) = fx.run(&["undo", "--yes", "--json"]);
+    assert_eq!(
+        (code, &undo["error"]["code"]),
+        (1, &json!("nothing_to_undo"))
+    );
+    // Una liberación no se libera. El mensaje lleva el id de la operación,
+    // que cambia en cada ejecución.
+    let free_op = freed["report"]["op_id"].as_str().expect("op");
+    let (code, doc) = fx.run(&["free", free_op, "--yes", "--json"]);
+    assert_eq!(code, 1, "{doc:#}");
+    let text = serde_json::to_string(&redact(&fx, &doc)).expect("json");
+    let doc: Value = serde_json::from_str(&text.replace(free_op, "[op_id]")).expect("json");
+    insta::assert_json_snapshot!("free_error_not_freeable", doc);
+}
+
+#[test]
 fn doctor() {
     let fx = fixture();
     check(&fx, "doctor", &["doctor", "--json"], 0);
@@ -328,6 +398,14 @@ fn sample_documents() -> Vec<Value> {
     let cache = cache.to_str().expect("ruta UTF-8");
     docs.push(fx.run(&["trash", "put", cache, "--dry-run", "--json"]).1);
     docs.push(fx.run(&["trash", "put", cache, "--yes", "--json"]).1);
+    let op = docs.last().expect("trash put")["report"]["op_id"]
+        .as_str()
+        .expect("op")
+        .to_owned();
+    docs.push(fx.run(&["free", &op, "--dry-run", "--json"]).1);
+    docs.push(fx.run(&["free", &op, "--yes", "--json"]).1);
+    docs.push(fx.run(&["free", "no-such-op", "--json"]).1);
+    docs.push(fx.run(&["history", "--json"]).1);
     docs
 }
 

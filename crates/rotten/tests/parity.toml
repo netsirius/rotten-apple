@@ -21,7 +21,8 @@
 #   run     (obligatorio si status = "done") argumentos con los que la prueba
 #           lo ejecuta sobre la carpeta personal de prueba: `--dry-run --json`
 #           si cambia algo, `--json` si es de lectura. `$HOME` se sustituye
-#           por la carpeta personal de prueba (las rutas no expanden `~`).
+#           por la carpeta personal de prueba (las rutas no expanden `~`) y
+#           `$OP` por la operación (`report.op_id`) de la última preparación.
 #   setup   (opcional) comandos previos, p. ej. una limpieza antes de `undo`.
 #   exit    (opcional, 0 por defecto) código de salida esperado.
 #   json    (opcional, true por defecto) false si la salida no es JSON.
@@ -310,8 +311,11 @@ cli = "rotten free <op-id>"
 mole = ""
 source = "07 §3"
 phase = "mvp"
-status = "pending"
+status = "done"
 task = "T-11"
+setup = [["clean", "--yes", "--json"]]
+run = ["free", "$OP", "--dry-run", "--json"]
+note = "Acepta varias operaciones. $OP es la operación de la última preparación."
 
 [[command]]
 id = "trash"

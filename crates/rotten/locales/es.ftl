@@ -30,6 +30,7 @@ dry-run-nothing-moved = Simulación: no se ha movido nada.
 item-problem = ! { $path } — { $problem }
 not-freed-yet = Aún no se ha liberado espacio: eso ocurre al vaciar la Papelera.
 to-undo = Para deshacer: rotten undo { $op }
+to-free = Para liberar ya el espacio (no se puede deshacer): rotten free { $op }
 moved-to-trash = Movido a la Papelera: { $count ->
     [one] { $count } elemento
    *[other] { $count } elementos
@@ -105,12 +106,36 @@ deleted-permanently = Borrado permanentemente: { $count ->
 
 trash-nothing = Nada que mover a la Papelera.
 
+## free
+
+free-header = Liberar { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size }): se borrarán para siempre de la Papelera
+free-item = [{ $id }] { $path }  (era { $original })  { $size }
+free-item-would-skip = [{ $id }] { $path }  { $size }  (se omitiría: { $reason })
+free-not-freeable = { $op } [{ $item }] no se puede liberar — { $reason }
+confirm-free = ¿Borrar para siempre { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size }) de la Papelera? No se puede deshacer.
+free-nothing = Nada que liberar.
+freed = Borrado para siempre: { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size }).
+# $measured: lo que ha aumentado el espacio libre del volumen (statfs).
+freed-space = Espacio liberado: { $measured } medido · { $estimated } estimado
+freed-space-unmeasured = Espacio liberado: { $estimated } estimado (no se pudo medir)
+freed-space-less = ! Se ha liberado bastante menos de lo estimado: enlaces duros, clones APFS o instantáneas pueden retener los bloques
+
 ## history
 
 history-empty = Aún no hay operaciones.
 history-op = { $op }  { $date }  { $kind ->
     [clean] limpieza
     [trash_put] a la Papelera
+    [free] liberar
    *[undo] deshacer { $of }
 }  { $count ->
     [one] { $count } elemento
@@ -275,6 +300,9 @@ error-nothing-to-undo = no hay ninguna operación que deshacer
 error-unknown-operation = la operación { $op } no existe
 error-not-undoable = la operación { $op } no se puede deshacer
 error-unknown-item = la operación { $op } no tiene el elemento { $item }
+error-no-operations = indica al menos una operación
+error-not-freeable = la operación { $op } no mandó nada a la Papelera
+error-trash-unreadable = no se puede leer la Papelera ({ $path }): concede Acceso total al disco a tu terminal y ejecuta `rotten doctor`. No se borra nada.
 error-no-home = no se sabe cuál es la carpeta personal: define HOME
 error-env-path = { $var }: { $path }: { $detail }
 
@@ -308,6 +336,9 @@ cli-cmd-undo = Devuelve a su sitio lo que una operación mandó a la Papelera
 cli-cmd-undo-arg-op_id = Operación (por defecto, la última que se puede deshacer)
 cli-cmd-undo-arg-items = Solo estos elementos (ids separados por comas)
 cli-cmd-undo-arg-dry_run = Muestra qué se restauraría sin mover nada
+cli-cmd-free = Borra para siempre de la Papelera lo que mandaron allí estas operaciones (no se puede deshacer)
+cli-cmd-free-arg-op_ids = Operaciones cuyos elementos liberar
+cli-cmd-free-arg-dry_run = Muestra el plan exacto sin borrar nada
 cli-cmd-doctor = Permisos, plataforma, configuración e integridad del journal
 cli-cmd-exclude = Exclusiones: lo que nunca se toca
 cli-cmd-exclude-add = Añade una exclusión: ruta, patrón glob, rule:<id>, cat:<CAT-xx> o bundle:<id>
@@ -324,6 +355,7 @@ cli-cmd-trash-put-arg-dry_run = Muestra el plan exacto sin cambiar nada
 cli-value-categories = ID
 cli-value-items = IDS
 cli-value-op_id = OPERACIÓN
+cli-value-op_ids = OPERACIÓN
 cli-value-paths = RUTA
 cli-value-value = EXCLUSIÓN
 cli-value-lang = IDIOMA

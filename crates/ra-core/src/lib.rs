@@ -11,6 +11,7 @@
 mod doctor;
 mod env;
 mod error;
+mod free;
 mod scan;
 mod selection;
 
@@ -20,10 +21,12 @@ use std::time::SystemTime;
 pub use doctor::{AppsProbe, DoctorReport, FdaState, TrashInfo};
 pub use env::{BUNDLE_ID, Env, EnvError};
 pub use error::{CoreError, ErrorClass};
+pub use free::{FreePreview, FreeResult, SpaceReport, VolumeDelta};
 pub use ra_catalog::{Block, Catalog, Localized, Risk};
 pub use ra_exec::{ExecReport, InUseDetail, ItemReport, Outcome, SkipCause, TrashBackend};
 pub use ra_history::{
-    HistoryKind, NotRecoverable, NotRecoverableReason, OpSummary, UndoError, UndoPlan, UndoState,
+    FreeError, FreeItem, FreePlan, HistoryKind, ItemRef, NotFreeable, NotRecoverable,
+    NotRecoverableReason, OpSummary, UndoError, UndoPlan, UndoState,
 };
 pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};
 pub use ra_safety::apps::AppBlock;

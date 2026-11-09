@@ -117,8 +117,11 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
             size = ui.size(report.bytes_done)
         ));
         ui.say(tr!(ui, "not-freed-yet"));
-        if let Some(op) = &report.op_id {
+        if let Some(op) = &report.op_id
+            && report.done > 0
+        {
             ui.say(tr!(ui, "to-undo", op = op.as_str()));
+            ui.say(tr!(ui, "to-free", op = op.as_str()));
         }
     }
     if left_out {

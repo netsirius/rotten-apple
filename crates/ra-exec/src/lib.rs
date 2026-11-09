@@ -25,8 +25,8 @@ mod verify;
 pub use lock::ExecLock;
 pub use ra_plan::ApprovedPlan;
 pub use run::{
-    ExecContext, ExecError, ExecReport, ItemReport, Outcome, dry_run, dry_run_undo, execute,
-    execute_undo, recover_incomplete,
+    ExecContext, ExecError, ExecReport, ItemReport, Outcome, dry_run, dry_run_free, dry_run_undo,
+    execute, execute_free, execute_undo, recover_incomplete,
 };
-pub use trash::{TrashBackend, unique_name};
+pub use trash::{TrashBackend, in_trash_top_level, unique_name};
 pub use verify::{InUseDetail, SkipCause};

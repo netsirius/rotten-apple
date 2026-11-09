@@ -262,6 +262,13 @@ pub const VOLATILE: &[&str] = &[
     // Cifras del volumen de la máquina; en un sandbox, además, `statfs` sale
     // redondeado y la capacidad disponible no se conoce (`null`).
     "volume",
+    // `rotten free`: operaciones de origen y espacio medido con `statfs`.
+    "op",
+    "ops",
+    "measured_bytes",
+    "free_before",
+    "free_after",
+    "freed_bytes",
 ];
 
 /// Oculta lo que no es estable: rutas del fixture, fechas, IDs, hashes,

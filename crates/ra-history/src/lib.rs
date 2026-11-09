@@ -16,11 +16,13 @@ mod journal;
 mod manifest;
 
 pub use journal::{
-    Event, Journal, JournalError, OpKind, OpMode, OpStatus, Record, StepAction, read_journal,
+    Event, ItemRef, Journal, JournalError, OpKind, OpMode, OpStatus, Record, StepAction,
+    read_journal,
 };
 pub use manifest::{
-    HistoryKind, ItemState, Manifest, ManifestItem, NotRecoverable, NotRecoverableReason,
-    OpSummary, UndoError, UndoItem, UndoPlan, UndoState, list_ops, manifest_for, prepare_undo,
+    FreeError, FreeItem, FreePlan, FreeTotals, HistoryKind, ItemState, Manifest, ManifestItem,
+    NotFreeable, NotRecoverable, NotRecoverableReason, OpSummary, UndoError, UndoItem, UndoPlan,
+    UndoState, list_ops, manifest_for, prepare_free, prepare_undo,
 };
 
 use std::path::{Path, PathBuf};

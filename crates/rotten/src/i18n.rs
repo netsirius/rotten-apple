@@ -298,6 +298,7 @@ mod tests {
             include_str!("main.rs"),
             include_str!("render.rs"),
             include_str!("cmd/trash.rs"),
+            include_str!("cmd/free.rs"),
         ];
         let mut used = 0;
         for src in sources {
@@ -375,6 +376,27 @@ mod tests {
         assert!(s.starts_with('⟦') && s.ends_with('⟧'), "{s}");
         assert!(s.contains('\u{2068}') && s.contains('\u{2069}'), "{s:?}");
         assert!(s.contains("ïtëms"), "{s}");
+    }
+
+    /// RF-SEG-03: la confirmación de borrar para siempre dice cuántos
+    /// elementos, cuánto ocupan y que no se puede deshacer, y la respuesta
+    /// por defecto es «No» (`[s/N]`, `[y/N]`; `Ui::confirm` solo acepta un
+    /// «sí» explícito).
+    #[test]
+    fn free_confirmation_is_explicit_and_defaults_to_no() {
+        for (lang, count, undo, default) in [
+            (Lang::Es, "3 elementos", "No se puede deshacer", "[s/N]"),
+            (Lang::En, "3 items", "cannot be undone", "[y/N]"),
+        ] {
+            let i = I18n::with(lang, false);
+            let q = tr!(i, "confirm-free", count = 3, size = "2 MB");
+            assert!(
+                q.contains(count) && q.contains("2 MB") && q.contains(undo),
+                "{q}"
+            );
+            let prompt = tr!(i, "confirm-prompt", question = q);
+            assert!(prompt.ends_with(default), "{prompt}");
+        }
     }
 
     #[test]

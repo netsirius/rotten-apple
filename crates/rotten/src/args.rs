@@ -78,6 +78,15 @@ pub enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Borra para siempre de la Papelera lo que mandaron allí estas operaciones.
+    Free {
+        /// Operaciones cuyos elementos liberar.
+        #[arg(required = true, value_name = "OP")]
+        op_ids: Vec<String>,
+        /// Muestra el plan exacto sin borrar nada.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Permisos, plataforma, configuración e integridad del journal.
     Doctor,
     /// Exclusiones: lo que nunca se toca.

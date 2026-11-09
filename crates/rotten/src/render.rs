@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use ra_core::{
-    AppBlock, Block, CoreError, EnvError, ExclusionMatch, FlagViolation, InUseDetail,
+    AppBlock, Block, CoreError, EnvError, ExclusionMatch, FlagViolation, FreeError, InUseDetail,
     NotRecoverableReason, Outcome, PlanError, ProtectionReason, SkipCause, SkipReason, UndoError,
     tilde,
 };
@@ -215,6 +215,12 @@ pub fn core_error(i: &I18n, e: &CoreError, home: &Path) -> String {
             op = op.as_str(),
             item = item.to_string()
         ),
+        E::Free(FreeError::NoOperations) => tr!(i, "error-no-operations"),
+        E::Free(FreeError::UnknownOperation { op }) => {
+            tr!(i, "error-unknown-operation", op = op.as_str())
+        }
+        E::Free(FreeError::NotFreeable { op }) => tr!(i, "error-not-freeable", op = op.as_str()),
+        E::TrashUnreadable { path: p } => tr!(i, "error-trash-unreadable", path = path(p, home)),
     }
 }
 
