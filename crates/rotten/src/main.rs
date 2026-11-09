@@ -625,7 +625,9 @@ fn doctor(ui: &Ui, core: &Core) -> Exit {
         Exit::Ok
     };
     if ui.json {
-        ui.emit("doctor", json!({ "report": r, "exit_code": code as u8 }));
+        // El veredicto está en `report` (`config`, `full_disk_access`) y en
+        // el código de salida; `exit_code` solo va en el documento de error.
+        ui.emit("doctor", json!({ "report": r }));
         return code;
     }
     let yes_no = |b: bool| {

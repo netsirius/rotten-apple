@@ -12,16 +12,13 @@
     "path": { "type": "string", "minLength": 1 },
     "document": {
       "type": "object",
-      "required": ["schema_version", "command", "report", "exit_code"],
+      "description": "El código de salida (0 todo bien · 3 sin Acceso total al disco · 5 configuración corrupta) se deduce de report.full_disk_access y report.config; no se repite en el documento.",
+      "required": ["schema_version", "command", "report"],
       "additionalProperties": false,
       "properties": {
         "schema_version": { "const": 2 },
         "command": { "const": "doctor" },
-        "report": { "$ref": "#/$defs/report" },
-        "exit_code": {
-          "description": "0 todo bien · 3 sin Acceso total al disco · 5 configuración corrupta.",
-          "enum": [0, 3, 5]
-        }
+        "report": { "$ref": "#/$defs/report" }
       }
     },
     "report": {

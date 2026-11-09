@@ -4,7 +4,6 @@ expression: "redact(fx, &doc)"
 ---
 {
   "command": "doctor",
-  "exit_code": 0,
   "report": {
     "arch": "[arch]",
     "catalog_version": "2026.11.0",
