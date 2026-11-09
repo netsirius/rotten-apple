@@ -7,6 +7,9 @@
 //!   imprime el CLI viene entera del catálogo de mensajes (sin textos
 //!   sueltos ni concatenados).
 //! - La ayuda de cada comando existe en los dos idiomas.
+//! - Los scripts de `rotten completion` (T-14) se generan en los dos
+//!   idiomas y con la pseudo-localización, con las descripciones en ese
+//!   idioma y sintaxis válida.
 
 mod common;
 
@@ -15,7 +18,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Output;
 
-use common::{Fx, fixture, redact};
+use common::{Fx, fixture, redact, syntax_ok};
 use serde_json::Value;
 
 const ES: &str = "es_ES.UTF-8";
@@ -355,6 +358,7 @@ fn help_in_both_languages() {
         &["trash"],
         &["trash", "put"],
         &["trash", "empty"],
+        &["completion"],
     ];
     for cmd in commands {
         for (lang, usage, options) in [(ES, "Uso:", "Opciones:"), (EN, "Usage:", "Options:")] {
@@ -379,4 +383,55 @@ fn help_in_both_languages() {
         .output()
         .expect("ejecutar");
     assert!(text(&out).contains("Escaneo inteligente"), "{}", text(&out));
+}
+
+/// `rotten completion` con `LANG` y con `--lang` (T-14): el script sale en
+/// ese idioma, sin textos del otro (tampoco en los subcomandos de `help`)
+/// y con sintaxis válida aunque las descripciones lleven `:`, `«»`,
+/// paréntesis o los marcadores de la pseudo-localización.
+#[test]
+fn completion_scripts_in_both_languages() {
+    let fx = fixture();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    const IN_ES: &[&str] = &["Escaneo inteligente", "Papelera"];
+    const IN_EN: &[&str] = &["Smart scan", "Trash"];
+    /// LANG, flags, pseudo-localización, texto propio, textos del otro idioma.
+    type Case = (
+        &'static str,
+        &'static [&'static str],
+        bool,
+        &'static str,
+        &'static [&'static str],
+    );
+    let cases: &[Case] = &[
+        (ES, &[], false, "Escaneo inteligente", IN_EN),
+        (EN, &[], false, "Smart scan", IN_ES),
+        (EN, &["--lang", "es"], false, "Escaneo inteligente", IN_EN),
+        (ES, &["--lang", "en"], false, "Smart scan", IN_ES),
+        (ES, &[], true, "Smårt scån", IN_ES),
+    ];
+    for (lang, flags, pseudo, own, others) in cases {
+        for shell in ["zsh", "bash", "fish"] {
+            let mut c = fx.cmd_lang(lang);
+            c.args(*flags).args(["completion", shell]);
+            if *pseudo {
+                c.env("ROTTEN_PSEUDO_LOCALE", "1");
+            }
+            let out = c.output().expect("ejecutar");
+            let what = format!("{shell} LANG={lang} {flags:?} pseudo={pseudo}");
+            assert_eq!(out.status.code(), Some(0), "{what}: {}", text(&out));
+            let script = String::from_utf8(out.stdout).expect("UTF-8");
+            // bash no lleva descripciones.
+            if shell != "bash" {
+                assert!(script.contains(own), "{what}: falta «{own}»");
+            }
+            for other in *others {
+                assert!(!script.contains(other), "{what}: «{other}» del otro idioma");
+            }
+            match syntax_ok(shell, &script, tmp.path()) {
+                Some(Ok(())) | None => {}
+                Some(Err(e)) => panic!("{what}: {shell} -n: {e}"),
+            }
+        }
+    }
 }

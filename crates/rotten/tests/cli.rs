@@ -21,7 +21,7 @@ fn snapshot(base: &Path, skip: &Path) -> BTreeMap<PathBuf, (u64, u64, i64, i64)>
         let Ok(rd) = fs::read_dir(&d) else { continue };
         for entry in rd.flatten() {
             let p = entry.path();
-            if p.starts_with(skip) {
+            if p.starts_with(skip) || p.ends_with(common::LOG_DIR) {
                 continue;
             }
             let m = fs::symlink_metadata(&p).expect("lstat");

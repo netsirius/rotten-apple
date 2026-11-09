@@ -219,8 +219,11 @@ cli = "rotten completion <zsh|bash|fish>"
 mole = "mo completion"
 source = "07 §2"
 phase = "mvp"
-status = "pending"
+status = "done"
 task = "T-14"
+run = ["completion", "zsh"]
+json = false
+note = "La salida es el script, también en una tubería: sin JSON, como --version."
 
 [[command]]
 id = "update"

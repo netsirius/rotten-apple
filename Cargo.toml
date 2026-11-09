@@ -31,6 +31,8 @@ ra-core = { path = "crates/ra-core" }
 blake3 = "1.8"
 # `string`: textos de la ayuda generados en tiempo de ejecución (T-03).
 clap = { version = "4.5", features = ["derive", "string"] }
+# Scripts de autocompletado de `rotten completion` (T-14; MIT o Apache-2.0).
+clap_complete = "4.6"
 # Mensajes del CLI con plurales (T-03, Project Fluent; MIT o Apache-2.0).
 fluent-bundle = "0.16"
 globset = "0.4"

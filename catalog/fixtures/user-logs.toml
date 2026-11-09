@@ -18,6 +18,10 @@ age_days = 0
 path = "Library/Logs/DiagnosticReports/a.ips"
 age_days = 30
 
+[[entry]] # Negativo: el log técnico de Rotten Apple (T-14).
+path = "Library/Logs/io.github.netsirius.RottenApple/rotten.log"
+age_days = 30
+
 [[entry]] # Negativo: fuera de la raíz.
 path = "Library/Preferences/com.example.plist"
 age_days = 30

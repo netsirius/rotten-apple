@@ -357,8 +357,8 @@ cli-about = Rotten Apple: limpia tu Mac sin miedo. Todo va a la Papelera y se pu
 cli-arg-json = Salida JSON (automática si la salida no es una terminal)
 cli-arg-yes = Ejecutar sin preguntar
 cli-arg-quiet = Menos texto
-cli-arg-no_color = Sin colores (la salida actual no usa colores)
-cli-arg-debug = Más detalle en los errores
+cli-arg-no_color = Sin colores (también con NO_COLOR)
+cli-arg-debug = Log técnico detallado, también por la salida de errores
 cli-arg-lang = Idioma de la salida para personas (es o en)
 cli-arg-allow_root = Permitir ejecutar como root (RF-CLI-06)
 cli-arg-help = Muestra la ayuda
@@ -403,3 +403,9 @@ cli-value-paths = RUTA
 cli-value-value = EXCLUSIÓN
 cli-value-lang = IDIOMA
 cli-value-subcommand = COMANDO
+
+## rotten completion (T-14)
+
+cli-cmd-completion = Script de autocompletado para zsh, bash o fish
+cli-cmd-completion-arg-shell = La shell: zsh, bash o fish
+cli-value-shell = SHELL

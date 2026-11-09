@@ -19,6 +19,11 @@ use assert_cmd::Command;
 use ra_catalog::fixture::{Entry, Link, materialize};
 use serde_json::{Map, Value, json};
 
+/// Carpeta del log técnico (T-14) dentro de la carpeta personal: crece con
+/// cada ejecución, así que las instantáneas de la carpeta personal la
+/// ignoran, como el estado de la app.
+pub const LOG_DIR: &str = "Library/Logs/io.github.netsirius.RottenApple";
+
 pub struct Fx {
     _tmp: tempfile::TempDir,
     pub home: PathBuf,
@@ -72,6 +77,9 @@ pub fn fixture() -> Fx {
     // El estado de la app se crea antes de las instantáneas, que lo ignoran.
     let state = home.join("Library/Application Support/io.github.netsirius.RottenApple");
     fs::create_dir_all(&state).expect("mkdir");
+    // Igual con la carpeta del log técnico, para que crearla no cambie la
+    // fecha de `Library/Logs` en las instantáneas.
+    fs::create_dir_all(home.join(LOG_DIR)).expect("mkdir");
     Fx {
         _tmp: tmp,
         home,
@@ -127,6 +135,35 @@ impl Fx {
     pub fn p(&self, rel: &str) -> PathBuf {
         self.home.join(rel)
     }
+
+    /// Carpeta del log técnico.
+    pub fn log_dir(&self) -> PathBuf {
+        self.home.join(LOG_DIR)
+    }
+}
+
+/// `shell -n` sobre un script de autocompletado (T-14): `None` si la shell
+/// no está instalada.
+pub fn syntax_ok(shell: &str, script: &str, dir: &Path) -> Option<Result<(), String>> {
+    let installed = std::process::Command::new(shell)
+        .args(["-c", "exit 0"])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !installed {
+        return None;
+    }
+    let file = dir.join(format!("rotten.{shell}"));
+    fs::write(&file, script).expect("write");
+    let out = std::process::Command::new(shell)
+        .arg("-n")
+        .arg(&file)
+        .output()
+        .expect("ejecutar la shell");
+    Some(if out.status.success() && out.stderr.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).into_owned())
+    })
 }
 
 /// `schemas/` en la raíz del repositorio.

@@ -291,12 +291,18 @@ type Tree = BTreeMap<PathBuf, (u64, u64, i64, i64)>;
 
 /// Todo lo que hay bajo `base`, sin seguir enlaces.
 fn tree(base: &Path) -> Tree {
+    // El log técnico del CLI (T-14) crece con cada ejecución: no es parte de
+    // lo que se compara.
+    let log_dir = Path::new("Library/Logs").join(ra_core::BUNDLE_ID);
     let mut out = BTreeMap::new();
     let mut stack = vec![base.to_path_buf()];
     while let Some(d) = stack.pop() {
         let Ok(rd) = fs::read_dir(&d) else { continue };
         for e in rd.flatten() {
             let p = e.path();
+            if p.ends_with(&log_dir) {
+                continue;
+            }
             let m = fs::symlink_metadata(&p).expect("lstat");
             out.insert(p.clone(), (m.ino(), m.size(), m.mtime(), m.mtime_nsec()));
             if m.is_dir() {

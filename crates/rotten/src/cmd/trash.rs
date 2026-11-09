@@ -171,6 +171,7 @@ fn empty(ui: &Ui, core: &Core, dry_run: bool) -> Exit {
         Ok(r) => r,
         Err(e) => return ui.core_error(COMMAND, &e),
     };
+    crate::techlog::report(COMMAND, &result.report);
     if ui.json {
         ui.emit(
             COMMAND,
@@ -268,6 +269,7 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
         Ok(r) => r,
         Err(e) => return ui.core_error(COMMAND, &e),
     };
+    crate::techlog::report(COMMAND, &report);
     if ui.json {
         ui.emit(
             COMMAND,
