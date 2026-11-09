@@ -30,9 +30,7 @@ use std::path::{Path, PathBuf};
 use proptest::prelude::*;
 use std::time::SystemTime;
 
-use ra_core::{
-    Core, CoreError, Env, ErrorClass, NotRecoverableReason, Outcome, PlanError, TrashBackend,
-};
+use ra_core::{Core, CoreError, Env, ErrorClass, NotRecoverableReason, Outcome, TrashBackend};
 use ra_history::{Event, HistoryPaths, Journal, OpKind, OpMode, OpStatus, StepAction};
 
 /// `PROPTEST_CASES` sube los casos en la tanda nocturna (RNF-08).
@@ -198,13 +196,58 @@ fn a_plan_whose_journal_changed_is_refused() {
     let err = core
         .free(&first.plan, &first.plan.plan_hash, "test")
         .expect_err("plan cambiado");
+    // Dice qué elemento salió del plan.
     assert!(
-        matches!(err, CoreError::Plan(PlanError::HashMismatch { .. })),
+        matches!(&err, CoreError::FreePlanChanged { left } if *left == [first.plan.ready[0].of.clone()]),
         "{err:?}"
     );
     assert_eq!(err.class(), ErrorClass::Safety);
     assert_eq!(err.code(), "plan_changed");
     assert_eq!(before, snapshot(&trash));
+}
+
+/// Exit 5 (decisión 4): si el volumen de la Papelera se desmonta entre la
+/// revisión y la ejecución, la revisión de nuevo lo dice
+/// (`volume_not_mounted`) y la ejecución del plan revisado se rechaza
+/// diciendo qué salió de él. Un volumen desmontado se simula apartando la
+/// carpeta de la Papelera de prueba.
+#[test]
+fn a_trash_whose_volume_goes_away_is_refused_and_said() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = fs::canonicalize(tmp.path()).expect("canon");
+    let (home, trash, state) = (root.join("home"), root.join("trash"), root.join("state"));
+    for d in [&home, &trash, &state] {
+        fs::create_dir_all(d).expect("mkdir");
+    }
+    let core = Core::with_apps(
+        Env::new(home.clone(), state, TrashBackend::Dir(trash.clone())),
+        Box::new(BTreeSet::<String>::new()),
+    )
+    .expect("core");
+    let file = home.join("a.log");
+    make(&file, false, 100);
+    let op = trash_put(&core, std::slice::from_ref(&file));
+    let preview = core.prepare_free(std::slice::from_ref(&op)).expect("plan");
+    assert_eq!(preview.plan.ready.len(), 1);
+
+    let away = root.join("desmontado");
+    fs::rename(&trash, &away).expect("desmontar");
+    let again = core.prepare_free(std::slice::from_ref(&op)).expect("plan");
+    assert!(again.plan.ready.is_empty());
+    assert_eq!(
+        again.plan.not_freeable[0].reason,
+        NotRecoverableReason::VolumeNotMounted
+    );
+    let err = core
+        .free(&preview.plan, &preview.plan.plan_hash, "test")
+        .expect_err("volumen desmontado");
+    assert!(
+        matches!(&err, CoreError::FreePlanChanged { left } if *left == [preview.plan.ready[0].of.clone()]),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), ErrorClass::Safety);
+    assert!(err.to_string().contains(&format!("{op}#1")), "{err}");
+    assert_eq!(fs::read_dir(&away).expect("ls").count(), 1);
 }
 
 /// Operación `forged` en el journal de `state`: dice que cada ruta de

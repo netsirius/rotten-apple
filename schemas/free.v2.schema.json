@@ -136,7 +136,7 @@
       "properties": {
         "estimated_bytes": { "$ref": "#/$defs/count" },
         "measured_bytes": {
-          "description": "Suma de freed_bytes; null si algún volumen no se pudo medir. Puede ser negativo si otra cosa escribió en el disco a la vez.",
+          "description": "Suma de freed_bytes; null si no se midió nada (no había nada que borrar) o si algún volumen no se pudo medir. Puede ser negativo si otra cosa escribió en el disco a la vez.",
           "type": ["integer", "null"]
         },
         "volumes": {
@@ -242,7 +242,7 @@
           "additionalProperties": false,
           "properties": {
             "code": {
-              "description": "Código estable del error (no depende del idioma): unknown_operation, not_freeable, trash_unreadable (exit_code 3), plan_changed, needs_yes, locked…",
+              "description": "Código estable del error (no depende del idioma): unknown_operation, not_freeable, trash_unreadable (exit_code 3), plan_changed (exit_code 5; el mensaje dice qué elementos salieron del plan), needs_yes, locked…",
               "type": "string",
               "pattern": "^[a-z][a-z_]*$"
             },

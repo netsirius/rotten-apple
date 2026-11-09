@@ -290,6 +290,30 @@ fn a_folder_that_cannot_be_walked_is_never_emptied() {
     assert_eq!(fx.names(), ["bloqueada"]);
 }
 
+/// Exit 5 (decisión 4): si una carpeta revisada de la Papelera ya no
+/// existe al ejecutar (volumen desmontado), se dice cuál con `trash_gone`
+/// y no se borra nada. Se simula apartando la carpeta.
+#[test]
+fn a_trash_folder_that_is_gone_at_execution_is_said() {
+    let fx = fx();
+    fx.decoy("ajeno.txt");
+    let preview = fx.core.prepare_empty().expect("plan");
+    let hash = preview.plan.plan_hash.clone();
+    let away = fx.home.join("desmontado");
+    fs::rename(&fx.trash, &away).expect("desmontar");
+    let err = fx
+        .core
+        .empty_trash(&preview.plan, &hash, "test")
+        .expect_err("sin carpeta");
+    assert!(
+        matches!(&err, CoreError::TrashGone { path } if *path == fx.trash),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), ErrorClass::Safety);
+    assert_eq!(err.code(), "trash_gone");
+    assert!(away.join("ajeno.txt").exists());
+}
+
 /// Sin poder leer la Papelera, `trash empty` no prepara nada ni borra nada
 /// (3), y `trash` dice que no puede leerla y muestra solo lo del journal.
 #[test]

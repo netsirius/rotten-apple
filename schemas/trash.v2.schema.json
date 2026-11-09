@@ -176,7 +176,7 @@
         }
       }
     },
-    "space": {"description": "RF-SEG-12 (e): lo estimado (suma de lo anotado de lo borrado) frente a lo medido con statfs antes y después, por volumen. Los enlaces duros, los clones APFS y las instantáneas hacen que se libere menos.", "type": "object", "required": ["estimated_bytes", "measured_bytes", "volumes"], "additionalProperties": false, "properties": {"estimated_bytes": {"$ref": "#/$defs/count"}, "measured_bytes": {"description": "Suma de freed_bytes; null si algún volumen no se pudo medir. Puede ser negativo si otra cosa escribió en el disco a la vez.", "type": ["integer", "null"]}, "volumes": {"type": "array", "items": {"type": "object", "required": ["path", "free_before", "free_after", "freed_bytes"], "additionalProperties": false, "properties": {"path": {"$ref": "#/$defs/path"}, "free_before": {"$ref": "#/$defs/count"}, "free_after": {"$ref": "#/$defs/count"}, "freed_bytes": {"$ref": "#/$defs/int"}}}}}},
+    "space": {"description": "RF-SEG-12 (e): lo estimado (suma de lo anotado de lo borrado) frente a lo medido con statfs antes y después, por volumen. Los enlaces duros, los clones APFS y las instantáneas hacen que se libere menos.", "type": "object", "required": ["estimated_bytes", "measured_bytes", "volumes"], "additionalProperties": false, "properties": {"estimated_bytes": {"$ref": "#/$defs/count"}, "measured_bytes": {"description": "Suma de freed_bytes; null si no se midió nada (no había nada que borrar) o si algún volumen no se pudo medir. Puede ser negativo si otra cosa escribió en el disco a la vez.", "type": ["integer", "null"]}, "volumes": {"type": "array", "items": {"type": "object", "required": ["path", "free_before", "free_after", "freed_bytes"], "additionalProperties": false, "properties": {"path": {"$ref": "#/$defs/path"}, "free_before": {"$ref": "#/$defs/count"}, "free_after": {"$ref": "#/$defs/count"}, "freed_bytes": {"$ref": "#/$defs/int"}}}}}},
 
     "plan": {
       "description": "Documento de plan (rotten.plan.v2) tal como lo serializa ra-plan; su hash se verifica al ejecutar.",
@@ -516,7 +516,7 @@
           "additionalProperties": false,
           "properties": {
             "code": {
-              "description": "Código estable del error (no depende del idioma).",
+              "description": "Código estable del error (no depende del idioma): trash_unreadable (exit_code 3), trash_gone (exit_code 5: una carpeta revisada ya no existe), plan_changed, plan_invalid, needs_yes, locked…",
               "type": "string",
               "pattern": "^[a-z][a-z_]*$"
             },

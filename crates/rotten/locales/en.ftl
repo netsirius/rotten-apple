@@ -325,6 +325,8 @@ error-relative-path = the path must be absolute: { $path }
 error-config-corrupt = { $path } is corrupt ({ $reason }): nothing is done until it is fixed
 error-wrong-home = the plan belongs to another home folder ({ $path })
 error-plan-changed = the plan changed since the review: review it again
+error-free-plan-changed = the plan changed since the review; no longer in it: { $items }. Nothing is deleted: review it again
+error-trash-gone = the Trash folder { $path } is no longer there (was its volume unmounted?). Nothing is deleted.
 error-plan-expired = the review is too old ({ $minutes ->
     [one] { $minutes } minute
    *[other] { $minutes } minutes

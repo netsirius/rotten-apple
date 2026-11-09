@@ -195,6 +195,13 @@ impl Core {
                 actual,
             }));
         }
+        // Una carpeta revisada que ya no existe (volumen desmontado): no es
+        // el plan revisado, y se dice cuál.
+        for d in &plan.trash_dirs {
+            if fs::symlink_metadata(d).is_err_and(|e| e.kind() == io::ErrorKind::NotFound) {
+                return Err(CoreError::TrashGone { path: d.clone() });
+            }
+        }
         if !plan.within(&self.trash_roots()) {
             return Err(CoreError::Plan(PlanError::Invalid(
                 "the plan has entries outside the Trash".into(),

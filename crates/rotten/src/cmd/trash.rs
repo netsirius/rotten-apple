@@ -142,7 +142,7 @@ fn empty(ui: &Ui, core: &Core, dry_run: bool) -> Exit {
         if ui.json {
             let space = SpaceReport {
                 estimated_bytes: 0,
-                measured_bytes: Some(0),
+                measured_bytes: None,
                 volumes: vec![],
             };
             ui.emit(

@@ -325,6 +325,8 @@ error-relative-path = la ruta debe ser absoluta: { $path }
 error-config-corrupt = { $path } está corrupto ({ $reason }): no se hace nada hasta arreglarlo
 error-wrong-home = el plan es de otra carpeta personal ({ $path })
 error-plan-changed = el plan ha cambiado desde la revisión: revísalo de nuevo
+error-free-plan-changed = el plan ha cambiado desde la revisión; ya no están: { $items }. No se borra nada: revísalo de nuevo
+error-trash-gone = la carpeta de la Papelera { $path } ya no está (¿se ha desmontado su volumen?). No se borra nada.
 error-plan-expired = la revisión es demasiado antigua ({ $minutes ->
     [one] { $minutes } minuto
    *[other] { $minutes } minutos

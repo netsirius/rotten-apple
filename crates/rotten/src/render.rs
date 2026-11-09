@@ -224,6 +224,15 @@ pub fn core_error(i: &I18n, e: &CoreError, home: &Path) -> String {
             tr!(i, "error-unknown-operation", op = op.as_str())
         }
         E::Free(FreeError::NotFreeable { op }) => tr!(i, "error-not-freeable", op = op.as_str()),
+        E::FreePlanChanged { left } if left.is_empty() => tr!(i, "error-plan-changed"),
+        E::FreePlanChanged { left } => {
+            let ids: Vec<String> = left
+                .iter()
+                .map(|r| format!("{}#{}", r.op, r.item))
+                .collect();
+            tr!(i, "error-free-plan-changed", items = ids.join(", "))
+        }
+        E::TrashGone { path: p } => tr!(i, "error-trash-gone", path = path(p, home)),
         E::TrashUnreadable { path: p } => tr!(i, "error-trash-unreadable", path = path(p, home)),
         E::EmptyUnreadable { path: p } => tr!(i, "error-empty-unreadable", path = path(p, home)),
     }

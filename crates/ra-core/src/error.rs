@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use ra_history::{FreeError, UndoError};
+use ra_history::{FreeError, ItemRef, UndoError};
 use ra_plan::PlanError;
 use ra_safety::ProtectionReason;
 
@@ -81,6 +81,18 @@ pub enum CoreError {
     Undo(#[from] UndoError),
     #[error(transparent)]
     Free(#[from] FreeError),
+    /// `rotten free`: el plan que se prepara al ejecutar no es el revisado.
+    /// `left`: los elementos revisados que ya no están en él (p. ej. porque
+    /// su volumen se desmontó).
+    #[error(
+        "the plan changed since the review{}. Nothing is deleted.",
+        left_list(left)
+    )]
+    FreePlanChanged { left: Vec<ItemRef> },
+    /// `rotten trash empty`: una carpeta de la Papelera revisada ya no
+    /// existe (volumen desmontado).
+    #[error("the Trash folder {} is no longer there (was its volume unmounted?). Nothing is deleted.", path.display())]
+    TrashGone { path: PathBuf },
     /// La Papelera no se puede leer (sin Acceso total al disco): no se
     /// adivina ni se borra nada (CU-08 A1).
     #[error("cannot read the Trash ({}): grant Full Disk Access to your terminal and run `rotten doctor`. Nothing is deleted.", path.display())]
@@ -112,7 +124,9 @@ impl CoreError {
             | E::SelectionProtected { .. }
             | E::SelectionUserFolderLink { .. }
             | E::Unresolvable { .. }
-            | E::Unclassifiable { .. } => ErrorClass::Safety,
+            | E::Unclassifiable { .. }
+            | E::FreePlanChanged { .. }
+            | E::TrashGone { .. } => ErrorClass::Safety,
             E::Locked => ErrorClass::Locked,
             E::NotFound(_) | E::NothingToUndo | E::Undo(_) | E::Free(_) => ErrorClass::NotFound,
             E::Other(_) => ErrorClass::Other,
@@ -150,8 +164,22 @@ impl CoreError {
             E::Free(FreeError::UnknownOperation { .. }) => "unknown_operation",
             E::Free(FreeError::NotFreeable { .. }) => "not_freeable",
             E::TrashUnreadable { .. } | E::EmptyUnreadable { .. } => "trash_unreadable",
+            E::FreePlanChanged { .. } => "plan_changed",
+            E::TrashGone { .. } => "trash_gone",
         }
     }
+}
+
+/// `; no longer in it: op#1, op#2` (vacío si no salió nada).
+fn left_list(left: &[ItemRef]) -> String {
+    if left.is_empty() {
+        return String::new();
+    }
+    let ids: Vec<String> = left
+        .iter()
+        .map(|r| format!("{}#{}", r.op, r.item))
+        .collect();
+    format!("; no longer in it: {}", ids.join(", "))
 }
 
 impl From<ra_exec::ExecError> for CoreError {

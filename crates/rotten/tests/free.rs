@@ -102,9 +102,22 @@ fn clean_then_free_empties_those_items_only() {
     let (code, doc) = fx.run(&["undo", "--yes", "--json"]);
     assert_eq!(code, 1, "{doc:#}");
     assert_eq!(doc["error"]["code"], "nothing_to_undo");
-    // Ya no queda nada que liberar: se dice y no se borra nada más.
+    // I5: deshacer esa operación, nombrándola, tampoco: es irreversible (1).
+    for args in [
+        ["undo", &op, "--yes", "--json"],
+        ["undo", &op, "--dry-run", "--json"],
+    ] {
+        let (code, doc) = fx.run(&args);
+        assert_eq!(code, 1, "{args:?}: {doc:#}");
+        assert_eq!(doc["error"]["code"], "not_undoable", "{args:?}");
+    }
+    // Ya no queda nada que liberar: se dice, no se borra nada más y no es
+    // un resultado parcial (0).
+    let (code, doc) = fx.run(&["free", &op, "--dry-run", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
     let (code, doc) = fx.run(&["free", &op, "--yes", "--json"]);
-    assert_eq!(code, 4, "{doc:#}");
+    assert_eq!(code, 0, "{doc:#}");
+    assert!(doc["space"]["measured_bytes"].is_null(), "M6: {doc:#}");
     assert!(doc["plan"]["ready"].as_array().expect("ready").is_empty());
     assert!(
         doc["plan"]["not_freeable"]
@@ -268,12 +281,38 @@ fn partly_restored_then_freed() {
             .as_str()
             .expect("ruta"),
     );
+    // Lo restaurado no queda pendiente: todo lo demás se libera (0).
     let (code, doc) = fx.run(&["free", &op, "--yes", "--json"]);
-    assert_eq!(code, 4, "{doc:#}");
+    assert_eq!(code, 0, "{doc:#}");
     assert_eq!(doc["report"]["done"], trashed.len() - 1);
     assert_eq!(doc["plan"]["not_freeable"][0]["reason"], "already_restored");
     assert!(restored.exists());
     assert_eq!(op_in_history(&fx, &op)["undo_state"], "partly_restored");
+    // Restaurada en parte y el resto borrado: nada que deshacer y algo que
+    // ya no vuelve (4).
+    let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
+    assert_eq!(code, 4, "{doc:#}");
+}
+
+/// Códigos de `undo <op>`: restaurada entera, 0 (no queda nada pendiente);
+/// `clean --permanent`, irreversible: 1 con `not_undoable`.
+#[test]
+fn undo_exit_codes_of_restored_and_permanent_operations() {
+    let fx = fixture();
+    let (op, _) = clean(&fx);
+    let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert_eq!(op_in_history(&fx, &op)["undo_state"], "restored");
+    let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert!(doc["report"]["done"] == 0, "{doc:#}");
+
+    let (code, doc) = fx.run(&["clean", "--permanent", "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    let permanent = doc["report"]["op_id"].as_str().expect("op").to_owned();
+    let (code, doc) = fx.run(&["undo", &permanent, "--yes", "--json"]);
+    assert_eq!(code, 1, "{doc:#}");
+    assert_eq!(doc["error"]["code"], "not_undoable");
 }
 
 /// Sin permiso para leer la Papelera (sin Acceso total al disco) no se

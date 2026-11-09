@@ -526,6 +526,18 @@ pub enum NotRecoverableReason {
     VolumeNotMounted,
 }
 
+impl NotRecoverableReason {
+    /// Para liberar: ya no queda nada que hacer con él (se borró, se
+    /// restauró o nunca llegó a la Papelera). Los demás motivos dejan algo
+    /// sin liberar (código 4).
+    pub fn is_settled(&self) -> bool {
+        matches!(
+            self,
+            Self::Deleted | Self::AlreadyRestored | Self::NeverMoved
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NotRecoverable {
     pub item_id: u32,
@@ -561,7 +573,15 @@ pub fn prepare_undo(
 ) -> Result<UndoPlan, UndoError> {
     let m =
         manifest_for(records, op).ok_or_else(|| UndoError::UnknownOperation { op: op.into() })?;
-    if m.kind != OpKind::Clean {
+    // Un deshacer no se deshace, y una operación de la que todo lo que se
+    // movió se borró después (de la Papelera, o era un borrado permanente)
+    // tampoco. Si algo está en paradero incierto o ya no está en la
+    // Papelera, se prepara el plan para decir el motivo de cada elemento.
+    let all_deleted = m.undo_state() == UndoState::Irreversible
+        && m.items
+            .iter()
+            .all(|i| !matches!(i.state, ItemState::Trashed | ItemState::Unknown { .. }));
+    if m.kind != OpKind::Clean || all_deleted {
         return Err(UndoError::NotUndoable { op: op.into() });
     }
     if let Some(ids) = items {

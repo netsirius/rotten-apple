@@ -196,7 +196,7 @@ fn empty_deletes_what_was_reviewed_and_ops_become_irreversible() {
         (1, &json!("nothing_to_undo"))
     );
     let (code, doc) = fx.run(&["free", &clean, "--yes", "--json"]);
-    assert_eq!(code, 4, "{doc:#}");
+    assert_eq!(code, 0, "nada pendiente: {doc:#}");
     assert!(
         doc["plan"]["not_freeable"]
             .as_array()

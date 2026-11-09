@@ -25,7 +25,6 @@ use std::time::{Duration, Instant};
 
 use ra_exec::{ExecContext, ExecReport};
 use ra_history::{FreePlan, NotRecoverableReason, Record};
-use ra_plan::PlanError;
 use ra_safety::{AppProbe, Config, Exclusions};
 use serde::Serialize;
 
@@ -268,11 +267,16 @@ impl Core {
         let exec = ctx.exec(self, by);
         let (records, _) = ra_history::read_journal(&ctx.history)?;
         let fresh = self.free_plan(&records, &plan.ops)?;
-        if fresh.plan_hash != reviewed_hash {
-            return Err(CoreError::Plan(PlanError::HashMismatch {
-                expected: reviewed_hash.to_owned(),
-                actual: fresh.plan_hash,
-            }));
+        if fresh.plan_hash != reviewed_hash || plan.plan_hash != reviewed_hash {
+            // Qué elementos revisados ya no están (p. ej. su volumen se
+            // desmontó): se dice cuáles.
+            let left = plan
+                .ready
+                .iter()
+                .filter(|it| !fresh.ready.iter().any(|f| f.of == it.of))
+                .map(|it| it.of.clone())
+                .collect();
+            return Err(CoreError::FreePlanChanged { left });
         }
         Self::trash_readable(&fresh)?;
         let dirs = volume_dirs(

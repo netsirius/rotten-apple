@@ -85,9 +85,15 @@ pub fn run(ui: &Ui, core: &Core, ops: &[String], dry_run: bool) -> Exit {
         Ok(p) => p,
         Err(e) => return ui.core_error(COMMAND, &e),
     };
-    // Algo de lo pedido ya no está en la Papelera tal como se anotó: la
-    // operación no queda completa (como `undo`).
-    let left_out = !preview.plan.not_freeable.is_empty();
+    // Algo de lo pedido sigue sin liberar y no se puede liberar ahora (ya
+    // no está en la Papelera tal como se anotó, paradero incierto, otra
+    // Papelera, volumen sin montar): la operación no queda completa (4). Lo
+    // ya borrado o restaurado no deja nada pendiente.
+    let left_out = preview
+        .plan
+        .not_freeable
+        .iter()
+        .any(|n| !n.reason.is_settled());
     if !ui.json {
         print_plan(ui, &preview);
     }
@@ -108,9 +114,10 @@ pub fn run(ui: &Ui, core: &Core, ops: &[String], dry_run: bool) -> Exit {
     }
     if preview.plan.ready.is_empty() {
         if ui.json {
+            // M6: no se ha medido nada.
             let space = SpaceReport {
                 estimated_bytes: 0,
-                measured_bytes: Some(0),
+                measured_bytes: None,
                 volumes: vec![],
             };
             ui.emit(

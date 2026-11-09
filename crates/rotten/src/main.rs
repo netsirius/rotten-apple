@@ -677,7 +677,13 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
         }
         return Exit::Ok;
     }
-    let partial_upfront = !preview.plan.not_recoverable.is_empty();
+    // Lo ya restaurado no deja nada pendiente; lo demás que no se puede
+    // restaurar, sí (4).
+    let partial_upfront = preview
+        .plan
+        .not_recoverable
+        .iter()
+        .any(|n| n.reason != ra_core::NotRecoverableReason::AlreadyRestored);
     if preview.plan.ready.is_empty() {
         if ui.json {
             ui.emit(
