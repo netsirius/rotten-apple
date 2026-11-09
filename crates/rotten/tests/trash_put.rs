@@ -378,6 +378,8 @@ fn put_then_undo_leaves_the_tree_as_it_was() {
     let (code, hist) = fx.run(&["history", "--json"]);
     assert_eq!(code, 0);
     assert_eq!(hist["operations"][0]["undo_state"], "restorable");
+    // El historial distingue un `trash put` de una limpieza.
+    assert_eq!(hist["operations"][0]["kind"], "trash_put");
 
     let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
     assert_eq!(code, 0, "{doc:#}");

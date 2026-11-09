@@ -133,6 +133,7 @@ fn clean_yes_then_undo_puts_everything_back() {
     let (code, hist) = fx.run(&["history", "--json"]);
     assert_eq!(code, 0);
     assert_eq!(hist["operations"][0]["op_id"], op.as_str());
+    assert_eq!(hist["operations"][0]["kind"], "clean");
     assert_eq!(hist["operations"][0]["undo_state"], "restorable");
 
     let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);

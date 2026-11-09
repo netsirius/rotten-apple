@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use ra_core::{
-    Action, AppsProbe, Core, CoreError, DoctorReport, Env, EnvError, ErrorClass, ExecReport,
+    Action, AppsProbe, Core, HistoryKind, CoreError, DoctorReport, Env, EnvError, ErrorClass, ExecReport,
     FdaState, Outcome, Plan, ScanStatus, Selection, TrashInfo, UndoState, tilde,
 };
 use serde_json::{Value, json};
@@ -485,9 +485,10 @@ fn history(ui: &Ui, core: &Core) -> Exit {
             UndoState::PartlyRestored => ui.t("restaurada en parte", "partly restored"),
             UndoState::NotApplicable => "—",
         };
-        let kind = match o.undo_of {
-            Some(ref of) => format!("{} {of}", ui.t("deshacer", "undo")),
-            None => ui.t("limpieza", "clean").to_owned(),
+        let kind = match (o.kind, &o.undo_of) {
+            (_, Some(of)) => format!("{} {of}", ui.t("deshacer", "undo")),
+            (HistoryKind::TrashPut, None) => ui.t("a la Papelera", "trash put").to_owned(),
+            _ => ui.t("limpieza", "clean").to_owned(),
         };
         ui.say(format!(
             "{}  {}  {kind:<28} {:>4} {}  {:>9}  {state}",

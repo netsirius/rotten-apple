@@ -5,8 +5,8 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-use ra_safety::Identity;
 use ra_safety::fingerprint::stat_nofollow_any;
+use ra_safety::{Identity, Origin};
 use serde::{Deserialize, Serialize};
 
 use crate::HistoryPaths;
@@ -52,6 +52,10 @@ pub struct ManifestItem {
     pub bytes: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_mode: Option<u32>,
+    /// Origen del elemento (reglas o selección explícita). Falta en los
+    /// journals anteriores a T-10 y en las restauraciones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
     #[serde(flatten)]
     pub state: ItemState,
 }
@@ -94,10 +98,24 @@ pub enum UndoState {
     NotApplicable,
 }
 
+/// Qué fue cada operación del historial. El journal solo distingue
+/// limpieza y deshacer (`OpKind`); un `trash put` se reconoce por el origen
+/// de sus elementos (selección explícita).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryKind {
+    /// Limpieza con las reglas del catálogo (`rotten clean`).
+    Clean,
+    /// Rutas elegidas a mano (`rotten trash put`).
+    TrashPut,
+    /// Deshacer de otra operación.
+    Undo,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpSummary {
     pub op_id: String,
-    pub kind: OpKind,
+    pub kind: HistoryKind,
     pub mode: OpMode,
     pub started_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -185,9 +203,21 @@ impl Manifest {
                 ItemState::Pending | ItemState::Unknown { .. } => {}
             }
         }
+        let kind = match self.kind {
+            OpKind::Undo => HistoryKind::Undo,
+            OpKind::Clean
+                if self
+                    .items
+                    .iter()
+                    .any(|i| i.origin == Some(Origin::ExplicitSelection)) =>
+            {
+                HistoryKind::TrashPut
+            }
+            OpKind::Clean => HistoryKind::Clean,
+        };
         OpSummary {
             op_id: self.op_id.clone(),
-            kind: self.kind,
+            kind,
             mode: self.mode,
             started_at: self.started_at.clone(),
             finished_at: self.finished_at.clone(),
@@ -248,6 +278,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                 regenerable,
                 bytes,
                 parent_mode,
+                origin,
                 ..
             } => {
                 items.insert(
@@ -262,6 +293,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                         regenerable: *regenerable,
                         bytes: *bytes,
                         parent_mode: *parent_mode,
+                        origin: *origin,
                         state: ItemState::Pending,
                     },
                 );

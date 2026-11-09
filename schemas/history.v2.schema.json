@@ -30,7 +30,10 @@
       "additionalProperties": false,
       "properties": {
         "op_id": { "type": "string", "minLength": 1 },
-        "kind": { "enum": ["clean", "undo"] },
+        "kind": {
+          "description": "clean: rotten clean · trash_put: rutas elegidas con rotten trash put · undo: deshacer de otra operación.",
+          "enum": ["clean", "trash_put", "undo"]
+        },
         "mode": { "enum": ["trash", "permanent", "restore"] },
         "started_at": { "$ref": "#/$defs/timestamp" },
         "finished_at": { "$ref": "#/$defs/timestamp" },

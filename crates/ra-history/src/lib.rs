@@ -19,7 +19,7 @@ pub use journal::{
     Event, Journal, JournalError, OpKind, OpMode, OpStatus, Record, StepAction, read_journal,
 };
 pub use manifest::{
-    ItemState, Manifest, ManifestItem, OpSummary, UndoError, UndoItem, UndoPlan, UndoState,
+    HistoryKind, ItemState, Manifest, ManifestItem, OpSummary, UndoError, UndoItem, UndoPlan, UndoState,
     list_ops, manifest_for, prepare_undo,
 };
 
