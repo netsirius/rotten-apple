@@ -1,0 +1,60 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "undo",
+  "dry_run": false,
+  "plan": {
+    "not_recoverable": [
+      {
+        "item_id": 1,
+        "reason": "not_in_trash"
+      },
+      {
+        "item_id": 2,
+        "reason": "already_restored"
+      }
+    ],
+    "ready": [
+      {
+        "bytes": 4096,
+        "from": "[TRASH]/com.example.closed.savedState",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 3,
+        "parent_mode": "[parent_mode]",
+        "regenerable": true,
+        "to": "[HOME]/Library/Saved Application State/com.example.closed.savedState"
+      }
+    ],
+    "undo_of": "[undo_of]"
+  },
+  "report": {
+    "bytes_done": 4096,
+    "done": 1,
+    "dry_run": false,
+    "failed": 0,
+    "items": [
+      {
+        "bytes": 4096,
+        "item_id": 3,
+        "outcome": "done",
+        "path": "[HOME]/Library/Saved Application State/com.example.closed.savedState",
+        "result_path": "[HOME]/Library/Saved Application State/com.example.closed.savedState"
+      }
+    ],
+    "op_id": "[op_id]",
+    "skipped": 0,
+    "would": 0
+  },
+  "schema_version": 2
+}

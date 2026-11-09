@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6244b64d58ed12b4b577638fea880758da7c48f03c8d6ab54b2ff53517f27f28 # shrinks to (entries, links) = ([Entry { path: "Documents/Library/Caches/com.example.alpha/Cache.db", size: 1000, age_days: 0, dir: false }], [])

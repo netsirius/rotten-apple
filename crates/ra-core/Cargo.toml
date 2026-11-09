@@ -1,0 +1,29 @@
+[package]
+name = "ra-core"
+description = "Fachada del núcleo: escaneo, plan, ejecución, historial, deshacer y diagnóstico."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+humantime.workspace = true
+ra-catalog.workspace = true
+ra-exec.workspace = true
+ra-history.workspace = true
+ra-plan.workspace = true
+ra-platform.workspace = true
+ra-safety.workspace = true
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+ra-catalog = { workspace = true, features = ["fixtures"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

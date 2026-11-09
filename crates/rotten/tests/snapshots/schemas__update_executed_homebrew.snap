@@ -1,0 +1,18 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "argv": [
+    "[HOME]/homebrew/bin/brew",
+    "upgrade",
+    "netsirius/tap/rotten"
+  ],
+  "automatic": true,
+  "command": "update",
+  "dry_run": false,
+  "executable": "[HOME]/homebrew/Cellar/rotten/0.1.0/bin/rotten",
+  "method": "homebrew",
+  "ran": true,
+  "schema_version": 2
+}

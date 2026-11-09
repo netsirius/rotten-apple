@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: doc
+---
+{
+  "command": "free",
+  "error": {
+    "code": "not_freeable",
+    "exit_code": 1,
+    "message": "operation [op_id] did not move anything to the Trash"
+  },
+  "schema_version": 2
+}

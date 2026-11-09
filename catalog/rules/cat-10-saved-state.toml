@@ -1,0 +1,27 @@
+# CAT-10 · Estado guardado de ventanas (02 §5).
+#
+# Nota: README §4 rotula CAT-10 como «restos de actualizadores», pero ningún
+# documento define esa categoría; se aplica la definición de 02 §5. Pendiente
+# de confirmar por el autor.
+#
+# Solo apps cerradas. Efecto: la app no reabre sus ventanas anteriores.
+
+[[rule]]
+id = "saved-application-state"
+version = 1
+cat = "CAT-10"
+risk = "safe"
+regenerable = true
+preselect = true
+action = "trash"
+roots = ["~/Library/Saved Application State"]
+include = ["*.savedState"]
+max_depth = 1
+app_not_running = ["{bundle_id}"]
+bundle_id_suffix = ".savedState"
+title = { es = "Ventanas guardadas", en = "Saved windows" }
+explain = { es = "Lo que macOS guarda para reabrir las ventanas de una app como las dejaste.", en = "What macOS keeps to reopen an app's windows the way you left them." }
+if_deleted = { es = "La app abrirá sin restaurar sus ventanas anteriores; tus documentos no se tocan.", en = "The app will open without restoring its previous windows; your documents are not touched." }
+regenerates = { es = "Sí: macOS lo vuelve a guardar la próxima vez que cierres la app.", en = "Yes: macOS saves it again the next time you quit the app." }
+why_risk = { es = "Seguro: no contiene documentos y solo se toca con la app cerrada.", en = "Safe: it holds no documents and it is only touched while the app is closed." }
+evidence = "02 §5 CAT-10"

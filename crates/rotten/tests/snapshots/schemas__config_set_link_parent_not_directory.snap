@@ -1,0 +1,20 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "action": "set",
+  "changed": false,
+  "command": "config",
+  "dry_run": false,
+  "key": "language",
+  "link": {
+    "parent": "[HOME]/.config/rotten",
+    "path": "[HOME]/.config/rotten/config.toml",
+    "state": "parent_not_directory"
+  },
+  "link_created": false,
+  "link_error": "[HOME]/.config/rotten is not a folder, so the link cannot be created there",
+  "schema_version": 2,
+  "value": "system"
+}

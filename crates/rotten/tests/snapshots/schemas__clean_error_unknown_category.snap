@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "clean",
+  "error": {
+    "code": "unknown_category",
+    "exit_code": 2,
+    "message": "unknown category: CAT-99"
+  },
+  "schema_version": 2
+}

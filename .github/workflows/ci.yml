@@ -1,0 +1,84 @@
+# Comprobaciones en cada PR (05 §4.9, §9.1, §10). Acciones fijadas por SHA
+# (05 §9.2) y permisos mínimos.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # 256 casos por propiedad en cada PR (05 §10.3, RNF-ARQ-03).
+  PROPTEST_CASES: "256"
+
+jobs:
+  check:
+    name: fmt, clippy y pruebas (macOS 26, arm64)
+    # D-01: macOS 26 o posterior en Apple silicon.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain de Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+          rustc --version
+      - name: Formato
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Pruebas
+        run: cargo test --workspace --locked
+
+  forbid-unsafe:
+    name: forbid(unsafe_code) fuera de ra-platform
+    # RNF-ARQ-16: todo el unsafe vive en ra-platform; el resto de crates
+    # declaran #![forbid(unsafe_code)] en su raíz.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Comprobar las raíces de los crates
+        run: |
+          fail=0
+          for f in crates/*/src/lib.rs crates/*/src/main.rs; do
+            [ -e "$f" ] || continue
+            case "$f" in crates/ra-platform/*) continue ;; esac
+            if ! grep -qx '#!\[forbid(unsafe_code)\]' "$f"; then
+              echo "::error file=$f::falta #![forbid(unsafe_code)]"
+              fail=1
+            fi
+          done
+          # El lint del workspace deja unsafe_code en «deny» para todos los
+          # objetivos (tests, benches, build.rs); solo ra-platform puede
+          # levantarlo.
+          if grep -rn --include='*.rs' 'allow(unsafe_code)' crates | grep -v '^crates/ra-platform/'; then
+            echo "::error::allow(unsafe_code) fuera de ra-platform"
+            fail=1
+          fi
+          exit "$fail"
+
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # `check` sin argumentos: advisories, bans, licenses y sources (RNF-14,
+      # RNF-ARQ-26). `cargo audit` corre a diario en la nocturna.
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check

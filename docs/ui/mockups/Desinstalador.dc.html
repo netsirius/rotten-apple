@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Aplicaciones</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:36</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), radial-gradient(40% 50% at 30% 100%, rgba(156,194,255,0.14) 0%, rgba(156,194,255,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="desinstalador" mode="simple" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="display: flex; align-items: flex-end; gap: 16px; padding: 44px 48px 18px;">
+        <div style="flex-grow: 1;">
+          <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Aplicaciones</h1>
+          <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">Quita apps y lo que dejan. Tus datos se quedan, salvo que digas lo contrario.</p>
+        </div>
+        <div role="tablist" aria-label="Acción" style="display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.07);">
+          <span role="tab" aria-selected="true" style="display: flex; align-items: center; min-height: 32px; padding: 0 16px; border-radius: 9px; background: #574EFF; color: #FFFFFF; font-size: 14px; font-weight: 600;">Desinstalar</span>
+          <a href="Adelgazar.dc.html" role="tab" aria-selected="false" style="display: flex; align-items: center; min-height: 32px; padding: 0 16px; border-radius: 9px; color: rgba(255,255,255,0.75); font-size: 14px; text-decoration: none;">Adelgazar</a>
+        </div>
+        <label for="q" style="position: absolute; left: -9999px;">Buscar app</label>
+        <input id="q" type="search" placeholder="Buscar app" style="width: 220px; min-height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: rgba(255,255,255,0.08); color: #FFFFFF; font: inherit; font-size: 14px;">
+      </header>
+      <div style="display: flex; gap: 28px; padding: 0 48px; height: 440px;">
+        <section aria-label="Apps" style="flex: 0 0 320px; overflow: auto; display: flex; flex-direction: column;">
+          <span style="padding: 0 12px 8px; font-size: 13px; color: rgba(255,255,255,0.55);">Ordenadas por último uso</span>
+          <sc-for list="{{apps}}" as="a" hint-placeholder-count="6">
+            <button type="button" onClick="{{a.pick}}" aria-pressed="{{a.pressed}}" style="{{a.rowStyle}}">
+              <span style="{{a.iconStyle}}" aria-hidden="true">{{a.initial}}</span>
+              <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 15px; font-weight: 600;">{{a.name}}</span>
+                <span style="font-size: 12.5px; color: rgba(255,255,255,0.6);">{{a.last}}</span>
+              </span>
+              <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 13px; color: rgba(255,255,255,0.8);">{{a.size}}</span>
+            </button>
+          </sc-for>
+        </section>
+        <aside aria-labelledby="app-t" style="flex: 1 1 auto; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 18px; background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+            <h2 id="app-t" style="margin: 0; font-size: 18px; font-weight: 600;">Zoom y lo que ha dejado</h2>
+            <span style="font-size: 13px; color: rgba(255,255,255,0.6);">abierta hace 8 meses</span>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <sc-for list="{{parts}}" as="p" hint-placeholder-count="7">
+              <label style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+                <input type="checkbox" checked="{{p.on}}" disabled="{{p.locked}}" onChange="{{p.toggle}}" style="width: 17px; height: 17px; margin: 0; accent-color: #574EFF;">
+                <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                  <span style="font-size: 14.5px; font-weight: 600;">{{p.name}}</span>
+                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; color: rgba(255,255,255,0.5);">{{p.path}}</span>
+                </span>
+                <sc-if value="{{p.hasTag}}" hint-placeholder-val="{{false}}">
+                  <span style="{{p.tagStyle}}">{{p.tag}}</span>
+                </sc-if>
+                <span style="width: 64px; text-align: right; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 13px; color: rgba(255,255,255,0.8);">{{p.size}}</span>
+              </label>
+            </sc-for>
+          </div>
+        </aside>
+      </div>
+      <a href="Revision.dc.html" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font-size: 17px; font-weight: 600; text-decoration: none;">Desinstalar</a>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.6);"><span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; color: #FFFFFF;">{{total}}</span> a la Papelera · si Zoom está abierta, te pediremos cerrarla</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const active = st.active || 'zoom';
+    const checks = st.checks || {};
+    const mono = 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace;';
+    const list = [
+      { id: 'teams', name: 'Teams (clásico)', last: 'Sin abrir hace 2 años', size: '1,2 GB', g: '#9CC2FF, #3A6CF0' },
+      { id: 'lr', name: 'Lightroom Classic', last: 'Sin abrir hace 14 meses', size: '2,1 GB', g: '#F0CFFF, #A55BD8' },
+      { id: 'notion', name: 'Notion', last: 'Sin abrir hace 13 meses', size: '340 MB', g: '#C8C8D8, #5D5D78' },
+      { id: 'zoom', name: 'Zoom', last: 'Hace 8 meses', size: '412 MB', g: '#9BEAF5, #1D8EA8' },
+      { id: 'spotify', name: 'Spotify', last: 'Hace 3 días', size: '580 MB', g: '#8FF5AC, #1E9E52' },
+      { id: 'figma', name: 'Figma', last: 'Ayer', size: '520 MB', g: '#FFB8E0, #C2468F' }
+    ];
+    const apps = list.map((a) => ({
+      name: a.name, last: a.last, size: a.size, initial: a.name.charAt(0),
+      pressed: a.id === active ? 'true' : 'false',
+      iconStyle: 'flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(160deg, ' + a.g + '); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35); font-size: 15px; font-weight: 700;',
+      rowStyle: 'display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 12px; border: 0; border-radius: 14px; font: inherit; color: inherit; text-align: left; cursor: pointer; ' + (a.id === active ? 'background: rgba(255,255,255,0.08);' : 'background: transparent;'),
+      pick: () => this.setState({ active: a.id })
+    }));
+    const tags = {
+      data: { label: 'tus datos', style: 'background: rgba(230,183,254,0.16); color: #E6B7FE;' },
+      admin: { label: 'requiere admin · v1', style: 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);' },
+      docs: { label: 'nunca se toca', style: 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);' }
+    };
+    const defs = [
+      { id: 'app', name: 'La app', path: '/Applications/zoom.us.app', size: '312 MB', mb: 312, on: true },
+      { id: 'cache', name: 'Cachés', path: '~/Library/Caches/us.zoom.xos', size: '64 MB', mb: 64, on: true },
+      { id: 'prefs', name: 'Preferencias', path: '~/Library/Preferences/us.zoom.xos.plist', size: '12 KB', mb: 0, on: true },
+      { id: 'logs', name: 'Registros', path: '~/Library/Logs/zoom.us', size: '8 MB', mb: 8, on: true },
+      { id: 'support', name: 'Datos y ajustes', path: '~/Library/Application Support/zoom.us', size: '36 MB', mb: 36, on: false, tag: 'data' },
+      { id: 'daemon', name: 'Servicio del sistema', path: '/Library/LaunchDaemons/us.zoom.ZoomDaemon.plist', size: '4 KB', mb: 0, on: false, tag: 'admin', locked: true },
+      { id: 'docs', name: 'Grabaciones', path: '~/Documents/Zoom', size: '1,4 GB', mb: 0, on: false, tag: 'docs', locked: true }
+    ];
+    const isOn = (d) => (checks[d.id] === undefined ? d.on : checks[d.id]);
+    let mb = 0;
+    const parts = defs.map((d) => {
+      const on = isOn(d);
+      if (on && !d.locked) mb += d.mb;
+      return {
+        name: d.name, path: d.path, size: d.size, on: on, locked: !!d.locked,
+        hasTag: !!d.tag, tag: d.tag ? tags[d.tag].label : '',
+        tagStyle: d.tag ? 'flex-shrink: 0; padding: 2px 8px; border-radius: 999px; font-size: 11px; ' + mono + ' ' + tags[d.tag].style : '',
+        toggle: () => { const n = Object.assign({}, checks); n[d.id] = !on; this.setState({ checks: n }); }
+      };
+    });
+    return { apps: apps, parts: parts, total: mb + ' MB' };
+  }
+}
+</script>
+</body>
+</html>

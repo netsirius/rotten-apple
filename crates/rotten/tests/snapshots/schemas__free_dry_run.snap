@@ -1,0 +1,117 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "free",
+  "dry_run": true,
+  "plan": {
+    "not_freeable": [],
+    "ops": "[ops]",
+    "plan_hash": "[plan_hash]",
+    "ready": [
+      {
+        "bytes": 4096,
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "file",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 1,
+        "moved_at": "[moved_at]",
+        "of": {
+          "item": 1,
+          "op": "[op]"
+        },
+        "original_path": "[HOME]/Library/Logs/install.log",
+        "path": "[TRASH]/install.log",
+        "trash": "dir:[TRASH]"
+      },
+      {
+        "bytes": 4096,
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 2,
+        "moved_at": "[moved_at]",
+        "of": {
+          "item": 2,
+          "op": "[op]"
+        },
+        "original_path": "[HOME]/Library/Logs/old-app",
+        "path": "[TRASH]/old-app",
+        "trash": "dir:[TRASH]"
+      },
+      {
+        "bytes": 4096,
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 3,
+        "moved_at": "[moved_at]",
+        "of": {
+          "item": 3,
+          "op": "[op]"
+        },
+        "original_path": "[HOME]/Library/Saved Application State/com.example.closed.savedState",
+        "path": "[TRASH]/com.example.closed.savedState",
+        "trash": "dir:[TRASH]"
+      }
+    ],
+    "totals": {
+      "bytes": 12288,
+      "items": 3
+    }
+  },
+  "report": {
+    "bytes_done": 0,
+    "done": 0,
+    "dry_run": true,
+    "failed": 0,
+    "items": [
+      {
+        "action": "would_delete",
+        "bytes": 4096,
+        "item_id": 1,
+        "outcome": "would",
+        "path": "[TRASH]/install.log"
+      },
+      {
+        "action": "would_delete",
+        "bytes": 4096,
+        "item_id": 2,
+        "outcome": "would",
+        "path": "[TRASH]/old-app"
+      },
+      {
+        "action": "would_delete",
+        "bytes": 4096,
+        "item_id": 3,
+        "outcome": "would",
+        "path": "[TRASH]/com.example.closed.savedState"
+      }
+    ],
+    "skipped": 0,
+    "would": 3
+  },
+  "schema_version": 2
+}

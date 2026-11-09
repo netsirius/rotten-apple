@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/doctor.v1.schema.json",
+  "title": "rotten doctor --json (schema_version 1)",
+  "description": "Permisos, plataforma, configuración e integridad del journal (RF-CLI-07). O el documento de error común.",
+  "oneOf": [
+    { "$ref": "#/$defs/document" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "path": { "type": "string", "minLength": 1 },
+    "document": {
+      "type": "object",
+      "required": ["schema_version", "command", "report", "exit_code"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "command": { "const": "doctor" },
+        "report": { "$ref": "#/$defs/report" },
+        "exit_code": {
+          "description": "0 todo bien · 3 sin Acceso total al disco · 5 configuración corrupta.",
+          "enum": [0, 3, 5]
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "required": [
+        "version", "macos_version", "arch", "platform_supported", "running_as_root", "home",
+        "home_source", "state_dir", "config_path", "config", "journal_dir", "journal_records",
+        "journal_problems", "trash", "exec_lock_free", "full_disk_access", "running_apps_probe",
+        "catalog_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string" },
+        "macos_version": { "type": ["string", "null"] },
+        "arch": { "type": "string" },
+        "platform_supported": { "type": "boolean" },
+        "running_as_root": { "type": "boolean" },
+        "home": { "$ref": "#/$defs/path" },
+        "home_source": { "enum": ["ROTTEN_HOME", "HOME", "explicit"] },
+        "state_dir": { "$ref": "#/$defs/path" },
+        "config_path": { "$ref": "#/$defs/path" },
+        "config": { "enum": ["missing", "ok", "corrupt"] },
+        "config_error": { "type": "string" },
+        "journal_dir": { "$ref": "#/$defs/path" },
+        "journal_records": { "$ref": "#/$defs/count" },
+        "journal_problems": { "type": "array", "items": { "type": "string" } },
+        "trash_unreadable_ops": {
+          "description": "Operaciones con elementos que, tras un cierre abrupto, no se pudieron buscar en la Papelera por falta de permiso. Se omite si no hay.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "trash": {
+          "description": "«system» o «dir:<ruta>» (ROTTEN_TRASH_DIR en pruebas).",
+          "type": "string",
+          "pattern": "^(system|dir:.+)$"
+        },
+        "exec_lock_free": { "type": "boolean" },
+        "full_disk_access": { "enum": ["granted", "denied", "undetermined"] },
+        "running_apps_probe": {
+          "description": "Result<usize, String> de Rust tal cual: {\"Ok\": n} o {\"Err\": motivo}.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["Ok"],
+              "additionalProperties": false,
+              "properties": { "Ok": { "$ref": "#/$defs/count" } }
+            },
+            {
+              "type": "object",
+              "required": ["Err"],
+              "additionalProperties": false,
+              "properties": { "Err": { "type": "string" } }
+            }
+          ]
+        },
+        "catalog_version": { "type": "string" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["schema_version", "command", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "command": { "const": "doctor" },
+        "error": {
+          "type": "object",
+          "required": ["exit_code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "action": "remove",
+  "changed": true,
+  "command": "exclude",
+  "dry_run": false,
+  "exclusion": "~/Library/Logs/old-app",
+  "schema_version": 2
+}

@@ -1,0 +1,48 @@
+# CAT-03 · Registros e informes de fallos (02 §5).
+#
+# Antigüedad mínima de 7 días para no tocar ficheros que se están escribiendo.
+# `DiagnosticReports` va en una regla aparte para tratar cada informe por
+# separado: un informe nuevo no bloquea a los antiguos.
+#
+# El log técnico de Rotten Apple (`~/Library/Logs/<bundle-id>/`, T-14) no se
+# propone nunca: es de la app, como su estado. Si cambia el bundle ID (D-08),
+# hay que cambiarlo aquí también (lo comprueba `rotten/tests/techlog.rs`).
+
+[[rule]]
+id = "user-logs"
+version = 1
+cat = "CAT-03"
+risk = "safe"
+regenerable = false
+preselect = true
+action = "trash"
+roots = ["~/Library/Logs"]
+include = ["*"]
+exclude = ["DiagnosticReports", "io.github.netsirius.RottenApple"]
+max_depth = 1
+min_age_days = 7
+title = { es = "Registro de app", en = "App log" }
+explain = { es = "Registros de actividad antiguos que escriben las apps.", en = "Old activity logs written by apps." }
+if_deleted = { es = "Nada cambia en el uso diario; solo se pierde información para diagnosticar fallos pasados.", en = "Nothing changes in daily use; you only lose information to diagnose past problems." }
+regenerates = { es = "No: lo que se borra no vuelve, aunque las apps siguen escribiendo registros nuevos.", en = "No: what is deleted does not come back, though apps keep writing new logs." }
+why_risk = { es = "Seguro: ninguna app los necesita para funcionar y solo se eligen los de más de 7 días.", en = "Safe: no app needs them to work and only those older than 7 days are chosen." }
+evidence = "02 §5 CAT-03"
+
+[[rule]]
+id = "user-logs.diagnostic-reports"
+version = 1
+cat = "CAT-03"
+risk = "safe"
+regenerable = false
+preselect = true
+action = "trash"
+roots = ["~/Library/Logs/DiagnosticReports"]
+include = ["*"]
+max_depth = 1
+min_age_days = 7
+title = { es = "Informe de fallo", en = "Crash report" }
+explain = { es = "Informes que macOS guarda cuando una de tus apps falla o se cuelga.", en = "Reports macOS keeps when one of your apps crashes or hangs." }
+if_deleted = { es = "Ya no podrás enviar esos fallos antiguos al desarrollador; el sistema sigue igual.", en = "You can no longer send those old crashes to the developer; the system is unaffected." }
+regenerates = { es = "No: los informes borrados no vuelven; los fallos nuevos crean informes nuevos.", en = "No: deleted reports do not come back; new crashes create new reports." }
+why_risk = { es = "Seguro: solo sirven para diagnosticar y solo se eligen los de más de 7 días.", en = "Safe: they are only useful for diagnosis and only those older than 7 days are chosen." }
+evidence = "02 §5 CAT-03"

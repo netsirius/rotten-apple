@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/config.v2.schema.json",
+  "title": "rotten config get|set|path --json (schema_version 2)",
+  "description": "Configuración (07 §3): leer una clave, cambiarla y dónde está, con el enlace en ~/.config/rotten/. O el documento de error común.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/get"
+    },
+    {
+      "$ref": "#/$defs/set"
+    },
+    {
+      "$ref": "#/$defs/path_doc"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "key": {
+      "description": "Clave de configuración.",
+      "enum": [
+        "language",
+        "exclusions.paths",
+        "exclusions.globs",
+        "exclusions.rules",
+        "exclusions.categories",
+        "exclusions.bundle_ids"
+      ]
+    },
+    "value": {
+      "description": "Valor con su tipo: texto (language) o lista de textos (exclusions.*).",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "link": {
+      "description": "Lo que hay en ~/.config/rotten/config.toml: nada, el enlace a la configuración, una carpeta del camino que es un fichero, no aplica (ROTTEN_STATE_DIR) u otra cosa (entonces no se limpia nada, RF-SEG-05 c).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "path",
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/path"
+            },
+            "state": {
+              "enum": [
+                "missing",
+                "linked"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "path",
+            "state",
+            "parent"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/path"
+            },
+            "state": {
+              "const": "parent_not_directory"
+            },
+            "parent": {
+              "description": "La carpeta del camino que es un fichero: ahí no se puede crear el enlace.",
+              "$ref": "#/$defs/path"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "not_applicable"
+            },
+            "reason": {
+              "description": "Por qué no aplica: state_dir_override (ROTTEN_STATE_DIR definida; el enlace ni se crea ni se comprueba).",
+              "enum": [
+                "state_dir_override"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "path",
+            "state",
+            "found"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/path"
+            },
+            "state": {
+              "const": "conflict"
+            },
+            "found": {
+              "$ref": "#/$defs/found"
+            }
+          }
+        }
+      ]
+    },
+    "found": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "file",
+                "directory",
+                "other"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "target"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "symlink"
+            },
+            "target": {
+              "$ref": "#/$defs/path"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "detail"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unreadable"
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "get": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "command",
+        "action",
+        "key",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "command": {
+          "const": "config"
+        },
+        "action": {
+          "const": "get"
+        },
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "value": {
+          "$ref": "#/$defs/value"
+        }
+      }
+    },
+    "set": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "command",
+        "action",
+        "key",
+        "value",
+        "changed",
+        "dry_run",
+        "link",
+        "link_created"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "command": {
+          "const": "config"
+        },
+        "action": {
+          "const": "set"
+        },
+        "key": {
+          "const": "language"
+        },
+        "value": {
+          "type": "string"
+        },
+        "changed": {
+          "description": "Si el fichero cambia (o cambiaría, con dry_run).",
+          "type": "boolean"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "link": {
+          "$ref": "#/$defs/link"
+        },
+        "link_created": {
+          "description": "Si este set ha creado el enlace (nunca con dry_run).",
+          "type": "boolean"
+        },
+        "link_error": {
+          "description": "Por qué no se pudo crear el enlace; la configuración sí se guardó y el código de salida es 4. Se omite si no hubo error.",
+          "type": "string"
+        }
+      }
+    },
+    "path_doc": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "command",
+        "action",
+        "path",
+        "link"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "command": {
+          "const": "config"
+        },
+        "action": {
+          "const": "path"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "link": {
+          "$ref": "#/$defs/link"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "command",
+        "error"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "command": {
+          "const": "config"
+        },
+        "error": {
+          "type": "object",
+          "required": [
+            "code",
+            "exit_code",
+            "message"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "description": "Código estable del error (no depende del idioma): unknown_config_key, read_only_config_key, invalid_config_value (2); config_corrupt, config_link_conflict (5); y los comunes.",
+              "type": "string",
+              "pattern": "^[a-z][a-z_]*$"
+            },
+            "exit_code": {
+              "enum": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            },
+            "message": {
+              "description": "Mensaje en inglés, igual en cualquier idioma.",
+              "type": "string"
+            },
+            "detail": {
+              "description": "Opcional: lo que no cabe en una línea del mensaje (p. ej. el fragmento del TOML de una configuración corrupta). Se omite si no hay.",
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

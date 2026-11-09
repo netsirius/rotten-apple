@@ -1,0 +1,46 @@
+# cargo-deny (05 §9.1, §4.9). Se ejecuta con `cargo deny check`.
+
+[graph]
+# D-01: solo macOS en Apple silicon.
+targets = ["aarch64-apple-darwin"]
+all-features = true
+
+[advisories]
+# Vulnerabilidades y crates sin mantener de RustSec.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# MIT del proyecto: solo licencias permisivas. GPL, AGPL y LGPL quedan
+# denegadas por no estar en la lista (clean-room respecto a Mole, GPL-3.0).
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MIT-0",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# Los crates del workspace no se publican.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+    # Dirección de dependencias (ADR-03 §4.9): solo la fachada puede usar el
+    # ejecutor. El CLI, los detectores y la IA nunca borran por su cuenta.
+    { crate = "ra-exec", wrappers = ["ra-core"] },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

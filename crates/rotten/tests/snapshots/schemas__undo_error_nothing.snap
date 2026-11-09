@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "undo",
+  "error": {
+    "code": "nothing_to_undo",
+    "exit_code": 1,
+    "message": "there is no operation to undo"
+  },
+  "schema_version": 2
+}
