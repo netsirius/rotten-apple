@@ -13,6 +13,7 @@ ra-catalog.workspace = true
 ra-exec.workspace = true
 ra-history.workspace = true
 ra-plan.workspace = true
+ra-platform.workspace = true
 ra-safety.workspace = true
 rustix.workspace = true
 serde.workspace = true
