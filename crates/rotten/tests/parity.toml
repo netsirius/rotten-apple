@@ -228,8 +228,10 @@ cli = "rotten update"
 mole = "mo update"
 source = "07 §2"
 phase = "mvp"
-status = "pending"
+status = "done"
 task = "T-15"
+run = ["update", "--dry-run", "--json"]
+note = "Nunca abre conexiones: con Homebrew delega en `brew upgrade`; en los demás casos lo explica. `--channel` (07 §2) queda pendiente hasta que haya tap y canal beta."
 
 [[command]]
 id = "remove"

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/update.v2.schema.json",
+  "title": "rotten update [--dry-run] --json (schema_version 2)",
+  "description": "Cómo se instaló el binario y con qué comando se actualiza (T-15). Nunca abre conexiones: con Homebrew delega en `brew upgrade`; en los demás casos solo lo explica. O el documento de error común.",
+  "oneOf": [
+    { "$ref": "#/$defs/homebrew" },
+    { "$ref": "#/$defs/manual" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "homebrew": {
+      "description": "Binario en el Cellar de Homebrew: `rotten update` ejecuta `argv` (salvo con --dry-run).",
+      "type": "object",
+      "required": ["schema_version", "command", "dry_run", "method", "executable", "automatic", "argv", "ran"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "update" },
+        "dry_run": { "type": "boolean" },
+        "method": { "const": "homebrew" },
+        "executable": { "description": "Ruta del ejecutable con los enlaces resueltos.", "type": "string" },
+        "automatic": { "const": true },
+        "argv": {
+          "description": "El comando exacto: el `brew` del prefijo del Cellar, `upgrade` y la fórmula (`<tap>/<fórmula>`).",
+          "type": "array",
+          "prefixItems": [
+            { "type": "string", "pattern": "/bin/brew$" },
+            { "const": "upgrade" },
+            { "type": "string", "minLength": 1 }
+          ],
+          "items": false,
+          "minItems": 3
+        },
+        "ran": { "description": "true si se ejecutó y terminó bien (nunca con --dry-run).", "type": "boolean" }
+      },
+      "if": { "properties": { "dry_run": { "const": true } } },
+      "then": { "properties": { "ran": { "const": false } } }
+    },
+    "manual": {
+      "description": "Sin acción automática: `app` (Sparkle, aún no disponible), `cargo` (`argv` es el comando que se aconseja) u `other` (sin comando).",
+      "type": "object",
+      "required": ["schema_version", "command", "dry_run", "method", "executable", "automatic", "argv", "ran"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "update" },
+        "dry_run": { "type": "boolean" },
+        "method": { "enum": ["app", "cargo", "other"] },
+        "executable": { "description": "Ruta del ejecutable con los enlaces resueltos.", "type": "string" },
+        "automatic": { "const": false },
+        "argv": {
+          "description": "Comando que puede ejecutar la persona (solo con `cargo`); null si no lo hay.",
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "ran": { "const": false }
+      },
+      "if": { "properties": { "method": { "const": "cargo" } } },
+      "then": { "properties": { "argv": { "type": "array" } } },
+      "else": { "properties": { "argv": { "type": "null" } } }
+    },
+    "error": {
+      "type": "object",
+      "required": ["schema_version", "command", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "update" },
+        "error": {
+          "type": "object",
+          "required": ["code", "exit_code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "description": "Código estable del error (no depende del idioma): `needs_yes`, `brew_not_found`, `brew_spawn_failed`, `brew_failed` (el código de brew va en `message`), `executable_unknown`…",
+              "type": "string",
+              "pattern": "^[a-z][a-z_]*$"
+            },
+            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
+            "message": { "description": "Mensaje en inglés, igual en cualquier idioma.", "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -15,7 +15,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Output;
 
-use common::{Fx, fixture, redact};
+use common::{Fx, Install, fixture, redact};
 use serde_json::Value;
 
 const ES: &str = "es_ES.UTF-8";
@@ -76,7 +76,7 @@ fn last_op(fx: &Fx) -> String {
 /// en una carpeta personal nueva. `run` ejecuta un paso (sin `--json`) y
 /// devuelve su resultado.
 fn scenario<T>(mut run: impl FnMut(&Fx, &[&str]) -> T) -> Vec<(String, T)> {
-    let fx = fixture();
+    let mut fx = fixture();
     let mut out = Vec::new();
     let mut step = |fx: &Fx, args: &[&str]| {
         let shown = args
@@ -184,6 +184,26 @@ fn scenario<T>(mut run: impl FnMut(&Fx, &[&str]) -> T) -> Vec<(String, T)> {
     step(&fx, &["exclude", "list"]);
     step(&fx, &["exclude", "add", "~/Library/Logs"]);
     step(&fx, &["trash", "put", cache, "--dry-run"]);
+
+    // `rotten update` (T-15): el binario de pruebas tal cual y cada vía de
+    // instalación simulada, con un `brew` falso.
+    step(&fx, &["update"]);
+    step(&fx, &["update", "--dry-run"]);
+    fx.use_install(Install::HomebrewLink);
+    step(&fx, &["update", "--dry-run"]);
+    step(&fx, &["update"]);
+    step(&fx, &["update", "--yes"]);
+    fx.env.push(("FAKE_BREW_EXIT".into(), "3".into()));
+    step(&fx, &["update", "--yes"]);
+    fs::remove_file(fx.brew_prefix().join("bin/brew")).expect("rm brew");
+    step(&fx, &["update", "--dry-run"]);
+    fx.use_install(Install::App);
+    step(&fx, &["update"]);
+    fx.use_install(Install::Cargo);
+    step(&fx, &["update"]);
+    step(&fx, &["update", "--dry-run"]);
+    fx.use_install(Install::Other);
+    step(&fx, &["update"]);
     out
 }
 
@@ -235,7 +255,7 @@ fn json_is_identical_in_spanish_and_english() {
     assert_eq!(
         commands.into_iter().collect::<Vec<_>>(),
         [
-            "clean", "doctor", "exclude", "free", "history", "scan", "trash", "undo"
+            "clean", "doctor", "exclude", "free", "history", "scan", "trash", "undo", "update"
         ]
     );
 }
@@ -355,6 +375,7 @@ fn help_in_both_languages() {
         &["trash"],
         &["trash", "put"],
         &["trash", "empty"],
+        &["update"],
     ];
     for cmd in commands {
         for (lang, usage, options) in [(ES, "Uso:", "Opciones:"), (EN, "Usage:", "Options:")] {

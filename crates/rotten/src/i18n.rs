@@ -299,6 +299,7 @@ mod tests {
             include_str!("render.rs"),
             include_str!("cmd/trash.rs"),
             include_str!("cmd/free.rs"),
+            include_str!("cmd/update.rs"),
         ];
         let mut used = 0;
         for src in sources {

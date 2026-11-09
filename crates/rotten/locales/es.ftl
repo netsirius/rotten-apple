@@ -162,6 +162,27 @@ freed-space = Espacio liberado: { $measured } medido · { $estimated } estimado
 freed-space-unmeasured = Espacio liberado: { $estimated } estimado (no se pudo medir)
 freed-space-less = ! Se ha liberado bastante menos de lo estimado: enlaces duros, clones APFS o instantáneas pueden retener los bloques
 
+## update
+
+update-homebrew = Instalado con Homebrew ({ $prefix }).
+update-would-run = Se ejecutaría: { $command }
+update-confirm = ¿Ejecutar { $command }? Homebrew descargará e instalará la versión nueva.
+update-running = Ejecutando: { $command }
+update-done = Homebrew ha terminado.
+update-app = Instalado dentro de la app { $app }.
+update-app-howto = La app se actualizará sola con Sparkle, que aún no está disponible. Mientras tanto, sustituye la app por la versión nueva.
+update-cargo = Instalado con cargo install ({ $dir }).
+update-run-yourself = Para actualizar, ejecuta: { $command }
+update-other = No se sabe cómo se instaló { $exe }.
+update-other-brew = Para recibir actualizaciones, instálalo con Homebrew: { $command }
+update-other-source = Si lo compilaste tú, vuelve a compilarlo con el código actualizado.
+error-update-no-exe = no se sabe dónde está el ejecutable de rotten: { $detail }
+error-update-no-brew = no se encuentra brew en { $path }
+error-update-brew-spawn = no se pudo ejecutar { $command }: { $detail }
+error-update-brew-failed = brew upgrade terminó con el código { $code }
+cli-cmd-update = Actualiza Rotten Apple por la vía con la que se instaló (Homebrew, app o cargo)
+cli-cmd-update-arg-dry_run = Dice qué se haría y con qué comando, sin ejecutar nada
+
 ## history
 
 history-empty = Aún no hay operaciones.

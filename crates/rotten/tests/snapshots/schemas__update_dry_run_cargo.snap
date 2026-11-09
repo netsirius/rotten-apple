@@ -1,0 +1,21 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "argv": [
+    "cargo",
+    "install",
+    "--locked",
+    "--git",
+    "https://github.com/netsirius/rotten-apple",
+    "rotten"
+  ],
+  "automatic": false,
+  "command": "update",
+  "dry_run": true,
+  "executable": "[HOME]/.cargo/bin/rotten",
+  "method": "cargo",
+  "ran": false,
+  "schema_version": 2
+}
