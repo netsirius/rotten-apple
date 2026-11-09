@@ -731,3 +731,214 @@ fn recovered_trash_item_keeps_its_location() {
     let undo = prepare_undo(&records, "op-clean-crash", None).expect("deshacer");
     assert_eq!(undo.ready.len(), 1, "{:?}", undo.not_recoverable);
 }
+
+/// Ejecuta `rotten <args>` hasta el final y devuelve su código.
+fn run_to_end(w: &World, bin: &Path, args: &[&str]) -> Option<i32> {
+    Command::new(bin)
+        .args(args)
+        .env("ROTTEN_HOME", &w.home)
+        .env("ROTTEN_TRASH_DIR", &w.trash)
+        .env("ROTTEN_STATE_DIR", &w.state)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("lanzar rotten")
+        .code()
+}
+
+/// Lo que hay en el primer nivel de la Papelera: ruta e inode.
+fn trash_entries(w: &World) -> BTreeMap<PathBuf, u64> {
+    fs::read_dir(&w.trash)
+        .expect("papelera")
+        .flatten()
+        .map(|e| (e.path(), ino(&e.path()).expect("lstat")))
+        .collect()
+}
+
+/// Cómo estaba todo antes de cortar un borrado de la Papelera.
+struct TrashBefore {
+    /// Entradas del primer nivel de la Papelera: ruta e inode.
+    entries: BTreeMap<PathBuf, u64>,
+    /// Lo que había dentro de cada una (y ella misma).
+    trees: BTreeMap<PathBuf, Tree>,
+    home: Tree,
+    /// Entradas que no se deben tocar.
+    keep: Vec<PathBuf>,
+}
+
+/// Una entrada y lo que tiene dentro.
+fn entry_tree(p: &Path) -> Tree {
+    let mut t = tree(p);
+    let m = fs::symlink_metadata(p).expect("lstat");
+    t.insert(
+        p.to_path_buf(),
+        (m.ino(), m.size(), m.mtime(), m.mtime_nsec()),
+    );
+    t
+}
+
+/// Invariantes tras cortar un borrado de la Papelera (`free` o `trash
+/// empty`) y recuperar: la carpeta personal no cambia, lo que no debía
+/// tocarse sigue intacto y cada entrada de la Papelera está:
+///
+/// - borrada, y anotada como borrada en la operación que borraba y, si la
+///   mandó Rotten Apple, en la de origen;
+/// - en su sitio sin intención de borrarla, entera y sin cambios;
+/// - en su sitio con intención: no anotada como borrada; si es una carpeta
+///   a medio borrar, en paradero incierto en las dos operaciones; si no,
+///   intacta, y la de origen sigue en la Papelera.
+fn check_trash_delete(w: &World, was_open: &[String], kind: OpKind, b: &TrashBefore, ctx: &str) {
+    let (records, _) = read_journal(&HistoryPaths::new(&w.state)).expect("journal");
+    let mut deleting: BTreeMap<PathBuf, ItemState> = BTreeMap::new();
+    let mut origin: BTreeMap<PathBuf, ItemState> = BTreeMap::new();
+    for o in list_ops(&records) {
+        assert!(o.status.is_some(), "{ctx}: {} sigue abierta", o.op_id);
+        if was_open.contains(&o.op_id) {
+            assert_eq!(o.status, Some(OpStatus::Recovered), "{ctx}: {}", o.op_id);
+        }
+        let m = manifest_for(&records, &o.op_id).expect("manifiesto");
+        for mi in m.items {
+            if m.kind == kind {
+                deleting.insert(mi.original_path, mi.state);
+            } else if let Some(t) = mi.trashed_path {
+                origin.insert(t, mi.state);
+            }
+        }
+    }
+    assert_eq!(tree(&w.home), b.home, "{ctx}: la carpeta personal cambió");
+    for p in &b.keep {
+        assert_eq!(
+            ino(p),
+            b.entries.get(p).copied(),
+            "{ctx}: se ha tocado {p:?}"
+        );
+        assert_eq!(entry_tree(p), b.trees[p], "{ctx}: cambió {p:?}");
+    }
+    let unknown = |s: Option<&ItemState>| matches!(s, Some(ItemState::Unknown { .. }));
+    for (p, i) in &b.entries {
+        let here = ino(p) == Some(*i);
+        let del = deleting.get(p);
+        let org = origin.get(p);
+        match (here, del) {
+            (false, Some(ItemState::Deleted)) => assert!(
+                org.is_none() || org == Some(&ItemState::Deleted),
+                "{ctx}: {p:?} borrado y la operación de origen dice {org:?}"
+            ),
+            (false, other) => panic!("{ctx}: {p:?} ya no está y el journal dice {other:?}"),
+            (true, None) => assert_eq!(
+                entry_tree(p),
+                b.trees[p],
+                "{ctx}: {p:?} cambió sin intención de borrarlo"
+            ),
+            (true, Some(ItemState::Deleted)) => {
+                panic!("{ctx}: {p:?} sigue ahí y está anotado como borrado")
+            }
+            (true, Some(s)) if unknown(Some(s)) => {
+                assert!(p.is_dir(), "{ctx}: {p:?} incierto sin ser carpeta");
+                assert_ne!(
+                    entry_tree(p),
+                    b.trees[p],
+                    "{ctx}: {p:?} entero y anotado como incierto"
+                );
+                assert!(
+                    org.is_none() || unknown(org),
+                    "{ctx}: {p:?}: origen {org:?}"
+                );
+            }
+            (true, Some(_)) => {
+                assert_eq!(
+                    entry_tree(p),
+                    b.trees[p],
+                    "{ctx}: {p:?} cambió y no se dice"
+                );
+                assert!(
+                    org.is_none() || org == Some(&ItemState::Trashed),
+                    "{ctx}: {p:?} sigue en la Papelera y el origen dice {org:?}"
+                );
+            }
+        }
+    }
+}
+
+/// I5: `rotten free --yes` y `rotten trash empty --yes` muertos en un punto
+/// aleatorio dejan cada entrada de la Papelera borrada y anotada, o en su
+/// sitio sin estar anotada como borrada; nada fuera de lo revisado cambia.
+#[test]
+fn kill9_during_free_or_trash_empty_leaves_everything_deleted_or_recorded() {
+    let bin = rotten_bin();
+    let rounds = env_u64("ROTTEN_CRASH_ROUNDS").unwrap_or(50);
+    let base = env_u64("ROTTEN_CRASH_SEED").unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("reloj")
+            .as_nanos() as u64
+    });
+    eprintln!("arnés kill -9 (free, trash empty): {rounds} rondas, ROTTEN_CRASH_SEED={base}");
+    let (mut free, mut empty) = (Stats::default(), Stats::default());
+    let start = Instant::now();
+    for r in 0..rounds {
+        let seed = base.wrapping_add(r.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        let mut rng = Rng(seed);
+        let repro = format!("ROTTEN_CRASH_SEED={seed} ROTTEN_CRASH_ROUNDS=1");
+        for (kind, stats) in [(OpKind::Free, &mut free), (OpKind::TrashEmpty, &mut empty)] {
+            let w = world();
+            let code = run_to_end(&w, &bin, &["clean", "--yes", "--json"]);
+            assert_eq!(code, Some(0), "clean ({repro})");
+            // Algo de otra app en la Papelera: `free` no lo toca; `trash
+            // empty` lo revisa y puede borrarlo.
+            fs::write(w.trash.join("de-otra-app.txt"), b"ajeno").expect("write");
+            fs::create_dir_all(w.trash.join("carpeta ajena/sub")).expect("mkdir");
+            fs::write(w.trash.join("carpeta ajena/sub/x"), b"x").expect("write");
+            let (records, _) = read_journal(&HistoryPaths::new(&w.state)).expect("journal");
+            let op = list_ops(&records)
+                .into_iter()
+                .find(|o| o.kind == ra_history::HistoryKind::Clean)
+                .expect("limpieza")
+                .op_id;
+            let entries = trash_entries(&w);
+            let before = TrashBefore {
+                trees: entries.keys().map(|p| (p.clone(), entry_tree(p))).collect(),
+                entries,
+                home: tree(&w.home),
+                keep: match kind {
+                    OpKind::Free => vec![
+                        w.trash.join("de-otra-app.txt"),
+                        w.trash.join("carpeta ajena"),
+                    ],
+                    _ => vec![],
+                },
+            };
+            let args = match kind {
+                OpKind::Free => vec!["free", op.as_str(), "--yes", "--json"],
+                _ => vec!["trash", "empty", "--yes", "--json"],
+            };
+            let n = before.entries.len() as u64;
+            let batch = rng.upto(n) as usize + 1;
+            let k = rng.upto(2 * n + 2) as usize;
+            let jitter = Duration::from_micros(rng.upto(JITTER_MAX_US));
+            let ending = run_and_kill(&w, &bin, &args, batch, k, jitter);
+            if let Ending::Exited(code) = ending {
+                assert_eq!(code, Some(0), "{args:?} terminó mal ({repro})");
+            }
+            stats.note(&ending);
+            let ctx = format!(
+                "{args:?} lote={batch} k={k} jitter={jitter:?}, {} ({repro})",
+                ending.describe()
+            );
+            recover_then(&w, &ctx, |w, was_open| {
+                check_trash_delete(w, was_open, kind, &before, &ctx);
+                0
+            });
+        }
+    }
+    eprintln!(
+        "arnés kill -9 (free, trash empty): {rounds} rondas en {:.1?}; free: {} cortes, {} \
+         completas; trash empty: {} cortes, {} completas",
+        start.elapsed(),
+        free.killed,
+        free.exited,
+        empty.killed,
+        empty.exited,
+    );
+}
