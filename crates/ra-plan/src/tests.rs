@@ -36,6 +36,7 @@ fn cand(path: &str, cat: &str, preselected: bool, block: Option<Block>) -> Candi
             newest_mtime: 1,
             crosses_device: false,
             digest: "blake3:00".into(),
+            size: Default::default(),
         }),
         apps: vec![],
         block,

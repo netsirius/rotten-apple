@@ -7,10 +7,14 @@ expression: "redact(fx, &doc)"
   "categories": [
     {
       "bytes_allocated": 12288,
+      "cloned_entries": 0,
+      "hardlinked_entries": 0,
       "id": "CAT-01",
       "items": 1,
       "preselected_bytes": 0,
       "preselected_items": 0,
+      "preselected_reclaimable_bytes": 0,
+      "reclaimable_bytes": 12288,
       "requires": [],
       "scan_status": "complete",
       "skipped_items": 1,
@@ -19,10 +23,14 @@ expression: "redact(fx, &doc)"
     },
     {
       "bytes_allocated": 8192,
+      "cloned_entries": 0,
+      "hardlinked_entries": 0,
       "id": "CAT-03",
       "items": 2,
       "preselected_bytes": 8192,
       "preselected_items": 2,
+      "preselected_reclaimable_bytes": 8192,
+      "reclaimable_bytes": 8192,
       "requires": [],
       "scan_status": "complete",
       "skipped_items": 1,
@@ -31,10 +39,14 @@ expression: "redact(fx, &doc)"
     },
     {
       "bytes_allocated": 0,
+      "cloned_entries": 0,
+      "hardlinked_entries": 0,
       "id": "CAT-08",
       "items": 0,
       "preselected_bytes": 0,
       "preselected_items": 0,
+      "preselected_reclaimable_bytes": 0,
+      "reclaimable_bytes": 0,
       "requires": [],
       "scan_status": "complete",
       "skipped_items": 0,
@@ -43,10 +55,14 @@ expression: "redact(fx, &doc)"
     },
     {
       "bytes_allocated": 4096,
+      "cloned_entries": 0,
+      "hardlinked_entries": 0,
       "id": "CAT-10",
       "items": 1,
       "preselected_bytes": 4096,
       "preselected_items": 1,
+      "preselected_reclaimable_bytes": 4096,
+      "reclaimable_bytes": 4096,
       "requires": [],
       "scan_status": "complete",
       "skipped_items": 0,
@@ -59,6 +75,7 @@ expression: "redact(fx, &doc)"
   "home": "[HOME]",
   "scan_status": "complete",
   "schema_version": 1,
+  "volume": "[volume]",
   "warnings": [
     "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml está corrupto (TOML no válido: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n): no se aplican exclusiones y no se podrá limpiar"
   ]

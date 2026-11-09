@@ -38,6 +38,9 @@ const VOLATILE: &[&str] = &[
     "macos_version",
     "arch",
     "running_apps_probe",
+    // Cifras del volumen de la máquina; en un sandbox, además, `statfs` sale
+    // redondeado y la capacidad disponible no se conoce (`null`).
+    "volume",
 ];
 
 /// Oculta lo que no es estable: rutas del fixture, fechas, IDs, hashes,
