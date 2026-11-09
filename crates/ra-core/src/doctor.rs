@@ -9,7 +9,7 @@ use ra_exec::{ExecLock, TrashBackend};
 use ra_safety::ConfigState;
 use serde::Serialize;
 
-use crate::{Core, running_as_root};
+use crate::{ConfigLink, Core, running_as_root};
 
 /// Acceso total al disco: no hay API para consultarlo, así que se prueba
 /// leyendo una ubicación protegida (05 §1.1.2).
@@ -65,6 +65,9 @@ pub struct DoctorReport {
     pub config: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_error: Option<String>,
+    /// `~/.config/rotten/config.toml`: si hay otra cosa que no es el
+    /// enlace, no se actúa (RF-SEG-05 c).
+    pub config_link: ConfigLink,
     pub journal_dir: PathBuf,
     pub journal_records: usize,
     pub journal_problems: Vec<String>,
@@ -152,6 +155,7 @@ pub(crate) fn run(core: &Core) -> DoctorReport {
         config_path: env.config_path.clone(),
         config: config.into(),
         config_error,
+        config_link: core.config_link(),
         journal_dir: history.journal_dir,
         journal_records: records.len(),
         journal_problems: problems,

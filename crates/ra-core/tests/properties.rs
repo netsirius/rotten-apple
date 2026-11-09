@@ -9,7 +9,9 @@
 //! 1. Nunca toca nada fuera del plan.
 //! 2. Todo pasa por la Papelera salvo `--permanent`.
 //! 3. Con las exclusiones corruptas, aborta sin tocar nada (también si se
-//!    corrompen entre la revisión y la ejecución).
+//!    corrompen entre la revisión y la ejecución). Lo mismo si en la ruta
+//!    del enlace a la configuración hay otra cosa (T-13); y `config set` no
+//!    reescribe una configuración corrupta.
 //! 4. Omite los elementos que cambian entre el plan y la ejecución.
 //! 5. `undo(execute(P))` devuelve el árbol a su estado.
 //! 6. La simulación no cambia nada.
@@ -367,6 +369,62 @@ proptest! {
         prop_assert!(snapshot(&w.trash).is_empty());
         prop_assert!(!w.state.join("journal").exists(), "no se escribe journal");
         prop_assert_eq!(fs::read_to_string(&config).expect("config"), garbage, "no se reescribe");
+    }
+
+    /// 3 (T-13, RF-SEG-05 c): con otra cosa en la ruta del enlace a la
+    /// configuración (fichero, carpeta o enlace a otro sitio) no se
+    /// planifica ni se ejecuta, aunque aparezca después de la revisión. Lo
+    /// que hay en esa ruta tampoco se toca.
+    #[test]
+    fn aborts_when_something_else_is_at_the_config_link(
+        (entries, links) in tree(),
+        foreign in 0..3u8,
+    ) {
+        let w = World::new(&entries, &links);
+        let preview = w.core.plan(&selection(true), Action::Trash).expect("plan sin nada en el enlace");
+        let hash = preview.plan.plan_hash().to_owned();
+
+        let link = w.core.env().config_link_path.clone();
+        fs::create_dir_all(link.parent().expect("carpeta")).expect("mkdir");
+        match foreign {
+            0 => fs::write(&link, "language = \"en\"\n").expect("write"),
+            1 => fs::create_dir(&link).expect("mkdir"),
+            _ => std::os::unix::fs::symlink(w.root.join("otra.toml"), &link).expect("ln"),
+        }
+
+        let before = snapshot(&w.home);
+        prop_assert_eq!(w.core.plan(&selection(true), Action::Trash).err().map(|e| e.code()), Some("config_link_conflict"));
+        prop_assert_eq!(w.core.execute(preview.plan, &hash, "test").err().map(|e| e.code()), Some("config_link_conflict"));
+        prop_assert_eq!(w.core.config_set("language", "es", false).err().map(|e| e.code()), Some("config_link_conflict"));
+        prop_assert_eq!(snapshot(&w.home), before);
+        prop_assert!(snapshot(&w.trash).is_empty());
+        prop_assert!(!w.state.join("journal").exists(), "no se escribe journal");
+        prop_assert!(!w.state.join("config.toml").exists(), "no se escribe la configuración");
+    }
+
+    /// 3 (T-13): `config set` nunca reescribe una configuración corrupta ni
+    /// crea el enlace, con cualquier clave y valor.
+    #[test]
+    fn config_set_never_rewrites_a_corrupt_config(
+        garbage in prop_oneof![
+            Just("[exclusions\npaths = [".to_owned()),
+            Just("[exclusions]\npaths = [\"relativa\"]\n".to_owned()),
+            Just("language = \"fr\"\n".to_owned()),
+            Just("[journal]\nretention_days = 0\n".to_owned()),
+            Just("schema_version = 7\n".to_owned()),
+            "[a-z=\\[\\]\"\n ]{1,40}",
+        ],
+        key in prop_oneof![Just("language"), Just("journal.retention_days"), Just("nope")],
+        value in prop_oneof![Just("es".to_owned()), Just("30".to_owned()), "[a-z0-9]{0,6}"],
+        dry_run in any::<bool>(),
+    ) {
+        let w = World::new(&[], &[]);
+        let config = w.state.join("config.toml");
+        fs::write(&config, &garbage).expect("corromper");
+        prop_assume!(matches!(w.core.config_state(), ra_core::ConfigState::Corrupt { .. }));
+        prop_assert_eq!(w.core.config_set(key, &value, dry_run).err().map(|e| e.code()), Some("config_corrupt"));
+        prop_assert_eq!(fs::read_to_string(&config).expect("config"), garbage, "no se reescribe");
+        prop_assert!(fs::symlink_metadata(&w.core.env().config_link_path).is_err(), "no se crea el enlace");
     }
 
     /// 4: omite los elementos que cambian entre el plan y la ejecución, y no

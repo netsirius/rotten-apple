@@ -1,0 +1,18 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "action": "set",
+  "changed": false,
+  "command": "config",
+  "dry_run": false,
+  "key": "language",
+  "link": {
+    "path": "[HOME]/.config/rotten/config.toml",
+    "state": "linked"
+  },
+  "link_created": false,
+  "schema_version": 2,
+  "value": "es"
+}

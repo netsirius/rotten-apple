@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "config",
+  "error": {
+    "code": "read_only_config_key",
+    "exit_code": 2,
+    "message": "«exclusions.paths» is changed with `rotten exclude add|remove`, not with `rotten config set`"
+  },
+  "schema_version": 2
+}

@@ -103,6 +103,24 @@ fn scenario<T>(mut run: impl FnMut(&Fx, &[&str]) -> T) -> Vec<(String, T)> {
     step(&fx, &["exclude", "remove", "~/Library/Logs/x"]);
     step(&fx, &["exclude", "remove", "~/Library/Logs/x"]);
     step(&fx, &["exclude", "add", "relativa/ruta"]);
+    // Configuración (T-13).
+    step(&fx, &["config", "path"]);
+    step(&fx, &["config", "get", "language"]);
+    step(&fx, &["config", "get", "exclusions.paths"]);
+    step(&fx, &["config", "get", "nope"]);
+    step(&fx, &["config", "set", "language", "es", "--dry-run"]);
+    step(&fx, &["config", "set", "language", "es"]);
+    step(&fx, &["config", "set", "language", "es"]);
+    step(
+        &fx,
+        &["config", "set", "journal.retention_days", "90", "--dry-run"],
+    );
+    step(&fx, &["config", "set", "journal.retention_days", "0"]);
+    step(&fx, &["config", "set", "language", "fr"]);
+    step(&fx, &["config", "set", "exclusions.paths", "~/x"]);
+    step(&fx, &["config", "set", "nope", "1"]);
+    step(&fx, &["config", "path"]);
+    step(&fx, &["config", "get", "language"]);
     step(&fx, &["clean"]);
     step(&fx, &["clean", "--permanent"]);
     step(&fx, &["clean", "--dry-run", "--category", "CAT-99"]);
@@ -176,6 +194,23 @@ fn scenario<T>(mut run: impl FnMut(&Fx, &[&str]) -> T) -> Vec<(String, T)> {
     step(&fx, &["trash"]);
     step(&fx, &["history"]);
 
+    // Otra cosa en la ruta del enlace a la configuración (RF-SEG-05 c).
+    let link = fx.p(".config/rotten/config.toml");
+    fs::remove_file(&link).expect("quitar el enlace");
+    fs::write(&link, "language = \"en\"\n").expect("write");
+    step(&fx, &["doctor"]);
+    step(&fx, &["config", "path"]);
+    step(&fx, &["config", "get", "language"]);
+    step(&fx, &["config", "set", "language", "en"]);
+    step(&fx, &["exclude", "add", "~/Library/Logs"]);
+    step(&fx, &["clean", "--dry-run"]);
+    step(&fx, &["trash", "put", cache, "--dry-run"]);
+    fs::remove_file(&link).expect("rm");
+    std::os::unix::fs::symlink(fx.trash.join("otra.toml"), &link).expect("ln");
+    step(&fx, &["doctor"]);
+    step(&fx, &["clean", "--dry-run"]);
+    fs::remove_file(&link).expect("rm");
+
     // Configuración corrupta.
     fs::write(fx.state.join("config.toml"), "[exclusions\npaths = [").expect("write");
     step(&fx, &["scan"]);
@@ -184,6 +219,9 @@ fn scenario<T>(mut run: impl FnMut(&Fx, &[&str]) -> T) -> Vec<(String, T)> {
     step(&fx, &["exclude", "list"]);
     step(&fx, &["exclude", "add", "~/Library/Logs"]);
     step(&fx, &["trash", "put", cache, "--dry-run"]);
+    step(&fx, &["config", "path"]);
+    step(&fx, &["config", "get", "language"]);
+    step(&fx, &["config", "set", "language", "en"]);
     out
 }
 
@@ -235,7 +273,7 @@ fn json_is_identical_in_spanish_and_english() {
     assert_eq!(
         commands.into_iter().collect::<Vec<_>>(),
         [
-            "clean", "doctor", "exclude", "free", "history", "scan", "trash", "undo"
+            "clean", "config", "doctor", "exclude", "free", "history", "scan", "trash", "undo"
         ]
     );
 }
@@ -251,8 +289,10 @@ fn people_read_their_own_language() {
         assert_ne!(o_es.status.code(), Some(101), "{args}: {}", text(o_es));
         let (t_es, t_en) = (text(o_es), text(o_en));
         assert!(!t_es.trim().is_empty(), "{args}: sin salida");
-        // La lista de exclusiones son solo datos (una por línea).
-        if !(args == "exclude list" && o_es.status.success()) {
+        // La lista de exclusiones y los valores de `config get` son solo
+        // datos (uno por línea).
+        let only_data = args == "exclude list" || args.starts_with("config get ");
+        if !(only_data && o_es.status.success()) {
             assert_ne!(t_es, t_en, "{args}: la misma salida en los dos idiomas");
         }
     }
@@ -355,6 +395,10 @@ fn help_in_both_languages() {
         &["trash"],
         &["trash", "put"],
         &["trash", "empty"],
+        &["config"],
+        &["config", "get"],
+        &["config", "set"],
+        &["config", "path"],
     ];
     for cmd in commands {
         for (lang, usage, options) in [(ES, "Uso:", "Opciones:"), (EN, "Usage:", "Options:")] {

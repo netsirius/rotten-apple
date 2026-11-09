@@ -496,8 +496,10 @@ cli = "rotten config get <clave>"
 mole = ""
 source = "07 §3"
 phase = "mvp"
-status = "pending"
+status = "done"
 task = "T-13"
+run = ["config", "get", "language", "--json"]
+note = "Claves: language, journal.retention_days y exclusions.* (solo lectura)."
 
 [[command]]
 id = "config-set"
@@ -505,8 +507,10 @@ cli = "rotten config set <clave> <valor>"
 mole = ""
 source = "07 §3"
 phase = "mvp"
-status = "pending"
+status = "done"
 task = "T-13"
+run = ["config", "set", "language", "es", "--dry-run", "--json"]
+note = "Sin --dry-run crea el enlace ~/.config/rotten/config.toml si no hay nada."
 
 [[command]]
 id = "config-path"
@@ -514,5 +518,7 @@ cli = "rotten config path"
 mole = ""
 source = "07 §3"
 phase = "mvp"
-status = "pending"
+status = "done"
 task = "T-13"
+run = ["config", "path", "--json"]
+note = "No crea el enlace: solo dice qué hay en su ruta."

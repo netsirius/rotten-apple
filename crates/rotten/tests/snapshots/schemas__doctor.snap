@@ -8,6 +8,10 @@ expression: "redact(fx, &doc)"
     "arch": "[arch]",
     "catalog_version": "2026.11.0",
     "config": "missing",
+    "config_link": {
+      "path": "[HOME]/.config/rotten/config.toml",
+      "state": "missing"
+    },
     "config_path": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml",
     "exec_lock_free": true,
     "full_disk_access": "undetermined",

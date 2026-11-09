@@ -12,13 +12,14 @@
 
 use std::fmt;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::paths::{self, fold};
+use crate::settings::{JournalSettings, Language};
 
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
@@ -27,6 +28,11 @@ pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 pub struct Config {
     #[serde(default = "default_schema")]
     pub schema_version: u32,
+    /// Idioma de la interfaz (RF-AJU-07). Sin valor, el del sistema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<Language>,
+    #[serde(default, skip_serializing_if = "JournalSettings::is_unset")]
+    pub journal: JournalSettings,
     #[serde(default)]
     pub exclusions: ExclusionLists,
 }
@@ -39,6 +45,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             schema_version: CONFIG_SCHEMA_VERSION,
+            language: None,
+            journal: JournalSettings::default(),
             exclusions: ExclusionLists::default(),
         }
     }
@@ -183,16 +191,50 @@ impl Config {
         out
     }
 
-    /// Escribe el fichero de forma atómica (temporal + `rename`).
+    /// Escribe el fichero de forma atómica y durable: temporal nuevo en la
+    /// misma carpeta, `fsync` (en macOS, `F_FULLFSYNC`), `rename` sobre el
+    /// definitivo y `fsync` de la carpeta. Un corte en cualquier punto deja
+    /// el fichero anterior o el nuevo, nunca uno a medias.
     pub fn save(&self, path: &Path) -> io::Result<()> {
         let text = toml::to_string_pretty(self).map_err(io::Error::other)?;
         let dir = path
             .parent()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path without a folder"))?;
         fs::create_dir_all(dir)?;
-        let tmp = dir.join(format!(".config.toml.{}.tmp", std::process::id()));
-        fs::write(&tmp, text)?;
-        fs::rename(&tmp, path)
+        let (tmp, mut file) = new_temp(dir)?;
+        let written = file
+            .write_all(text.as_bytes())
+            .and_then(|()| file.sync_all())
+            .and_then(|()| fs::rename(&tmp, path));
+        drop(file);
+        if let Err(e) = written {
+            let _ = fs::remove_file(&tmp);
+            return Err(e);
+        }
+        fs::File::open(dir)?.sync_all()
+    }
+}
+
+/// Temporal con un nombre que no existía (`create_new`): nunca se escribe
+/// sobre otro fichero ni a través de un enlace.
+fn new_temp(dir: &Path) -> io::Result<(PathBuf, fs::File)> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static SEQ: AtomicU32 = AtomicU32::new(0);
+    let mut attempts = 0;
+    loop {
+        let n = SEQ.fetch_add(1, Ordering::Relaxed);
+        let tmp = dir.join(format!(".config.toml.{}.{n}.tmp", std::process::id()));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(f) => return Ok((tmp, f)),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists && attempts < 100 => {
+                attempts += 1;
+            }
+            Err(e) => return Err(e),
+        }
     }
 }
 
@@ -222,7 +264,7 @@ impl ConfigState {
                 format!("unsupported schema_version {}", config.schema_version),
             );
         }
-        if let Err(e) = Exclusions::compile(&config, home) {
+        if let Err(e) = config.validate(home) {
             return Self::corrupt(path, e);
         }
         ConfigState::Loaded(config)

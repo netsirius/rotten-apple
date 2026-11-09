@@ -99,6 +99,27 @@ pub enum Cmd {
         #[command(subcommand)]
         action: Option<TrashCmd>,
     },
+    /// Configuración: leerla, cambiarla y dónde está.
+    Config {
+        #[command(subcommand)]
+        action: ConfigCmd,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCmd {
+    /// El valor de una clave (o el que se aplica por defecto).
+    Get { key: String },
+    /// Cambia una clave, tras validarla; crea el enlace en ~/.config/rotten/ si no hay nada.
+    Set {
+        key: String,
+        new_value: String,
+        /// Muestra el cambio sin guardarlo.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Dónde está la configuración y su enlace en ~/.config/rotten/.
+    Path,
 }
 
 #[derive(Debug, Subcommand)]
