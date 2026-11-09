@@ -21,10 +21,10 @@
 //!
 //! | Nivel | Evento | Campos |
 //! |---|---|---|
-//! | `info` | `start`, `end` | comando, versión; código de salida y duración |
+//! | `info` | `start`, `end` | comando, versión (y en `config get|set`, la clave si es una de las conocidas); código de salida y duración |
 //! | `info` | `operation` | comando, `op_id`, hechos, omitidos, fallidos y bytes |
-//! | `warn` | `item` omitido o fallido | `op_id`, id del elemento, ruta, bytes, código del motivo y mensaje |
-//! | `warn`/`error` | `error` | comando, código estable (`error.code`), código de salida y mensaje en inglés |
+//! | `warn` | `item` omitido o fallido | `op_id`, id del elemento, ruta, bytes y código del motivo (`reason`) o número de error del sistema (`os_error`) |
+//! | `warn`/`error` | `error` | comando, código estable (`error.code`), código de salida y la clave de `config` si la hay |
 //! | `debug` | `item` hecho | `op_id`, id, ruta, bytes y dónde quedó |
 //! | `debug` | `env` | de dónde sale la carpeta personal, tipo de Papelera, idioma y si la salida es JSON |
 //!
@@ -32,11 +32,18 @@
 //! `undo`, `free`, `trash put`, `trash empty`); las simulaciones
 //! (`--dry-run`) dejan solo `start` y `end`.
 //!
-//! **Qué no se registra, nunca.** Contenido de ficheros (ni fragmentos: de
-//! los mensajes de error solo va la primera línea, porque los errores de
-//! los analizadores, como el de TOML, citan el texto del fichero en las
-//! siguientes); la línea de órdenes tal cual; el JSON que se emite; las
-//! variables de entorno; nada que no sea de esta máquina.
+//! **Qué no se registra, nunca.** Ningún texto libre: ni los mensajes de
+//! error ni los detalles de los motivos de omisión, porque pueden llevar lo
+//! que escribió el usuario (el valor de `config set`, una exclusión, una
+//! operación o una categoría tecleadas), rutas fuera de la carpeta personal
+//! o líneas de un fichero (el error de TOML cita la línea rota). Solo
+//! códigos estables, números y rutas. Tampoco el contenido de ficheros, la
+//! línea de órdenes, el JSON que se emite ni las variables de entorno.
+//!
+//! Los errores de uso que detecta clap al analizar los argumentos (salida
+//! `2`: opción desconocida, falta un argumento…) no se registran: el log
+//! empieza después del análisis, y registrarlos obligaría a guardar la
+//! línea de órdenes.
 //!
 //! **Rutas (RNF-33).** Son datos personales: se quedan en este log local y
 //! la carpeta personal se abrevia como `~`, para que no aparezca el nombre
@@ -47,7 +54,11 @@
 //! stderr (nunca a stdout, para no romper `--json`).
 //!
 //! **Nunca hace fallar una operación.** Cualquier error al crear la
-//! carpeta, rotar o escribir se ignora y se sigue sin log. Lo que ocurre
+//! carpeta, rotar o escribir se ignora y se sigue sin log. Solo se escribe
+//! en un fichero normal con un único enlace, dentro de una carpeta real: si
+//! `rotten.log` o la carpeta son un enlace simbólico, un FIFO u otra cosa,
+//! no se escribe (se abre con `O_NOFOLLOW` y `O_NONBLOCK`, y se comprueba
+//! lo abierto), para no escribir en un fichero ajeno ni quedarse bloqueado. Lo que ocurre
 //! antes de conocer la carpeta personal se guarda en memoria y se escribe
 //! al conocerla; si no se llega a conocer (falta `HOME`), solo sale por
 //! stderr con `--debug`. `rotten completion` no escribe en el log.
@@ -59,7 +70,7 @@
 
 use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -122,6 +133,9 @@ struct State {
     home: Option<String>,
     /// Líneas anteriores a conocer la carpeta (ya filtradas por nivel).
     pending: Vec<String>,
+    /// Campos seguros del comando que se añaden a sus errores (la clave de
+    /// `config`).
+    context: serde_json::Map<String, Value>,
 }
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
@@ -148,6 +162,7 @@ pub fn init(debug: bool) {
         dir: None,
         home: None,
         pending: Vec::new(),
+        context: serde_json::Map::new(),
     });
 }
 
@@ -238,21 +253,43 @@ pub fn event(level: Level, name: &str, mut fields: Value) {
     });
 }
 
+fn refuse(what: &str) -> io::Error {
+    io::Error::other(format!("the log {what}: not written"))
+}
+
+/// ¿Un fichero normal y con un único nombre? Con otro nombre (enlace
+/// duro), escribir en el log sería escribir en otro fichero.
+fn is_plain_file(m: &fs::Metadata) -> bool {
+    m.file_type().is_file() && m.nlink() == 1
+}
+
 /// Añade `line` a `dir/rotten.log`, rotando antes si pasaría de `max`.
+/// Solo escribe en un fichero normal de una carpeta real (ver el `//!`).
 fn append(dir: &Path, line: &str, max: u64, keep: usize) -> io::Result<()> {
     DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
-    let path = dir.join(FILE_NAME);
-    if let Ok(m) = fs::symlink_metadata(&path)
-        && m.len() > 0
-        && m.len() + line.len() as u64 > max
-    {
-        rotate(dir, keep);
+    if !fs::symlink_metadata(dir)?.file_type().is_dir() {
+        return Err(refuse("folder is not a real folder"));
     }
+    let path = dir.join(FILE_NAME);
+    match fs::symlink_metadata(&path) {
+        Ok(m) if !is_plain_file(&m) => return Err(refuse("file is not a plain file")),
+        Ok(m) if m.len() > 0 && m.len() + line.len() as u64 > max => rotate(dir, keep),
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    // `O_NOFOLLOW`: si entre la comprobación y la apertura aparece un
+    // enlace, falla. `O_NONBLOCK`: un FIFO no bloquea la apertura (y se
+    // rechaza abajo).
     let mut f = OpenOptions::new()
         .create(true)
         .append(true)
         .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(&path)?;
+    if !is_plain_file(&f.metadata()?) {
+        return Err(refuse("file is not a plain file"));
+    }
     // Una sola escritura con `O_APPEND`: las líneas de dos procesos no se
     // mezclan.
     f.write_all(line.as_bytes())
@@ -272,19 +309,35 @@ fn rotate(dir: &Path, keep: usize) {
     let _ = fs::rename(&current, numbered(1));
 }
 
-/// Primera línea de un mensaje (las siguientes pueden citar un fichero).
-fn first_line(message: &str) -> &str {
-    message.lines().next().unwrap_or_default()
+/// El número de error del sistema de un mensaje de E/S (`… (os error 13)`):
+/// lo único que se guarda de él.
+fn os_error(message: &str) -> Option<i32> {
+    let start = message.rfind("(os error ")? + "(os error ".len();
+    let rest = &message[start..];
+    rest[..rest.find(')')?].parse().ok()
 }
 
 // Eventos del CLI.
 
-pub fn start(command: &str) {
-    event(
-        Level::Info,
-        "start",
-        json!({ "command": command, "version": env!("CARGO_PKG_VERSION") }),
-    );
+/// Inicio del comando. `config_key` es la clave de `config get|set`: solo
+/// se guarda si es una de las conocidas (si no, es texto del usuario) y
+/// se añade también a los errores del comando.
+pub fn start(command: &str, config_key: Option<&str>) {
+    let mut fields = json!({ "command": command, "version": env!("CARGO_PKG_VERSION") });
+    if let Some(k) = config_key {
+        let key = if ra_core::CONFIG_KEYS.contains(&k) {
+            json!(k)
+        } else {
+            json!("(unknown)")
+        };
+        with_state(|s| {
+            s.context.insert("key".into(), key.clone());
+        });
+        if let Value::Object(m) = &mut fields {
+            m.insert("key".into(), key);
+        }
+    }
+    event(Level::Info, "start", fields);
 }
 
 pub fn finish(command: &str, exit: u8, started: Instant) {
@@ -316,24 +369,26 @@ pub fn env(env: &ra_core::Env, lang: &str, json_output: bool) {
     );
 }
 
-/// Un error que termina el comando. Los de uso y los esperables (`2`, `4`)
-/// son `warn`; el resto, `error`.
-pub fn error(command: &str, code: &str, exit: u8, message: &str) {
+/// Un error que termina el comando: su código estable, nunca el mensaje
+/// (puede llevar lo que escribió el usuario). Los de uso y los esperables
+/// (`2`, `4`) son `warn`; el resto, `error`.
+pub fn error(command: &str, code: &str, exit: u8) {
     let level = if matches!(exit, 2 | 4) {
         Level::Warn
     } else {
         Level::Error
     };
-    event(
-        level,
-        "error",
-        json!({
-            "command": command,
-            "code": code,
-            "exit_code": exit,
-            "message": first_line(message),
-        }),
-    );
+    let mut fields = json!({
+        "command": command,
+        "code": code,
+        "exit_code": exit,
+    });
+    with_state(|s| {
+        if let Value::Object(m) = &mut fields {
+            m.extend(s.context.clone());
+        }
+    });
+    event(level, "error", fields);
 }
 
 /// El resultado de una operación que cambia algo, con lo omitido o fallido
@@ -353,22 +408,39 @@ pub fn report(command: &str, r: &ExecReport) {
         }),
     );
     for item in &r.items {
-        let (level, outcome) = match &item.outcome {
-            Outcome::Done { .. } => (Level::Debug, "done"),
-            Outcome::Would { .. } => (Level::Debug, "would"),
-            Outcome::Skipped { .. } => (Level::Warn, "skipped"),
-            Outcome::Failed { .. } => (Level::Warn, "failed"),
-        };
-        let mut fields = serde_json::to_value(item).unwrap_or(Value::Null);
-        if let Value::Object(m) = &mut fields {
-            for k in ["message", "error"] {
-                if let Some(Value::String(s)) = m.get_mut(k) {
-                    *s = first_line(s).to_owned();
+        // Campo a campo: los detalles de los motivos (la exclusión que
+        // coincide, el nombre de una app, un mensaje de E/S) no van.
+        let mut fields = json!({
+            "op_id": op,
+            "item_id": item.item_id,
+            "path": item.path,
+            "bytes": item.bytes,
+        });
+        let level = match &item.outcome {
+            Outcome::Done { result_path, .. } => {
+                fields["outcome"] = json!("done");
+                if let Some(p) = result_path {
+                    fields["result_path"] = json!(p);
                 }
+                Level::Debug
             }
-            m.insert("op_id".into(), json!(op));
-            m.insert("outcome".into(), json!(outcome));
-        }
+            Outcome::Would { .. } => {
+                fields["outcome"] = json!("would");
+                Level::Debug
+            }
+            Outcome::Skipped { cause, .. } => {
+                fields["outcome"] = json!("skipped");
+                fields["reason"] = json!(cause.code());
+                Level::Warn
+            }
+            Outcome::Failed { error } => {
+                fields["outcome"] = json!("failed");
+                if let Some(n) = os_error(error) {
+                    fields["os_error"] = json!(n);
+                }
+                Level::Warn
+            }
+        };
         event(level, "item", fields);
     }
 }
@@ -449,11 +521,56 @@ mod tests {
     }
 
     #[test]
-    fn only_the_first_line_of_a_message() {
+    fn only_the_os_error_number_of_an_io_message() {
         assert_eq!(
-            first_line("TOML parse error at line 1\n1 | secret = 1\n  | ^"),
-            "TOML parse error at line 1"
+            os_error("cannot move ~/a: Permission denied (os error 13)"),
+            Some(13)
         );
-        assert_eq!(first_line(""), "");
+        assert_eq!(os_error("it changed since the review"), None);
+        assert_eq!(os_error("(os error x)"), None);
+    }
+
+    /// M2: nunca a través de un enlace (simbólico o duro), ni en un FIFO,
+    /// ni en una carpeta que es un enlace. El destino queda intacto.
+    #[test]
+    fn writes_only_to_a_plain_file_in_a_real_folder() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let victim = tmp.path().join("victim.txt");
+        fs::write(&victim, "precious").expect("write");
+
+        let dir = tmp.path().join("symlink");
+        fs::create_dir(&dir).expect("mkdir");
+        std::os::unix::fs::symlink(&victim, dir.join(FILE_NAME)).expect("ln -s");
+        assert!(append(&dir, "x\n", 100, 1).is_err());
+        // Tampoco al rotar: el enlace no se renombra como si fuera el log.
+        assert!(append(&dir, &"y".repeat(200), 100, 1).is_err());
+
+        let dir = tmp.path().join("hardlink");
+        fs::create_dir(&dir).expect("mkdir");
+        fs::hard_link(&victim, dir.join(FILE_NAME)).expect("ln");
+        assert!(append(&dir, "x\n", 100, 1).is_err());
+
+        let real = tmp.path().join("real");
+        fs::create_dir(&real).expect("mkdir");
+        let dir = tmp.path().join("dirlink");
+        std::os::unix::fs::symlink(&real, &dir).expect("ln -s");
+        assert!(append(&dir, "x\n", 100, 1).is_err());
+        assert!(!real.join(FILE_NAME).exists());
+
+        assert_eq!(fs::read_to_string(&victim).expect("leer"), "precious");
+    }
+
+    #[test]
+    fn a_fifo_is_refused_without_blocking() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fifo = tmp.path().join(FILE_NAME);
+        let st = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("mkfifo");
+        assert!(st.success());
+        let t = Instant::now();
+        assert!(append(tmp.path(), "x\n", 100, 1).is_err());
+        assert!(t.elapsed().as_secs() < 5);
     }
 }

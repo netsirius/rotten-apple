@@ -12,9 +12,13 @@
 //!   cómo actualizar.
 //!
 //! La vía se decide sobre la ruta real del ejecutable (`current_exe`, con
-//! los enlaces resueltos) con [`detect`], que es pura y tiene pruebas para
-//! cada caso. `ROTTEN_UPDATE_EXE` sustituye a `current_exe` en las pruebas
-//! del binario, como `ROTTEN_HOME` a la carpeta personal.
+//! los enlaces resueltos) con [`detect`], que tiene pruebas para cada caso.
+//! Un Homebrew reubicado (sin `HOMEBREW_PREFIX` ni prefijo de siempre) se
+//! reconoce por un antecesor `Cellar` con `../bin/brew` al lado.
+//! `ROTTEN_UPDATE_EXE` sustituye a `current_exe` en las pruebas del binario,
+//! como `ROTTEN_HOME` a la carpeta personal; solo existe en las
+//! compilaciones de depuración (las de las pruebas), nunca en la versión
+//! final.
 //!
 //! Códigos: `0` hecho, nada que hacer automáticamente (se explica) o
 //! cancelado · `1` no se encuentra `brew`, no se puede lanzar o termina con
@@ -50,7 +54,8 @@ pub const REPO_URL: &str = "https://github.com/netsirius/rotten-apple";
 pub const CARGO_PACKAGE: &str = "rotten";
 // ────────────────────────────────────────────────────────────────────────
 
-/// Sustituye a `current_exe()` (pruebas del binario).
+/// Sustituye a `current_exe()` en las pruebas del binario. Solo se lee en
+/// las compilaciones de depuración.
 pub const EXE_ENV: &str = "ROTTEN_UPDATE_EXE";
 
 /// Prefijos de Homebrew por defecto (Apple silicon e Intel), además del de
@@ -139,8 +144,19 @@ fn formula_under(exe: &Path, cellar: &Path) -> Option<String> {
 
 /// Decide la vía de instalación a partir de la ruta **ya resuelta** del
 /// ejecutable y de las variables de entorno (`env`: `HOMEBREW_PREFIX`,
-/// `CARGO_HOME`, `HOME`). Pura: no lee el disco.
+/// `CARGO_HOME`, `HOME`). Solo lee el disco para ver si hay un `brew` junto
+/// a un `Cellar` que no es de un prefijo conocido ([`detect_with`]).
 pub fn detect(exe: &Path, env: impl Fn(&str) -> Option<String>) -> Method {
+    detect_with(exe, env, |p| p.is_file())
+}
+
+/// [`detect`] con la comprobación de que existe un fichero (`is_file`) como
+/// parámetro, para probarla sin disco.
+pub fn detect_with(
+    exe: &Path,
+    env: impl Fn(&str) -> Option<String>,
+    is_file: impl Fn(&Path) -> bool,
+) -> Method {
     let var = |k: &str| env(k).filter(|v| !v.is_empty()).map(PathBuf::from);
 
     // Homebrew: el prefijo de `HOMEBREW_PREFIX` o uno de los de siempre.
@@ -150,6 +166,21 @@ pub fn detect(exe: &Path, env: impl Fn(&str) -> Option<String>) -> Method {
     for prefix in prefixes {
         if let Some(formula) = formula_under(exe, &prefix.join("Cellar")) {
             return Method::Homebrew { prefix, formula };
+        }
+    }
+    // Homebrew reubicado, sin variables: un antecesor `Cellar` con su
+    // `brew` en `../bin/brew`.
+    for cellar in exe
+        .ancestors()
+        .filter(|a| a.file_name() == Some(OsStr::new("Cellar")))
+    {
+        if let (Some(prefix), Some(formula)) = (cellar.parent(), formula_under(exe, cellar))
+            && is_file(&brew_path(prefix))
+        {
+            return Method::Homebrew {
+                prefix: prefix.to_path_buf(),
+                formula,
+            };
         }
     }
 
@@ -180,7 +211,13 @@ pub fn detect(exe: &Path, env: impl Fn(&str) -> Option<String>) -> Method {
 /// La ruta del ejecutable con los enlaces resueltos (o tal cual, si no se
 /// puede resolver).
 fn resolved_exe() -> io::Result<PathBuf> {
-    let exe = match std::env::var_os(EXE_ENV).filter(|v| !v.is_empty()) {
+    // En la versión final, la variable de las pruebas no existe.
+    let replaced = if cfg!(debug_assertions) {
+        std::env::var_os(EXE_ENV).filter(|v| !v.is_empty())
+    } else {
+        None
+    };
+    let exe = match replaced {
         Some(p) => PathBuf::from(p),
         None => std::env::current_exe()?,
     };
@@ -403,6 +440,36 @@ mod tests {
         assert_eq!(m.argv().expect("comando")[0], "/Users/ana/brew/bin/brew");
         // Sin `HOMEBREW_PREFIX`, ese Cellar no es de un prefijo conocido.
         assert_eq!(detect(exe, env(HOME)), Method::Other);
+    }
+
+    /// M8: un Homebrew reubicado sin `HOMEBREW_PREFIX` se reconoce por el
+    /// `brew` junto a su `Cellar`; sin ese `brew`, un `Cellar` cualquiera
+    /// no es Homebrew.
+    #[test]
+    fn relocated_homebrew_without_environment() {
+        let exe = Path::new("/Users/ana/brew/Cellar/rotten/0.1.0/bin/rotten");
+        let brew_at = |want: &'static str| move |p: &Path| p == Path::new(want);
+        let m = detect_with(exe, env(HOME), brew_at("/Users/ana/brew/bin/brew"));
+        assert_eq!(m, brew("/Users/ana/brew", "rotten"));
+        assert_eq!(m.argv().expect("comando")[0], "/Users/ana/brew/bin/brew");
+        // Sin `brew` al lado, o en otro sitio: no es Homebrew.
+        assert_eq!(detect_with(exe, env(HOME), |_| false), Method::Other);
+        assert_eq!(
+            detect_with(exe, env(HOME), brew_at("/Users/ana/brew/Cellar/bin/brew")),
+            Method::Other
+        );
+        // El Cellar a secas o una carpeta que solo se llama parecido.
+        let found = brew_at("/Users/ana/brew/bin/brew");
+        for p in [
+            "/Users/ana/brew/Cellar/rotten",
+            "/Users/ana/brew/MyCellar/rotten/0.1.0/bin/rotten",
+        ] {
+            assert_eq!(
+                detect_with(Path::new(p), env(HOME), found),
+                Method::Other,
+                "{p}"
+            );
+        }
     }
 
     /// `HOMEBREW_PREFIX` solo dice dónde buscar: un binario fuera de su

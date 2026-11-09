@@ -1,9 +1,16 @@
 //! Log técnico local y rotado (T-14: RF-SEG-11, RNF-33).
 //!
-//! - Aceptación de RF-SEG-11: un fichero con un marcador conocido pasa por
-//!   `scan`, `clean` y `undo` (con `--debug`, el nivel más detallado) y el
-//!   marcador no aparece en el log; lo que sí debe estar (la operación, sus
-//!   elementos) está, para que la prueba no pase con un log vacío.
+//! - Aceptación de RF-SEG-11: ficheros con un marcador conocido pasan por
+//!   `scan`, `clean`, `undo`, `trash put`, `free` y `trash empty` (con
+//!   `--debug`, el nivel más detallado) y el marcador no aparece en el log;
+//!   lo que sí debe estar (las operaciones, sus elementos) está, para que la
+//!   prueba no pase con un log vacío.
+//! - Tampoco lo que teclea el usuario (el valor de `config set`, una
+//!   exclusión, una operación o una categoría): de los errores solo va el
+//!   código.
+//! - El log solo se escribe en un fichero normal: ni a través de un enlace
+//!   ni en un FIFO (en el que se quedaría bloqueado).
+//! - La carpeta del log está protegida: no se puede mandar a la Papelera.
 //! - Las rutas se quedan en local y con la carpeta personal abreviada
 //!   (RNF-33).
 //! - `--debug` copia el log a stderr y nunca a stdout (`--json` sigue
@@ -96,6 +103,19 @@ fn the_log_never_contains_file_contents() {
     let back = fs::read_to_string(fx.p("Library/Logs/install.log")).expect("leer");
     assert_eq!(back, MARKER);
 
+    // Elegido a mano, liberado, y la Papelera entera con algo ajeno.
+    write_old(&fx, "Downloads/notas.txt", MARKER, 1);
+    let notes = fx.p("Downloads/notas.txt");
+    let put = run(&["trash", "put", notes.to_str().expect("UTF-8"), "--yes"]);
+    assert_eq!(put["report"]["done"], 1, "{put:#}");
+    let put_op = put["report"]["op_id"].as_str().expect("op_id").to_owned();
+    let free = run(&["free", &put_op, "--yes"]);
+    assert_eq!(free["report"]["done"], 1, "{free:#}");
+    run(&["clean", "--yes"]);
+    fs::write(fx.trash.join("ajeno.txt"), MARKER).expect("write");
+    let empty = run(&["trash", "empty", "--yes"]);
+    assert_eq!(empty["report"]["done"], 4, "{empty:#}");
+
     let log = read_logs(&fx);
     assert!(!log.contains(MARKER), "el marcador está en el log:\n{log}");
     assert!(
@@ -106,11 +126,19 @@ fn the_log_never_contains_file_contents() {
     // El log no está vacío: la operación, sus elementos y su deshacer.
     let ev = events(&log);
     let ops: Vec<&Value> = ev.iter().filter(|e| e["event"] == "operation").collect();
-    assert_eq!(ops.len(), 2, "{log}");
-    assert_eq!(ops[0]["command"], "clean");
+    let commands: Vec<&str> = ops
+        .iter()
+        .map(|o| o["command"].as_str().expect("command"))
+        .collect();
+    assert_eq!(
+        commands,
+        ["clean", "undo", "trash", "free", "clean", "trash"],
+        "{log}"
+    );
     assert_eq!(ops[0]["op_id"], op.as_str());
     assert_eq!(ops[0]["done"], 3);
-    assert_eq!(ops[1]["command"], "undo");
+    assert_eq!(ops[2]["op_id"], put_op.as_str());
+    assert_eq!(ops[5]["done"], 4);
     let items: Vec<&Value> = ev
         .iter()
         .filter(|e| e["event"] == "item" && e["op_id"] == op.as_str())
@@ -122,7 +150,7 @@ fn the_log_never_contains_file_contents() {
             .any(|i| i["path"] == "~/Library/Logs/old-app" && i["outcome"] == "done"),
         "{log}"
     );
-    for cmd in ["scan", "clean", "undo"] {
+    for cmd in ["scan", "clean", "undo", "trash", "free"] {
         assert!(
             ev.iter()
                 .any(|e| e["event"] == "end" && e["command"] == cmd && e["exit_code"] == 0),
@@ -305,4 +333,167 @@ fn rotten_apple_never_proposes_its_own_log() {
     assert!(!text.contains(ra_core::BUNDLE_ID), "{doc:#}");
     // Y sigue proponiendo los demás registros.
     assert!(text.contains("old-app"), "{doc:#}");
+}
+
+/// Ejecuta y devuelve el código; con `timeout`, mata el proceso si no
+/// termina antes (y falla).
+fn run_bounded(fx: &Fx, args: &[&str], timeout: Duration) -> i32 {
+    let bin = env!("CARGO_BIN_EXE_rotten");
+    let mut child = std::process::Command::new(bin)
+        .args(args)
+        .env("ROTTEN_HOME", &fx.home)
+        .env("ROTTEN_TRASH_DIR", &fx.trash)
+        .env_remove("ROTTEN_STATE_DIR")
+        .env_remove("ROTTEN_LOG")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("lanzar");
+    let start = std::time::Instant::now();
+    loop {
+        if let Some(st) = child.try_wait().expect("esperar") {
+            return st.code().expect("código");
+        }
+        if start.elapsed() > timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("{args:?} sigue sin terminar tras {timeout:?}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// M2: `rotten.log` es un enlace a un documento: no se escribe en él (ni
+/// se rota como si fuera el log) y el comando sigue igual.
+#[test]
+fn the_log_never_writes_through_a_symlink() {
+    let fx = fixture();
+    let victim = fx.p("Documents/victim.txt");
+    fs::write(&victim, "precious").expect("write");
+    std::os::unix::fs::symlink(&victim, fx.log_dir().join("rotten.log")).expect("ln -s");
+    for args in [
+        &["history", "--json"][..],
+        &["--debug", "clean", "--yes", "--json"][..],
+    ] {
+        assert_eq!(
+            run_bounded(&fx, args, Duration::from_secs(30)),
+            0,
+            "{args:?}"
+        );
+    }
+    assert_eq!(fs::read_to_string(&victim).expect("leer"), "precious");
+    assert!(
+        fs::symlink_metadata(fx.log_dir().join("rotten.log"))
+            .expect("lstat")
+            .file_type()
+            .is_symlink()
+    );
+    // La carpeta del log es un enlace a otra: tampoco.
+    let fx = fixture();
+    let elsewhere = fx.p("Documents/otra");
+    fs::create_dir(&elsewhere).expect("mkdir");
+    fs::remove_dir(fx.log_dir()).expect("rmdir");
+    std::os::unix::fs::symlink(&elsewhere, fx.log_dir()).expect("ln -s");
+    assert_eq!(
+        run_bounded(&fx, &["history", "--json"], Duration::from_secs(30)),
+        0
+    );
+    assert_eq!(fs::read_dir(&elsewhere).expect("leer").count(), 0);
+}
+
+/// M2: un FIFO en `rotten.log` no bloquea el comando.
+#[test]
+fn a_fifo_in_place_of_the_log_does_not_block() {
+    let fx = fixture();
+    let fifo = fx.log_dir().join("rotten.log");
+    let st = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("mkfifo");
+    assert!(st.success());
+    let code = run_bounded(&fx, &["history", "--json"], Duration::from_secs(10));
+    assert_eq!(code, 0);
+}
+
+/// M3: lo que teclea el usuario no llega al log; del error, el código y,
+/// en `config`, la clave si es una de las conocidas.
+#[test]
+fn typed_values_never_reach_the_log() {
+    let fx = fixture();
+    let typed = |rest: &str| format!("{MARKER}-{rest}");
+    let steps: Vec<(Vec<String>, i32, &str)> = vec![
+        (
+            vec![
+                "config".into(),
+                "set".into(),
+                "language".into(),
+                typed("hunter2"),
+            ],
+            2,
+            "invalid_config_value",
+        ),
+        (
+            vec!["config".into(), "get".into(), typed("clave")],
+            2,
+            "unknown_config_key",
+        ),
+        (vec!["undo".into(), typed("op")], 1, "unknown_operation"),
+        (
+            vec!["scan".into(), "--category".into(), typed("cat")],
+            2,
+            "unknown_category",
+        ),
+        (
+            vec!["exclude".into(), "add".into(), typed("relativa/ruta")],
+            2,
+            "invalid_exclusion",
+        ),
+    ];
+    for (args, exit, code) in &steps {
+        let mut a: Vec<&str> = args.iter().map(String::as_str).collect();
+        a.push("--json");
+        let (got, doc) = fx.run(&a);
+        assert_eq!(got, *exit, "{a:?}: {doc:#}");
+        assert_eq!(doc["error"]["code"], *code, "{a:?}: {doc:#}");
+    }
+    let log = read_logs(&fx);
+    assert!(!log.contains(MARKER), "{log}");
+    let errors: Vec<Value> = events(&log)
+        .into_iter()
+        .filter(|e| e["event"] == "error")
+        .collect();
+    let codes: Vec<&str> = errors
+        .iter()
+        .map(|e| e["code"].as_str().expect("code"))
+        .collect();
+    assert_eq!(
+        codes,
+        steps.iter().map(|s| s.2).collect::<Vec<_>>(),
+        "{log}"
+    );
+    assert_eq!(errors[0]["key"], "language", "{log}");
+    assert_eq!(errors[1]["key"], "(unknown)", "{log}");
+    assert!(errors.iter().all(|e| e.get("message").is_none()), "{log}");
+}
+
+/// M4: la carpeta del log está protegida, también por selección explícita
+/// (y su carpeta padre, que la contiene).
+#[test]
+fn the_log_folder_cannot_be_trashed() {
+    let fx = fixture();
+    write_old(&fx, &format!("{LOG_DIR}/rotten.log.1"), "{}\n", 60);
+    let log_dir = fx.log_dir();
+    let logs = fx.p("Library/Logs");
+    for target in [log_dir.clone(), log_dir.join("rotten.log.1"), logs] {
+        let t = target.to_str().expect("UTF-8");
+        for extra in [&["--dry-run"][..], &["--yes"][..]] {
+            let mut args = vec!["trash", "put", t, "--json"];
+            args.extend_from_slice(extra);
+            let (code, doc) = fx.run(&args);
+            assert_eq!(code, 5, "{args:?}: {doc:#}");
+            assert_eq!(doc["error"]["code"], "selection_protected", "{doc:#}");
+        }
+    }
+    assert!(log_dir.join("rotten.log.1").exists());
+    assert_eq!(fs::read_dir(&fx.trash).expect("Papelera").count(), 0);
 }

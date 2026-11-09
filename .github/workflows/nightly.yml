@@ -67,6 +67,24 @@ jobs:
       - name: Arnés kill -9
         run: cargo test -p ra-core --test crash --locked -- --nocapture
 
+  colors:
+    name: colores en una terminal (pty)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain de Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+      # T-14: la prueba necesita una pty (`script`), que el sandbox de
+      # desarrollo no permite; por eso va `#[ignore]` y se ejecuta aquí.
+      - name: Colores con y sin --no-color / NO_COLOR
+        run: cargo test -p rotten --test colors --locked -- --ignored
+
   audit:
     name: cargo-audit
     runs-on: ubuntu-latest
