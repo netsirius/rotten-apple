@@ -1,7 +1,7 @@
 //! Esquemas JSON del CLI (T-01: RNF-ARQ-22, RF-CLI-04, RF-CLI-21).
 //!
 //! - Cada salida de `cli.rs` se repite aquí, se valida contra
-//!   `schemas/<comando>.v1.schema.json` (lo hace `Fx::run`) y se compara con
+//!   `schemas/<comando>.v<N>.schema.json` (lo hace `Fx::run`) y se compara con
 //!   su *snapshot* de `insta`, con rutas, fechas, IDs y hashes ocultos.
 //! - Renombrar o quitar una clave sin subir `schema_version` hace fallar
 //!   la validación (`renaming_any_key_breaks_validation`).
@@ -14,76 +14,8 @@ mod common;
 
 use std::fs;
 
-use common::{Fx, fixture, schema_files, validate};
+use common::{Fx, fixture, redact, schema_files, validate};
 use serde_json::{Map, Value, json};
-
-/// Claves cuyo valor cambia en cada ejecución o depende de la máquina.
-const VOLATILE: &[&str] = &[
-    "created_at",
-    "started_at",
-    "finished_at",
-    "plan_id",
-    "plan_hash",
-    "op_id",
-    "undo_of",
-    "digest",
-    "newest_mtime",
-    "dev",
-    "ino",
-    "mtime",
-    "mtime_nsec",
-    "ctime",
-    "ctime_nsec",
-    "parent_mode",
-    "macos_version",
-    "arch",
-    "running_apps_probe",
-    // Cifras del volumen de la máquina; en un sandbox, además, `statfs` sale
-    // redondeado y la capacidad disponible no se conoce (`null`).
-    "volume",
-];
-
-/// Oculta lo que no es estable: rutas del fixture, fechas, IDs, hashes,
-/// identidades de fichero y datos de la máquina. El tamaño de las carpetas
-/// en `identity.size` depende del sistema de ficheros y también se oculta.
-fn redact(fx: &Fx, v: &Value) -> Value {
-    redact_in(fx, v, None)
-}
-
-fn redact_in(fx: &Fx, v: &Value, key: Option<&str>) -> Value {
-    if let Some(k) = key
-        && VOLATILE.contains(&k)
-        && !v.is_null()
-    {
-        return json!(format!("[{k}]"));
-    }
-    match v {
-        Value::String(s) => {
-            let home = fx.home.to_str().expect("ruta UTF-8");
-            let trash = fx.trash.to_str().expect("ruta UTF-8");
-            json!(s.replace(trash, "[TRASH]").replace(home, "[HOME]"))
-        }
-        Value::Array(a) => Value::Array(a.iter().map(|x| redact_in(fx, x, None)).collect()),
-        Value::Object(m) => {
-            let mut out = Map::new();
-            for (k, x) in m {
-                let mut r = redact_in(fx, x, Some(k));
-                if k == "identity"
-                    && let Value::Object(id) = &mut r
-                {
-                    id.insert("size".into(), json!("[size]"));
-                }
-                out.insert(k.clone(), r);
-            }
-            // La versión del binario en `doctor`.
-            if key == Some("report") && out.contains_key("catalog_version") {
-                out.insert("version".into(), json!("[version]"));
-            }
-            Value::Object(out)
-        }
-        _ => v.clone(),
-    }
-}
 
 /// Ejecuta, comprueba el código de salida y guarda el *snapshot*. `Fx::run`
 /// ya ha validado el documento contra su esquema.
@@ -101,7 +33,8 @@ fn write_corrupt_config(fx: &Fx) {
 #[test]
 fn schemas_are_valid_and_match_their_file_name() {
     let files = schema_files();
-    let commands: Vec<&str> = files.keys().map(|(c, _)| c.as_str()).collect();
+    let mut commands: Vec<&str> = files.keys().map(|(c, _)| c.as_str()).collect();
+    commands.dedup();
     assert_eq!(
         commands,
         [
@@ -467,6 +400,6 @@ fn renaming_any_key_breaks_validation() {
 
     // Subir la versión sin esquema nuevo tampoco valida.
     let mut doc = sample_documents().swap_remove(0);
-    doc["schema_version"] = json!(2);
+    doc["schema_version"] = json!(3);
     assert!(validate(&doc).is_err());
 }

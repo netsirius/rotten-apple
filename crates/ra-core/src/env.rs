@@ -31,7 +31,7 @@ pub struct Env {
 
 #[derive(Debug, thiserror::Error)]
 pub enum EnvError {
-    #[error("no se sabe cuál es la carpeta personal: define HOME")]
+    #[error("the home folder is unknown: set HOME")]
     NoHome,
     #[error("{var}: {path}: {detail}")]
     BadPath {
@@ -49,13 +49,13 @@ fn canonical_dir(var: &'static str, raw: &str) -> Result<PathBuf, EnvError> {
         detail,
     };
     if !p.is_absolute() {
-        return Err(bad("debe ser una ruta absoluta".into()));
+        return Err(bad("must be an absolute path".into()));
     }
     // Se canonicaliza una vez al arrancar: así ningún componente de las rutas
     // que se construyen después es un enlace (p. ej. /var → /private/var).
     let c = fs::canonicalize(p).map_err(|e| bad(e.to_string()))?;
     if !c.is_dir() {
-        return Err(bad("no es una carpeta".into()));
+        return Err(bad("is not a folder".into()));
     }
     Ok(c)
 }

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/history.v2.schema.json",
+  "title": "rotten history --json (schema_version 2)",
+  "description": "Operaciones del journal y si aún se pueden deshacer (RF-HIS-03, RF-HIS-06). O el documento de error común.",
+  "oneOf": [
+    { "$ref": "#/$defs/report" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$" },
+    "report": {
+      "type": "object",
+      "required": ["schema_version", "command", "operations", "journal_problems"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "history" },
+        "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" } },
+        "journal_problems": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "required": [
+        "op_id", "kind", "mode", "started_at", "by", "items_done", "items_skipped",
+        "items_failed", "bytes_done", "restorable_items", "undo_state"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "op_id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "description": "clean: rotten clean · trash_put: rutas elegidas con rotten trash put · undo: deshacer de otra operación.",
+          "enum": ["clean", "trash_put", "undo"]
+        },
+        "mode": { "enum": ["trash", "permanent", "restore"] },
+        "started_at": { "$ref": "#/$defs/timestamp" },
+        "finished_at": { "$ref": "#/$defs/timestamp" },
+        "status": { "enum": ["completed", "partial", "recovered"] },
+        "undo_of": { "type": "string", "minLength": 1 },
+        "by": { "type": "string" },
+        "items_done": { "$ref": "#/$defs/count" },
+        "items_skipped": { "$ref": "#/$defs/count" },
+        "items_failed": { "$ref": "#/$defs/count" },
+        "bytes_done": { "$ref": "#/$defs/count" },
+        "restorable_items": { "$ref": "#/$defs/count" },
+        "undo_state": {
+          "enum": ["restorable", "partial", "irreversible", "restored", "partly_restored", "not_applicable"]
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["schema_version", "command", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "history" },
+        "error": {
+          "type": "object",
+          "required": ["code", "exit_code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "description": "Código estable del error (no depende del idioma).",
+              "type": "string",
+              "pattern": "^[a-z][a-z_]*$"
+            },
+            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
+            "message": { "description": "Mensaje en inglés, igual en cualquier idioma.", "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

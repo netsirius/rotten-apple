@@ -1,8 +1,13 @@
 //! Argumentos del CLI (07 §2–§4).
+//!
+//! Los comentarios de documentación son la referencia; la ayuda que ve el
+//! usuario sale del catálogo de mensajes en su idioma ([`localized`]).
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Command, CommandFactory, Parser, Subcommand};
+
+use crate::i18n::I18n;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -27,8 +32,8 @@ pub struct Cli {
     /// Más detalle en los errores.
     #[arg(long, global = true)]
     pub debug: bool,
-    /// Idioma de la salida para personas.
-    #[arg(long, global = true, value_parser = ["es", "en"])]
+    /// Idioma de la salida para personas (es o en).
+    #[arg(long, global = true, value_parser = ["es", "en"], hide_possible_values = true)]
     pub lang: Option<String>,
     /// Permitir ejecutar como root (RF-CLI-06).
     #[arg(long, global = true)]
@@ -92,7 +97,7 @@ pub enum TrashCmd {
     /// Mueve a la Papelera las rutas indicadas, tras revisarlas; se puede deshacer.
     Put {
         /// Ficheros o carpetas que mover a la Papelera.
-        #[arg(required = true, value_name = "RUTA")]
+        #[arg(required = true, value_name = "PATH")]
         paths: Vec<PathBuf>,
         /// Muestra el plan exacto sin cambiar nada.
         #[arg(long)]
@@ -116,4 +121,104 @@ pub enum ExcludeCmd {
         #[arg(long)]
         dry_run: bool,
     },
+}
+
+/// El idioma pedido con `--lang`, antes de analizar los argumentos (la
+/// ayuda ya tiene que salir en ese idioma).
+pub fn lang_flag(args: &[String]) -> Option<String> {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--" {
+            break;
+        }
+        if a == "--lang" {
+            return it.next().cloned();
+        }
+        if let Some(v) = a.strip_prefix("--lang=") {
+            return Some(v.to_owned());
+        }
+    }
+    None
+}
+
+/// La definición de [`Cli`] con la ayuda en el idioma de `i18n`: título de
+/// cada comando (`cli-cmd-<ruta>`), ayuda de cada argumento
+/// (`cli-cmd-<ruta>-arg-<id>`, o `cli-arg-<id>` si es global), nombres de
+/// valores (`cli-value-<id>`) y encabezados. Los mensajes de error de clap
+/// siguen en inglés.
+pub fn localized(i18n: &I18n) -> Command {
+    let mut cmd = Cli::command();
+    // Con la definición completa: incluye `--help`, `--version`, el
+    // subcomando `help` y las copias de los argumentos globales.
+    cmd.build();
+    localize(cmd, i18n, "")
+}
+
+fn localize(mut cmd: Command, i18n: &I18n, path: &str) -> Command {
+    let name = cmd.get_name().to_owned();
+    let key = if path.is_empty() {
+        "cli-about".to_owned()
+    } else if name == "help" {
+        "cli-cmd-help".to_owned()
+    } else {
+        format!("cli-cmd-{path}")
+    };
+    cmd = cmd
+        .about(i18n.tr(&key, None))
+        .long_about(None)
+        .subcommand_help_heading(i18n.tr("cli-heading-commands", None))
+        .help_template(format!(
+            "{{about-with-newline}}\n{} {{usage}}\n\n{{all-args}}{{after-help}}",
+            i18n.tr("cli-heading-usage", None)
+        ));
+    let ids: Vec<(String, bool, bool, bool)> = cmd
+        .get_arguments()
+        .map(|a| {
+            (
+                a.get_id().to_string(),
+                a.is_global_set() || ["help", "version"].contains(&a.get_id().as_str()),
+                a.is_positional(),
+                a.get_action().takes_values(),
+            )
+        })
+        .collect();
+    let options = i18n.tr("cli-heading-options", None);
+    let arguments = i18n.tr("cli-heading-arguments", None);
+    for (id, global, positional, takes_values) in ids {
+        let help_key = if global {
+            format!("cli-arg-{id}")
+        } else if name == "help" {
+            format!("cli-cmd-help-arg-{id}")
+        } else {
+            format!("{key}-arg-{id}")
+        };
+        let help = i18n.tr(&help_key, None);
+        let value = takes_values.then(|| i18n.tr(&format!("cli-value-{id}"), None));
+        let heading = if positional { &arguments } else { &options }.clone();
+        cmd = cmd.mut_arg(&id, |a| {
+            let a = a.help(help).long_help(None).help_heading(heading);
+            match value {
+                Some(v) => a.value_name(v),
+                None => a,
+            }
+        });
+    }
+    if name == "help" {
+        // Sus subcomandos solo existen para analizar `help <comando>`: no
+        // tienen ayuda propia.
+        return cmd;
+    }
+    let subs: Vec<String> = cmd
+        .get_subcommands()
+        .map(|s| s.get_name().to_owned())
+        .collect();
+    for sub in subs {
+        let sub_path = if path.is_empty() {
+            sub.clone()
+        } else {
+            format!("{path}-{sub}")
+        };
+        cmd = cmd.mut_subcommand(&sub, |s| localize(s, i18n, &sub_path));
+    }
+    cmd
 }

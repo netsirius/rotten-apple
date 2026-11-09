@@ -29,9 +29,14 @@ ra-exec = { path = "crates/ra-exec" }
 ra-core = { path = "crates/ra-core" }
 
 blake3 = "1.8"
-clap = { version = "4.5", features = ["derive"] }
+# `string`: textos de la ayuda generados en tiempo de ejecución (T-03).
+clap = { version = "4.5", features = ["derive", "string"] }
+# Mensajes del CLI con plurales (T-03, Project Fluent; MIT o Apache-2.0).
+fluent-bundle = "0.16"
 globset = "0.4"
 humantime = "2.2"
+# Fechas del historial en la zona horaria local (T-03; Unlicense o MIT).
+jiff = "0.2"
 libc = "0.2"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSError", "NSFileManager", "NSString", "NSURL"] }
@@ -41,6 +46,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
 toml = "0.9"
+unic-langid = "0.9"
 unicode-normalization = "0.1"
 
 # Solo pruebas

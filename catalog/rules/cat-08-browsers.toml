@@ -20,7 +20,10 @@ max_depth = 1
 app_not_running = ["com.apple.Safari"]
 never = ["Cookies", "History", "Login Data", "Bookmarks", "Local Storage", "IndexedDB", "Sessions", "Service Worker"]
 title = { es = "Caché de Safari", en = "Safari cache" }
-explain = { es = "Copias de páginas visitadas; se vuelven a descargar.", en = "Copies of visited pages; they are downloaded again." }
+explain = { es = "Copias de páginas, imágenes y scripts de las webs que visitas, para que carguen antes.", en = "Copies of pages, images and scripts from the sites you visit, so they load faster." }
+if_deleted = { es = "Las webs tardan algo más en cargar la primera vez; no pierdes historial, contraseñas, marcadores ni sesiones.", en = "Sites take a little longer to load the first time; you keep your history, passwords, bookmarks and sessions." }
+regenerates = { es = "Sí: Safari las vuelve a descargar al visitar cada web.", en = "Yes: Safari downloads them again when you visit each site." }
+why_risk = { es = "Seguro: es caché y solo se toca con Safari cerrado.", en = "Safe: it is cache and it is only touched while Safari is closed." }
 evidence = "02 §5 CAT-08"
 
 [[rule]]
@@ -37,7 +40,10 @@ max_depth = 1
 app_not_running = ["com.google.Chrome"]
 never = ["Cookies", "History", "Login Data", "Bookmarks", "Local Storage", "IndexedDB", "Sessions", "Service Worker"]
 title = { es = "Caché de Chrome", en = "Chrome cache" }
-explain = { es = "Copias de páginas visitadas; se vuelven a descargar.", en = "Copies of visited pages; they are downloaded again." }
+explain = { es = "Copias de páginas, imágenes y scripts de las webs que visitas, para que carguen antes.", en = "Copies of pages, images and scripts from the sites you visit, so they load faster." }
+if_deleted = { es = "Las webs tardan algo más en cargar la primera vez; no pierdes historial, contraseñas, marcadores ni sesiones.", en = "Sites take a little longer to load the first time; you keep your history, passwords, bookmarks and sessions." }
+regenerates = { es = "Sí: Chrome las vuelve a descargar al visitar cada web.", en = "Yes: Chrome downloads them again when you visit each site." }
+why_risk = { es = "Seguro: es caché y solo se toca con Chrome cerrado.", en = "Safe: it is cache and it is only touched while Chrome is closed." }
 evidence = "02 §5 CAT-08"
 
 [[rule]]
@@ -54,7 +60,10 @@ max_depth = 2
 app_not_running = ["com.google.Chrome"]
 never = ["Cookies", "History", "Login Data", "Bookmarks", "Local Storage", "IndexedDB", "Sessions", "Service Worker"]
 title = { es = "Caché de código de Chrome", en = "Chrome code cache" }
-explain = { es = "Código y sombreadores compilados; Chrome los regenera.", en = "Compiled code and shaders; Chrome regenerates them." }
+explain = { es = "Código JavaScript y sombreadores gráficos que Chrome compila dentro de tu perfil.", en = "JavaScript code and graphics shaders Chrome compiles inside your profile." }
+if_deleted = { es = "Chrome y algunas webs pueden ir más lentos un rato; tu perfil, historial y contraseñas no se tocan.", en = "Chrome and some sites may be slower for a while; your profile, history and passwords are not touched." }
+regenerates = { es = "Sí: Chrome los vuelve a compilar cuando hacen falta.", en = "Yes: Chrome compiles them again when needed." }
+why_risk = { es = "Seguro: solo se eligen las carpetas de caché del perfil, nunca sus datos, y con Chrome cerrado.", en = "Safe: only the profile's cache folders are chosen, never its data, and only while Chrome is closed." }
 evidence = "02 §5 CAT-08"
 
 [[rule]]
@@ -71,5 +80,8 @@ max_depth = 2
 app_not_running = ["org.mozilla.firefox"]
 never = ["Cookies", "History", "Login Data", "Bookmarks", "Local Storage", "IndexedDB", "Sessions", "Service Worker"]
 title = { es = "Caché de Firefox", en = "Firefox cache" }
-explain = { es = "Copias de páginas visitadas; se vuelven a descargar.", en = "Copies of visited pages; they are downloaded again." }
+explain = { es = "Copias de páginas, imágenes y scripts de las webs que visitas, para que carguen antes.", en = "Copies of pages, images and scripts from the sites you visit, so they load faster." }
+if_deleted = { es = "Las webs tardan algo más en cargar la primera vez; no pierdes historial, contraseñas, marcadores ni sesiones.", en = "Sites take a little longer to load the first time; you keep your history, passwords, bookmarks and sessions." }
+regenerates = { es = "Sí: Firefox las vuelve a descargar al visitar cada web.", en = "Yes: Firefox downloads them again when you visit each site." }
+why_risk = { es = "Seguro: es caché y solo se toca con Firefox cerrado.", en = "Safe: it is cache and it is only touched while Firefox is closed." }
 evidence = "02 §5 CAT-08"

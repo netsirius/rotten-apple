@@ -4,12 +4,11 @@ expression: "redact(fx, &doc)"
 ---
 {
   "command": "doctor",
-  "exit_code": 5,
   "report": {
     "arch": "[arch]",
     "catalog_version": "2026.11.0",
     "config": "corrupt",
-    "config_error": "TOML no válido: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n",
+    "config_error": "invalid TOML: TOML parse error at line 1, column 12\n  |\n1 | [exclusions\n  |            ^\nunclosed table, expected `]`\n",
     "config_path": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml",
     "exec_lock_free": true,
     "full_disk_access": "undetermined",
@@ -20,11 +19,14 @@ expression: "redact(fx, &doc)"
     "journal_records": 0,
     "macos_version": "[macos_version]",
     "platform_supported": true,
-    "running_apps_probe": "[running_apps_probe]",
+    "running_apps": "[running_apps]",
     "running_as_root": false,
     "state_dir": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple",
-    "trash": "dir:[TRASH]",
+    "trash": {
+      "backend": "dir",
+      "path": "[TRASH]"
+    },
     "version": "[version]"
   },
-  "schema_version": 1
+  "schema_version": 2
 }

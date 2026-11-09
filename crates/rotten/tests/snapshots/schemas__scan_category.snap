@@ -26,6 +26,6 @@ expression: "redact(fx, &doc)"
   "config": "missing",
   "home": "[HOME]",
   "scan_status": "complete",
-  "schema_version": 1,
+  "schema_version": 2,
   "volume": "[volume]"
 }

@@ -550,7 +550,7 @@ fn round(bin: &Path, seed: u64, clean: &mut Stats, undo: &mut Stats) {
     let (records, _) = read_journal(&HistoryPaths::new(&w.state)).expect("journal");
     let Some(op) = list_ops(&records)
         .into_iter()
-        .find(|o| o.kind == OpKind::Clean)
+        .find(|o| o.kind == ra_history::HistoryKind::Clean)
     else {
         return;
     };

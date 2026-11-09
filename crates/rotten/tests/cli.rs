@@ -44,7 +44,7 @@ fn clean_dry_run_json_produces_a_valid_plan_and_changes_nothing() {
     let before = snapshot(&fx.home, &fx.state);
     let (code, doc) = fx.run(&["clean", "--dry-run", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
-    assert_eq!(doc["schema_version"], 1);
+    assert_eq!(doc["schema_version"], 2);
     assert_eq!(doc["command"], "clean");
     assert_eq!(doc["dry_run"], true);
 
@@ -70,7 +70,7 @@ fn clean_dry_run_json_produces_a_valid_plan_and_changes_nothing() {
     // CAT-01 queda sin marcar.
     assert_eq!(plan.not_selected()["CAT-01"].items, 1);
     // La simulación prevé mover cada elemento.
-    let preview = doc["preview"]["items"].as_array().expect("items");
+    let preview = doc["report"]["items"].as_array().expect("items");
     assert_eq!(preview.len(), 3);
     assert!(preview.iter().all(|i| i["action"] == "would_trash"));
 
@@ -87,7 +87,7 @@ fn json_is_automatic_when_piped() {
     let fx = fixture();
     let (code, doc) = fx.run(&["scan"]);
     assert_eq!(code, 0);
-    assert_eq!(doc["schema_version"], 1);
+    assert_eq!(doc["schema_version"], 2);
     assert_eq!(doc["scan_status"], "complete");
     let cats: Vec<&str> = doc["categories"]
         .as_array()
@@ -133,6 +133,7 @@ fn clean_yes_then_undo_puts_everything_back() {
     let (code, hist) = fx.run(&["history", "--json"]);
     assert_eq!(code, 0);
     assert_eq!(hist["operations"][0]["op_id"], op.as_str());
+    assert_eq!(hist["operations"][0]["kind"], "clean");
     assert_eq!(hist["operations"][0]["undo_state"], "restorable");
 
     let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
@@ -180,7 +181,13 @@ fn undo_by_items_and_when_trash_was_emptied() {
     let (code, doc) = fx.run(&["undo", "--yes", "--json"]);
     assert_eq!(code, 4, "{doc:#}");
     assert_eq!(doc["report"]["done"], 1);
-    assert_eq!(doc["not_recoverable"].as_array().expect("lista").len(), 2);
+    assert_eq!(
+        doc["plan"]["not_recoverable"]
+            .as_array()
+            .expect("lista")
+            .len(),
+        2
+    );
     // Dos restaurados y uno ya no está: «restaurada en parte».
     let (_, hist) = fx.run(&["history", "--json"]);
     assert_eq!(hist["operations"][2]["undo_state"], "partly_restored");
@@ -316,7 +323,8 @@ fn doctor_and_history_report_json() {
     assert_eq!(r["home_source"], "ROTTEN_HOME");
     assert_eq!(r["config"], "missing");
     assert_eq!(r["full_disk_access"], "undetermined");
-    assert!(r["trash"].as_str().expect("trash").starts_with("dir:"));
+    assert_eq!(r["trash"]["backend"], "dir");
+    assert_eq!(r["trash"]["path"], fx.trash.to_str().expect("utf-8"));
     let (code, doc) = fx.run(&["history", "--json"]);
     assert_eq!(code, 0);
     assert_eq!(doc["operations"].as_array().expect("ops").len(), 0);

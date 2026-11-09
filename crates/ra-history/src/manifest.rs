@@ -5,8 +5,8 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-use ra_safety::Identity;
 use ra_safety::fingerprint::stat_nofollow_any;
+use ra_safety::{Identity, Origin};
 use serde::{Deserialize, Serialize};
 
 use crate::HistoryPaths;
@@ -52,6 +52,10 @@ pub struct ManifestItem {
     pub bytes: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_mode: Option<u32>,
+    /// Origen del elemento (reglas o selección explícita). Falta en los
+    /// journals anteriores a T-10 y en las restauraciones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
     #[serde(flatten)]
     pub state: ItemState,
 }
@@ -94,10 +98,24 @@ pub enum UndoState {
     NotApplicable,
 }
 
+/// Qué fue cada operación del historial. El journal solo distingue
+/// limpieza y deshacer (`OpKind`); un `trash put` se reconoce por el origen
+/// de sus elementos (selección explícita).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryKind {
+    /// Limpieza con las reglas del catálogo (`rotten clean`).
+    Clean,
+    /// Rutas elegidas a mano (`rotten trash put`).
+    TrashPut,
+    /// Deshacer de otra operación.
+    Undo,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpSummary {
     pub op_id: String,
-    pub kind: OpKind,
+    pub kind: HistoryKind,
     pub mode: OpMode,
     pub started_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -185,9 +203,21 @@ impl Manifest {
                 ItemState::Pending | ItemState::Unknown { .. } => {}
             }
         }
+        let kind = match self.kind {
+            OpKind::Undo => HistoryKind::Undo,
+            OpKind::Clean
+                if self
+                    .items
+                    .iter()
+                    .any(|i| i.origin == Some(Origin::ExplicitSelection)) =>
+            {
+                HistoryKind::TrashPut
+            }
+            OpKind::Clean => HistoryKind::Clean,
+        };
         OpSummary {
             op_id: self.op_id.clone(),
-            kind: self.kind,
+            kind,
             mode: self.mode,
             started_at: self.started_at.clone(),
             finished_at: self.finished_at.clone(),
@@ -248,6 +278,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                 regenerable,
                 bytes,
                 parent_mode,
+                origin,
                 ..
             } => {
                 items.insert(
@@ -262,6 +293,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                         regenerable: *regenerable,
                         bytes: *bytes,
                         parent_mode: *parent_mode,
+                        origin: *origin,
                         state: ItemState::Pending,
                     },
                 );
@@ -402,12 +434,55 @@ pub struct UndoItem {
     pub parent_mode: Option<u32>,
 }
 
+/// Por qué un elemento ya no se puede restaurar. El JSON lleva el código
+/// (`reason`), no un texto: el CLI lo traduce.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(tag = "reason", rename_all = "snake_case")]
+pub enum NotRecoverableReason {
+    /// Ya no está en la Papelera, o ha cambiado.
+    #[error("it is no longer in the Trash or it has changed")]
+    NotInTrash,
+    #[error("it was deleted permanently")]
+    Deleted,
+    #[error("it was already restored")]
+    AlreadyRestored,
+    /// Paradero desconocido tras un cierre abrupto (con el motivo, si se
+    /// sabe: p. ej. la Papelera no se pudo leer).
+    #[error("whereabouts unknown after an abrupt shutdown{}", detail.as_deref().map(|d| format!(": {d}")).unwrap_or_default())]
+    UnknownWhereabouts {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
+    /// No se llegó a mover (omitido, fallido o interrumpido antes).
+    #[error("it was never moved")]
+    NeverMoved,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotRecoverable {
+    pub item_id: u32,
+    #[serde(flatten)]
+    pub reason: NotRecoverableReason,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UndoPlan {
     pub undo_of: String,
     pub ready: Vec<UndoItem>,
     /// Elementos pedidos que ya no se pueden restaurar, con el motivo.
-    pub not_recoverable: Vec<(u32, String)>,
+    pub not_recoverable: Vec<NotRecoverable>,
+}
+
+/// Por qué no se puede preparar un deshacer.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum UndoError {
+    #[error("operation {op} does not exist")]
+    UnknownOperation { op: String },
+    /// Un deshacer no se deshace.
+    #[error("operation {op} cannot be undone")]
+    NotUndoable { op: String },
+    #[error("operation {op} has no item {item}")]
+    UnknownItem { op: String, item: u32 },
 }
 
 /// Prepara el deshacer de `op`, entero (`items = None`) o por elementos.
@@ -415,18 +490,19 @@ pub fn prepare_undo(
     records: &[Record],
     op: &str,
     items: Option<&[u32]>,
-) -> Result<UndoPlan, String> {
-    let m = manifest_for(records, op).ok_or_else(|| format!("no existe la operación {op}"))?;
+) -> Result<UndoPlan, UndoError> {
+    let m =
+        manifest_for(records, op).ok_or_else(|| UndoError::UnknownOperation { op: op.into() })?;
     if m.kind != OpKind::Clean {
-        return Err(format!(
-            "la operación {op} no se puede deshacer ({:?})",
-            m.kind
-        ));
+        return Err(UndoError::NotUndoable { op: op.into() });
     }
     if let Some(ids) = items {
         for id in ids {
             if !m.items.iter().any(|i| i.item_id == *id) {
-                return Err(format!("la operación {op} no tiene el elemento {id}"));
+                return Err(UndoError::UnknownItem {
+                    op: op.into(),
+                    item: *id,
+                });
             }
         }
     }
@@ -453,27 +529,31 @@ pub fn prepare_undo(
                     });
                 }
             }
-            ItemState::Trashed => plan
-                .not_recoverable
-                .push((i.item_id, "ya no está en la Papelera o ha cambiado".into())),
-            ItemState::Deleted => plan
-                .not_recoverable
-                .push((i.item_id, "borrado permanentemente".into())),
-            ItemState::Restored { .. } => plan
-                .not_recoverable
-                .push((i.item_id, "ya se restauró".into())),
-            ItemState::Unknown { detail } => plan.not_recoverable.push((
-                i.item_id,
-                match detail {
-                    Some(d) => format!("paradero desconocido tras un cierre abrupto: {d}"),
-                    None => "paradero desconocido tras un cierre abrupto".into(),
+            ItemState::Trashed => plan.not_recoverable.push(NotRecoverable {
+                item_id: i.item_id,
+                reason: NotRecoverableReason::NotInTrash,
+            }),
+            ItemState::Deleted => plan.not_recoverable.push(NotRecoverable {
+                item_id: i.item_id,
+                reason: NotRecoverableReason::Deleted,
+            }),
+            ItemState::Restored { .. } => plan.not_recoverable.push(NotRecoverable {
+                item_id: i.item_id,
+                reason: NotRecoverableReason::AlreadyRestored,
+            }),
+            ItemState::Unknown { detail } => plan.not_recoverable.push(NotRecoverable {
+                item_id: i.item_id,
+                reason: NotRecoverableReason::UnknownWhereabouts {
+                    detail: detail.clone(),
                 },
-            )),
+            }),
             ItemState::Pending | ItemState::Skipped { .. } | ItemState::Failed { .. } => {
                 // No se movió: no hay nada que deshacer. Solo se informa si se pidió.
                 if items.is_some() {
-                    plan.not_recoverable
-                        .push((i.item_id, "no se llegó a mover".into()));
+                    plan.not_recoverable.push(NotRecoverable {
+                        item_id: i.item_id,
+                        reason: NotRecoverableReason::NeverMoved,
+                    });
                 }
             }
         }

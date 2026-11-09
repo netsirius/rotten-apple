@@ -95,7 +95,7 @@ fn dry_run_exits_4_when_it_foresees_an_item_in_use() {
     ] {
         let (code, doc) = fx.run(&args);
         assert_eq!(code, 4, "{args:?}: {doc:#}");
-        let item = doc["preview"]["items"]
+        let item = doc["report"]["items"]
             .as_array()
             .expect("items")
             .iter()
@@ -105,7 +105,7 @@ fn dry_run_exits_4_when_it_foresees_an_item_in_use() {
         assert_eq!(item["outcome"], "skipped", "{item:#}");
         assert_eq!(item["reason"], "in_use", "{item:#}");
         assert_eq!(item["detail"]["pid"], holder.pid(), "{item:#}");
-        assert_eq!(doc["preview"]["skipped"], 1, "{doc:#}");
+        assert_eq!(doc["report"]["skipped"], 1, "{doc:#}");
     }
     assert!(held.exists());
     assert!(fs::read_dir(&fx.trash).expect("trash").next().is_none());
@@ -127,7 +127,7 @@ fn a_held_file_is_found_inside_a_folder_typed_with_another_case() {
     let typed = typed.to_str().expect("ruta UTF-8");
     let (code, doc) = fx.run(&["trash", "put", "--dry-run", "--json", typed]);
     assert_eq!(code, 4, "{doc:#}");
-    let item = &doc["preview"]["items"][0];
+    let item = &doc["report"]["items"][0];
     assert_eq!(item["path"], real.to_str().expect("ruta UTF-8"), "{item:#}");
     assert_eq!(item["reason"], "in_use", "{item:#}");
     assert_eq!(item["detail"]["pid"], holder.pid(), "{item:#}");

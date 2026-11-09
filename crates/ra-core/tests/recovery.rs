@@ -361,8 +361,11 @@ fn unreadable_trash_leaves_unknown_with_a_reason_and_doctor_warns() {
     {
         Ok(u) => {
             assert!(u.plan.ready.is_empty());
-            let why = &u.plan.not_recoverable[0].1;
-            assert!(why.contains("sin permiso"), "{why}");
+            let why = &u.plan.not_recoverable[0].reason;
+            assert!(
+                matches!(why, ra_core::NotRecoverableReason::UnknownWhereabouts { detail: Some(d) } if d.contains("sin permiso")),
+                "{why:?}"
+            );
         }
         Err(e) => assert!(e.to_string().contains("sin permiso"), "{e}"),
     }

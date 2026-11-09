@@ -153,7 +153,10 @@ preselect = true
 action = "trash"
 include = ["*"]
 title = { es = "t", en = "t" }
-explain = { es = "t", en = "t" }
+explain = { es = "qué es", en = "what it is" }
+if_deleted = { es = "qué pasa", en = "what happens" }
+regenerates = { es = "sí", en = "yes" }
+why_risk = { es = "por qué", en = "why" }
 evidence = "test"
 "#;
 
@@ -182,6 +185,46 @@ fn lints_reject_dangerous_rules() {
     assert!(lint(&delete).is_err(), "las reglas no borran para siempre");
     let unknown = rule_with("roots = [\"~/Library/Caches\"]\nshell = \"rm -rf\"");
     assert!(lint(&unknown).is_err(), "campos desconocidos");
+}
+
+/// RF-LIM-04 y RNF-25: cada regla explica qué es, qué pasa si se borra, si
+/// se regenera y por qué tiene ese riesgo, en los dos idiomas.
+#[test]
+fn rule_texts_are_complete_and_translated() {
+    let ok = rule_with(r#"roots = ["~/Library/Caches"]"#);
+    for (from, to, why) in [
+        (
+            r#"why_risk = { es = "por qué", en = "why" }"#,
+            r#"why_risk = { es = "por qué", en = " " }"#,
+            "vacío",
+        ),
+        (
+            r#"if_deleted = { es = "qué pasa", en = "what happens" }"#,
+            r#"if_deleted = { es = "igual", en = "igual" }"#,
+            "sin traducir",
+        ),
+        (r#"regenerates = { es = "sí", en = "yes" }"#, "", "falta"),
+    ] {
+        let bad = ok.replace(from, to);
+        assert_ne!(bad, ok);
+        assert!(lint(&bad).is_err(), "{why}");
+    }
+    let catalog = Catalog::embedded().expect("catálogo");
+    assert!(!catalog.rules.is_empty());
+    for r in &catalog.rules {
+        assert_eq!(
+            r.regenerates.en.starts_with("Yes"),
+            r.regenerable,
+            "{}: «regenerates» no coincide con «regenerable»",
+            r.id
+        );
+        assert_eq!(
+            r.regenerates.es.starts_with("Sí"),
+            r.regenerable,
+            "{}",
+            r.id
+        );
+    }
 }
 
 #[test]
@@ -238,4 +281,23 @@ fn candidates_are_grouped_by_rule() {
             }
         }
     }
+}
+
+/// El motivo «app» conserva su `kind` junto al detalle de la app (antes, la
+/// clave `kind` del detalle pisaba a la del motivo) y el JSON se vuelve a
+/// leer igual.
+#[test]
+fn app_block_serializes_with_its_own_kind() {
+    let b = Block::App {
+        detail: ra_safety::apps::AppBlock::Running {
+            bundle_id: "com.google.Chrome".into(),
+        },
+    };
+    let text = serde_json::to_string(&b).expect("serializar");
+    assert_eq!(
+        text,
+        r#"{"kind":"app","detail":{"kind":"running","bundle_id":"com.google.Chrome"}}"#
+    );
+    let back: Block = serde_json::from_str(&text).expect("leer");
+    assert_eq!(back, b);
 }

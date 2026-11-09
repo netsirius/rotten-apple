@@ -21,27 +21,27 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "reason", rename_all = "snake_case")]
 pub enum SkipCause {
-    #[error("ya no existe")]
+    #[error("it no longer exists")]
     Missing,
-    #[error("hay un enlace simbólico en la ruta")]
+    #[error("there is a symbolic link in the path")]
     SymlinkInPath,
-    #[error("cambió desde la revisión")]
+    #[error("it changed since the review")]
     IdentityChanged,
-    #[error("su contenido cambió desde la revisión")]
+    #[error("its contents changed since the review")]
     ContentsChanged,
     #[error("{flag}")]
     Flags { flag: FlagViolation },
-    #[error("es o contiene un punto de montaje")]
+    #[error("it is or contains a mount point")]
     CrossesDevice,
     #[error("{detail}")]
     Protected { detail: ProtectionReason },
-    #[error("excluido por el usuario")]
+    #[error("excluded by the user")]
     Excluded { detail: ExclusionMatch },
     #[error("{detail}")]
     App { detail: AppBlock },
-    #[error("no se puede leer: {detail}")]
+    #[error("cannot be read: {detail}")]
     Unreadable { detail: String },
-    #[error("ya existe algo en la ruta original")]
+    #[error("something already exists at the original path")]
     ConflictExists,
     #[error("{detail}")]
     InUse { detail: InUseDetail },
@@ -51,15 +51,16 @@ pub enum SkipCause {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InUseDetail {
-    #[error("en uso por {process} (pid {pid})")]
+    #[error("in use by {process} (pid {pid})")]
     Held { pid: i32, process: String },
     /// La lista de ficheros abiertos no se pudo obtener: cuenta como «en uso».
-    #[error("no se puede saber si está en uso: {detail}")]
+    #[error("cannot tell whether it is in use: {detail}")]
     Unknown { detail: String },
 }
 
 impl SkipCause {
-    /// Código estable para el journal y el JSON.
+    /// Código estable para el journal y el JSON: el mismo que la etiqueta
+    /// `reason` de la serialización.
     pub fn code(&self) -> &'static str {
         match self {
             SkipCause::Missing => "missing",
@@ -70,7 +71,7 @@ impl SkipCause {
             SkipCause::CrossesDevice => "crosses_device",
             SkipCause::Protected { .. } => "protected",
             SkipCause::Excluded { .. } => "excluded",
-            SkipCause::App { .. } => "app_running",
+            SkipCause::App { .. } => "app",
             SkipCause::Unreadable { .. } => "unreadable",
             SkipCause::ConflictExists => "conflict_exists",
             SkipCause::InUse { .. } => "in_use",
@@ -157,4 +158,48 @@ pub(crate) fn verify<'p>(item: &'p PlanItem, g: &Guards<'_>) -> Result<Verified<
         });
     }
     Ok(Verified { parent, name })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// El código del journal y la etiqueta `reason` del JSON no pueden
+    /// divergir (antes, `app_running` frente a `app`).
+    #[test]
+    fn code_matches_the_serialized_reason() {
+        let all = [
+            SkipCause::Missing,
+            SkipCause::SymlinkInPath,
+            SkipCause::IdentityChanged,
+            SkipCause::ContentsChanged,
+            SkipCause::Flags {
+                flag: FlagViolation::Immutable,
+            },
+            SkipCause::CrossesDevice,
+            SkipCause::Protected {
+                detail: ProtectionReason::Home,
+            },
+            SkipCause::Excluded {
+                detail: ExclusionMatch::Rule("r".into()),
+            },
+            SkipCause::App {
+                detail: AppBlock::Running {
+                    bundle_id: "com.example".into(),
+                },
+            },
+            SkipCause::Unreadable { detail: "x".into() },
+            SkipCause::ConflictExists,
+            SkipCause::InUse {
+                detail: InUseDetail::Held {
+                    pid: 1,
+                    process: "p".into(),
+                },
+            },
+        ];
+        for cause in all {
+            let v = serde_json::to_value(&cause).expect("serializar");
+            assert_eq!(v["reason"], cause.code(), "{cause:?}");
+        }
+    }
 }

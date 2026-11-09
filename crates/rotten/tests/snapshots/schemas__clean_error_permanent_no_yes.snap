@@ -5,8 +5,9 @@ expression: "redact(fx, &doc)"
 {
   "command": "clean",
   "error": {
+    "code": "permanent_needs_yes",
     "exit_code": 2,
     "message": "--permanent deletes without the Trash and requires --yes"
   },
-  "schema_version": 1
+  "schema_version": 2
 }

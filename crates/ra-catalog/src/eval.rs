@@ -38,7 +38,12 @@ pub enum Block {
         min_age_days: u32,
         age_days: i64,
     },
-    App(AppBlock),
+    /// Una app que debe estar cerrada está abierta, o no se puede saber.
+    /// Con campo propio: `AppBlock` también lleva `kind` y, aplanado, la
+    /// clave se repetía y se perdía `"app"`.
+    App {
+        detail: AppBlock,
+    },
     Flags {
         flag: FlagViolation,
     },
@@ -137,18 +142,18 @@ fn walk_root(
         Ok((id, _)) if id.kind == FileKind::Dir => id,
         Ok(_) => {
             return RootState::Unavailable {
-                detail: "la raíz no es una carpeta".into(),
+                detail: "the root is not a folder".into(),
             };
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => return RootState::Absent,
         Err(e) if is_permission(&e) => {
             return RootState::Unavailable {
-                detail: format!("sin permiso: {e}"),
+                detail: format!("no permission: {e}"),
             };
         }
         Err(e) => {
             return RootState::Unavailable {
-                detail: format!("no se puede abrir sin seguir enlaces: {e}"),
+                detail: format!("cannot be opened without following links: {e}"),
             };
         }
     };
@@ -161,7 +166,7 @@ fn walk_root(
             Ok(rd) => rd,
             Err(e) if depth == 0 => {
                 return RootState::Unavailable {
-                    detail: format!("no se puede leer: {e}"),
+                    detail: format!("cannot be read: {e}"),
                 };
             }
             Err(e) => {
@@ -180,7 +185,7 @@ fn walk_root(
             };
             let path = entry.path();
             let Ok(meta) = fs::symlink_metadata(&path) else {
-                partial.get_or_insert_with(|| format!("{}: no se puede leer", path.display()));
+                partial.get_or_insert_with(|| format!("{}: cannot be read", path.display()));
                 continue;
             };
             let identity = Identity::from_metadata(&meta);
@@ -275,7 +280,9 @@ fn evaluate(
             });
         }
     }
-    opts.apps.check(&c.apps).map_err(Block::App)?;
+    opts.apps
+        .check(&c.apps)
+        .map_err(|detail| Block::App { detail })?;
     Ok(())
 }
 

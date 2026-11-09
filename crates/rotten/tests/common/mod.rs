@@ -17,7 +17,7 @@ use std::time::SystemTime;
 
 use assert_cmd::Command;
 use ra_catalog::fixture::{Entry, Link, materialize};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 
 pub struct Fx {
     _tmp: tempfile::TempDir,
@@ -82,18 +82,31 @@ pub fn fixture() -> Fx {
 
 impl Fx {
     pub fn cmd(&self) -> Command {
+        self.cmd_lang("en_US.UTF-8")
+    }
+
+    /// El binario con `LANG` fijado (y sin `LC_ALL` ni `LC_MESSAGES`, que
+    /// tienen prioridad).
+    pub fn cmd_lang(&self, lang: &str) -> Command {
         let mut c = Command::cargo_bin("rotten").expect("binario rotten");
         c.env("ROTTEN_HOME", &self.home)
             .env("ROTTEN_TRASH_DIR", &self.trash)
             .env_remove("ROTTEN_STATE_DIR")
-            .env("LANG", "en_US.UTF-8");
+            .env_remove("LC_ALL")
+            .env_remove("LC_MESSAGES")
+            .env("LANG", lang);
         c
     }
 
     /// Ejecuta y devuelve (código, JSON de stdout). El documento se valida
     /// siempre contra su esquema: ninguna prueba ve un JSON que no valide.
     pub fn run(&self, args: &[&str]) -> (i32, Value) {
-        let out = self.cmd().args(args).output().expect("ejecutar");
+        self.run_lang("en_US.UTF-8", args)
+    }
+
+    /// Como [`Fx::run`], con `LANG` fijado.
+    pub fn run_lang(&self, lang: &str, args: &[&str]) -> (i32, Value) {
+        let out = self.cmd_lang(lang).args(args).output().expect("ejecutar");
         let code = out.status.code().expect("código");
         let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
             panic!(
@@ -223,4 +236,72 @@ pub fn validate(doc: &Value) -> Result<(), Vec<String>> {
         }
         _ => errors,
     })
+}
+
+/// Claves cuyo valor cambia en cada ejecución o depende de la máquina.
+pub const VOLATILE: &[&str] = &[
+    "created_at",
+    "started_at",
+    "finished_at",
+    "plan_id",
+    "plan_hash",
+    "op_id",
+    "undo_of",
+    "digest",
+    "newest_mtime",
+    "dev",
+    "ino",
+    "mtime",
+    "mtime_nsec",
+    "ctime",
+    "ctime_nsec",
+    "parent_mode",
+    "macos_version",
+    "arch",
+    "running_apps",
+    // Cifras del volumen de la máquina; en un sandbox, además, `statfs` sale
+    // redondeado y la capacidad disponible no se conoce (`null`).
+    "volume",
+];
+
+/// Oculta lo que no es estable: rutas del fixture, fechas, IDs, hashes,
+/// identidades de fichero y datos de la máquina. El tamaño de las carpetas
+/// en `identity.size` depende del sistema de ficheros y también se oculta.
+pub fn redact(fx: &Fx, v: &Value) -> Value {
+    redact_in(fx, v, None)
+}
+
+fn redact_in(fx: &Fx, v: &Value, key: Option<&str>) -> Value {
+    if let Some(k) = key
+        && VOLATILE.contains(&k)
+        && !v.is_null()
+    {
+        return json!(format!("[{k}]"));
+    }
+    match v {
+        Value::String(s) => {
+            let home = fx.home.to_str().expect("ruta UTF-8");
+            let trash = fx.trash.to_str().expect("ruta UTF-8");
+            json!(s.replace(trash, "[TRASH]").replace(home, "[HOME]"))
+        }
+        Value::Array(a) => Value::Array(a.iter().map(|x| redact_in(fx, x, None)).collect()),
+        Value::Object(m) => {
+            let mut out = Map::new();
+            for (k, x) in m {
+                let mut r = redact_in(fx, x, Some(k));
+                if k == "identity"
+                    && let Value::Object(id) = &mut r
+                {
+                    id.insert("size".into(), json!("[size]"));
+                }
+                out.insert(k.clone(), r);
+            }
+            // La versión del binario en `doctor`.
+            if key == Some("report") && out.contains_key("catalog_version") {
+                out.insert("version".into(), json!("[version]"));
+            }
+            Value::Object(out)
+        }
+        _ => v.clone(),
+    }
 }

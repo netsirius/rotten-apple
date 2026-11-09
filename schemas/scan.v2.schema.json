@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/scan.v2.schema.json",
+  "title": "rotten scan --json (schema_version 2)",
+  "description": "Resumen del escaneo por categoría (RF-PAN-02, RF-PAN-03), con tamaños honestos (RF-SEG-12, RF-PAN-04) y el estado del volumen (RF-PAN-01). O el documento de error común.",
+  "oneOf": [
+    { "$ref": "#/$defs/report" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "path": { "type": "string", "minLength": 1 },
+    "scan_status": { "enum": ["complete", "partial", "unavailable"] },
+    "report": {
+      "type": "object",
+      "required": ["schema_version", "command", "scan_status", "catalog_version", "categories", "config", "volume", "home"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "scan" },
+        "scan_status": { "$ref": "#/$defs/scan_status" },
+        "catalog_version": { "type": "string" },
+        "categories": { "type": "array", "items": { "$ref": "#/$defs/category" } },
+        "config": { "enum": ["missing", "ok", "corrupt"] },
+        "volume": {
+          "description": "Estado del volumen de la carpeta personal; null si no se pudo leer (con un aviso en warnings).",
+          "oneOf": [{ "$ref": "#/$defs/volume" }, { "type": "null" }]
+        },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "home": { "$ref": "#/$defs/path" }
+      }
+    },
+    "volume": {
+      "type": "object",
+      "required": ["capacity_bytes", "used_bytes", "free_bytes", "purgeable_bytes", "available_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "capacity_bytes": { "$ref": "#/$defs/count" },
+        "used_bytes": { "description": "capacity_bytes − free_bytes: incluye lo purgable.", "$ref": "#/$defs/count" },
+        "free_bytes": { "description": "Libre sin contar lo purgable (statfs), como «libre» en diskutil.", "$ref": "#/$defs/count" },
+        "purgeable_bytes": {
+          "description": "available_bytes − free_bytes: lo que macOS puede liberar por su cuenta. null si no se conoce available_bytes.",
+          "oneOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }]
+        },
+        "available_bytes": {
+          "description": "Disponible para uso importante, la cifra de Finder (libre más purgable). null si el sistema no la da o es menor que free_bytes.",
+          "oneOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }]
+        }
+      }
+    },
+    "category": {
+      "type": "object",
+      "required": [
+        "id", "title_es", "title_en", "scan_status", "items", "bytes_allocated",
+        "preselected_items", "preselected_bytes", "reclaimable_bytes", "preselected_reclaimable_bytes",
+        "cloned_entries", "hardlinked_entries", "skipped_items", "requires"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^CAT-[0-9]{2}$" },
+        "title_es": { "type": "string" },
+        "title_en": { "type": "string" },
+        "scan_status": { "$ref": "#/$defs/scan_status" },
+        "items": { "$ref": "#/$defs/count" },
+        "bytes_allocated": { "description": "st_blocks × 512, cada inode una vez también entre elementos.", "$ref": "#/$defs/count" },
+        "preselected_items": { "$ref": "#/$defs/count" },
+        "preselected_bytes": { "description": "Como bytes_allocated, solo de los preseleccionados.", "$ref": "#/$defs/count" },
+        "reclaimable_bytes": {
+          "description": "Lo que se liberaría al borrar (ATTR_CMNEXT_PRIVATESIZE): no cuenta lo atrapado en clones APFS o instantáneas; una familia de clones completos cuenta una vez si está entera en la selección.",
+          "$ref": "#/$defs/count"
+        },
+        "preselected_reclaimable_bytes": { "description": "Como reclaimable_bytes, solo de los preseleccionados.", "$ref": "#/$defs/count" },
+        "cloned_entries": { "description": "Ficheros que pueden compartir bloques con un clon APFS (con aviso en notes).", "$ref": "#/$defs/count" },
+        "hardlinked_entries": { "description": "Ficheros con más de un enlace duro.", "$ref": "#/$defs/count" },
+        "skipped_items": { "$ref": "#/$defs/count" },
+        "requires": { "type": "array", "items": { "enum": ["fda"] } },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["schema_version", "command", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "scan" },
+        "error": {
+          "type": "object",
+          "required": ["code", "exit_code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "description": "Código estable del error (no depende del idioma).",
+              "type": "string",
+              "pattern": "^[a-z][a-z_]*$"
+            },
+            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
+            "message": { "description": "Mensaje en inglés, igual en cualquier idioma.", "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

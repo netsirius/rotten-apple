@@ -30,8 +30,10 @@ use ra_safety::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const PLAN_SCHEMA: &str = "rotten.plan.v1";
-pub const SCHEMA_VERSION: u32 = 1;
+/// v2: el motivo `app` de un elemento bloqueado lleva su detalle en
+/// `detail` (en v1 la clave `kind` salía repetida).
+pub const PLAN_SCHEMA: &str = "rotten.plan.v2";
+pub const SCHEMA_VERSION: u32 = 2;
 /// Una revisión más antigua no se ejecuta sin regenerarla (README §8).
 pub const PREVIEW_TTL: Duration = Duration::from_secs(30 * 60);
 
@@ -170,11 +172,11 @@ pub struct Plan {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PlanError {
-    #[error("el hash del plan no coincide (esperado {expected}, calculado {actual})")]
+    #[error("the plan hash does not match (expected {expected}, got {actual})")]
     HashMismatch { expected: String, actual: String },
-    #[error("la revisión ha caducado ({age_secs} s): vuelve a generar el plan")]
+    #[error("the review has expired ({age_secs} s): generate the plan again")]
     Expired { age_secs: u64 },
-    #[error("plan no válido: {0}")]
+    #[error("invalid plan: {0}")]
     Invalid(String),
 }
 
@@ -219,7 +221,7 @@ impl Plan {
             }
             if c.fingerprint.is_none() {
                 skipped.push(skip(SkipReason::Blocked(Block::Unreadable {
-                    detail: "sin huella".into(),
+                    detail: "no fingerprint".into(),
                 })));
                 continue;
             }
@@ -334,7 +336,7 @@ impl Plan {
         let p: Plan = serde_json::from_str(text).map_err(|e| PlanError::Invalid(e.to_string()))?;
         if p.schema != PLAN_SCHEMA || p.schema_version != SCHEMA_VERSION {
             return Err(PlanError::Invalid(format!(
-                "esquema {} no soportado",
+                "unsupported schema {}",
                 p.schema
             )));
         }

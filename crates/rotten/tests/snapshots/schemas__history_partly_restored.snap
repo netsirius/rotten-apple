@@ -54,5 +54,5 @@ expression: "redact(fx, &doc)"
       "undo_state": "partly_restored"
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

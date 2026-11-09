@@ -25,7 +25,7 @@ use std::time::{Duration, SystemTime};
 use proptest::prelude::*;
 use ra_catalog::fixture::{Entry, Link, materialize};
 use ra_core::{
-    Action, Core, CoreError, Env, ExecReport, FileKind, Outcome, Selection, SkipCause, TrashBackend,
+    Action, Core, Env, ExecReport, FileKind, Outcome, Selection, SkipCause, TrashBackend,
 };
 
 // ---------------------------------------------------------------------------
@@ -361,8 +361,8 @@ proptest! {
         prop_assume!(matches!(w.core.config_state(), ra_core::ConfigState::Corrupt { .. }));
 
         let before = snapshot(&w.home);
-        prop_assert!(matches!(w.core.plan(&selection(true), Action::Trash), Err(CoreError::Safety(_))));
-        prop_assert!(matches!(w.core.execute(preview.plan, &hash, "test"), Err(CoreError::Safety(_))));
+        prop_assert_eq!(w.core.plan(&selection(true), Action::Trash).err().map(|e| e.code()), Some("config_corrupt"));
+        prop_assert_eq!(w.core.execute(preview.plan, &hash, "test").err().map(|e| e.code()), Some("config_corrupt"));
         prop_assert_eq!(snapshot(&w.home), before);
         prop_assert!(snapshot(&w.trash).is_empty());
         prop_assert!(!w.state.join("journal").exists(), "no se escribe journal");

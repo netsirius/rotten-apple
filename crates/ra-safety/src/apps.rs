@@ -36,9 +36,9 @@ impl RunningApps for BTreeSet<String> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AppBlock {
-    #[error("la app {bundle_id} está abierta")]
+    #[error("the app {bundle_id} is open")]
     Running { bundle_id: String },
-    #[error("no se puede saber si la app está abierta: {detail}")]
+    #[error("cannot tell whether the app is open: {detail}")]
     Unknown { detail: String },
 }
 

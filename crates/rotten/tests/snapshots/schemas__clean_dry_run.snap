@@ -128,8 +128,8 @@ expression: "redact(fx, &doc)"
     "origin": "rules",
     "plan_hash": "[plan_hash]",
     "plan_id": "[plan_id]",
-    "schema": "rotten.plan.v1",
-    "schema_version": 1,
+    "schema": "rotten.plan.v2",
+    "schema_version": 2,
     "skipped": [
       {
         "category": "CAT-03",
@@ -154,7 +154,7 @@ expression: "redact(fx, &doc)"
       "items": 3
     }
   },
-  "preview": {
+  "report": {
     "bytes_done": 0,
     "done": 0,
     "dry_run": true,
@@ -185,5 +185,5 @@ expression: "redact(fx, &doc)"
     "skipped": 0,
     "would": 3
   },
-  "schema_version": 1
+  "schema_version": 2
 }

@@ -52,5 +52,8 @@ min_age_days = 7
 # La carpeta suele llamarse como el bundle ID de su app: si está abierta, se omite.
 app_not_running = ["{bundle_id}"]
 title = { es = "Caché de app", en = "App cache" }
-explain = { es = "Datos que la app vuelve a generar; puede tardar más la primera vez.", en = "Data the app regenerates; it may be slower the first time." }
+explain = { es = "Archivos que una app guarda para ir más rápido (miniaturas, descargas a medias, datos precalculados).", en = "Files an app keeps to work faster (thumbnails, partial downloads, precomputed data)." }
+if_deleted = { es = "La app puede ir más lenta la primera vez mientras los vuelve a crear; no pierdes documentos ni ajustes.", en = "The app may be slower the first time while it rebuilds them; you keep your documents and settings." }
+regenerates = { es = "Sí: la app los vuelve a crear cuando los necesita.", en = "Yes: the app rebuilds them when it needs them." }
+why_risk = { es = "Seguro: es caché por definición y se omite si la app está abierta. Solo se preseleccionan las apps validadas; el resto aparece sin marcar y con más de 7 días.", en = "Safe: it is cache by definition and it is skipped while the app is open. Only validated apps are preselected; the rest is shown unselected and older than 7 days." }
 evidence = "02 §5 CAT-01; 06 I-15"

@@ -5,64 +5,67 @@ expression: "redact(fx, &doc)"
 {
   "command": "undo",
   "dry_run": true,
-  "not_recoverable": [],
-  "plan": [
-    {
-      "bytes": 4096,
-      "from": "[TRASH]/install.log",
-      "identity": {
-        "ctime": "[ctime]",
-        "ctime_nsec": "[ctime_nsec]",
-        "dev": "[dev]",
-        "ino": "[ino]",
-        "kind": "file",
-        "mtime": "[mtime]",
-        "mtime_nsec": "[mtime_nsec]",
-        "size": "[size]"
+  "plan": {
+    "not_recoverable": [],
+    "ready": [
+      {
+        "bytes": 4096,
+        "from": "[TRASH]/install.log",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "file",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 1,
+        "parent_mode": "[parent_mode]",
+        "regenerable": false,
+        "to": "[HOME]/Library/Logs/install.log"
       },
-      "item_id": 1,
-      "parent_mode": "[parent_mode]",
-      "regenerable": false,
-      "to": "[HOME]/Library/Logs/install.log"
-    },
-    {
-      "bytes": 4096,
-      "from": "[TRASH]/old-app",
-      "identity": {
-        "ctime": "[ctime]",
-        "ctime_nsec": "[ctime_nsec]",
-        "dev": "[dev]",
-        "ino": "[ino]",
-        "kind": "dir",
-        "mtime": "[mtime]",
-        "mtime_nsec": "[mtime_nsec]",
-        "size": "[size]"
+      {
+        "bytes": 4096,
+        "from": "[TRASH]/old-app",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 2,
+        "parent_mode": "[parent_mode]",
+        "regenerable": false,
+        "to": "[HOME]/Library/Logs/old-app"
       },
-      "item_id": 2,
-      "parent_mode": "[parent_mode]",
-      "regenerable": false,
-      "to": "[HOME]/Library/Logs/old-app"
-    },
-    {
-      "bytes": 4096,
-      "from": "[TRASH]/com.example.closed.savedState",
-      "identity": {
-        "ctime": "[ctime]",
-        "ctime_nsec": "[ctime_nsec]",
-        "dev": "[dev]",
-        "ino": "[ino]",
-        "kind": "dir",
-        "mtime": "[mtime]",
-        "mtime_nsec": "[mtime_nsec]",
-        "size": "[size]"
-      },
-      "item_id": 3,
-      "parent_mode": "[parent_mode]",
-      "regenerable": true,
-      "to": "[HOME]/Library/Saved Application State/com.example.closed.savedState"
-    }
-  ],
-  "preview": {
+      {
+        "bytes": 4096,
+        "from": "[TRASH]/com.example.closed.savedState",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 3,
+        "parent_mode": "[parent_mode]",
+        "regenerable": true,
+        "to": "[HOME]/Library/Saved Application State/com.example.closed.savedState"
+      }
+    ],
+    "undo_of": "[undo_of]"
+  },
+  "report": {
     "bytes_done": 0,
     "done": 0,
     "dry_run": true,
@@ -93,6 +96,5 @@ expression: "redact(fx, &doc)"
     "skipped": 0,
     "would": 3
   },
-  "schema_version": 1,
-  "undo_of": "[undo_of]"
+  "schema_version": 2
 }

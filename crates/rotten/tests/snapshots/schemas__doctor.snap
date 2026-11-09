@@ -4,7 +4,6 @@ expression: "redact(fx, &doc)"
 ---
 {
   "command": "doctor",
-  "exit_code": 0,
   "report": {
     "arch": "[arch]",
     "catalog_version": "2026.11.0",
@@ -19,11 +18,14 @@ expression: "redact(fx, &doc)"
     "journal_records": 0,
     "macos_version": "[macos_version]",
     "platform_supported": true,
-    "running_apps_probe": "[running_apps_probe]",
+    "running_apps": "[running_apps]",
     "running_as_root": false,
     "state_dir": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple",
-    "trash": "dir:[TRASH]",
+    "trash": {
+      "backend": "dir",
+      "path": "[TRASH]"
+    },
     "version": "[version]"
   },
-  "schema_version": 1
+  "schema_version": 2
 }

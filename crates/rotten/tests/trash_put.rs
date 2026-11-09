@@ -173,8 +173,9 @@ fn paths_outside_home_exit_5_and_touch_nothing() {
         args.push(&bad);
         let (code, doc) = fx.run(&args);
         assert_eq!(code, 5, "dry-run: {dry}: {doc:#}");
+        assert_eq!(doc["error"]["code"], "selection_protected", "{doc:#}");
         let msg = doc["error"]["message"].as_str().expect("mensaje");
-        assert!(msg.contains("fuera de la carpeta personal"), "{msg}");
+        assert!(msg.contains("outside the home folder"), "{msg}");
     }
     assert!(Path::new(&bad).exists());
     assert_eq!(snapshot(&fx.home, &fx.state), before);
@@ -231,7 +232,7 @@ fn dry_run_shows_the_plan_with_its_origin_and_changes_nothing() {
         assert_eq!(i["preselected"], false);
         assert_eq!(i["action"], "trash");
     }
-    assert_eq!(doc["preview"]["would"], 2);
+    assert_eq!(doc["report"]["would"], 2);
     // El plan se puede volver a cargar con su hash.
     ra_core::Plan::from_json(&plan.to_string()).expect("plan válido");
     assert_eq!(snapshot(&fx.home, &fx.state), before);
@@ -282,7 +283,7 @@ fn dry_run_with_an_excluded_path_exits_4() {
     ]);
     assert_eq!(code, 4, "{doc:#}");
     assert_eq!(doc["plan"]["skipped"][0]["reason"]["kind"], "excluded");
-    assert_eq!(doc["preview"]["would"], 1);
+    assert_eq!(doc["report"]["would"], 1);
     assert!(Path::new(&fx.p("Downloads/setup.dmg")).exists());
     assert!(trash_is_empty(&fx));
 }
@@ -377,6 +378,8 @@ fn put_then_undo_leaves_the_tree_as_it_was() {
     let (code, hist) = fx.run(&["history", "--json"]);
     assert_eq!(code, 0);
     assert_eq!(hist["operations"][0]["undo_state"], "restorable");
+    // El historial distingue un `trash put` de una limpieza.
+    assert_eq!(hist["operations"][0]["kind"], "trash_put");
 
     let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
     assert_eq!(code, 0, "{doc:#}");

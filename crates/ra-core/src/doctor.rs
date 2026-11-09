@@ -5,7 +5,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 
-use ra_exec::ExecLock;
+use ra_exec::{ExecLock, TrashBackend};
 use ra_safety::ConfigState;
 use serde::Serialize;
 
@@ -19,6 +19,34 @@ pub enum FdaState {
     Granted,
     Denied,
     Undetermined,
+}
+
+/// ¿Se pueden saber las apps abiertas? (RF-SEG-08: si no, todo lo que
+/// exige una app cerrada se omite.)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum AppsProbe {
+    /// Lista obtenida, con cuántas apps hay abiertas.
+    Ok { count: usize },
+    /// No se pudo obtener la lista.
+    Unavailable { detail: String },
+}
+
+/// Papelera que se usa: la del sistema o una carpeta (`ROTTEN_TRASH_DIR`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "backend", rename_all = "snake_case")]
+pub enum TrashInfo {
+    System,
+    Dir { path: PathBuf },
+}
+
+impl From<&TrashBackend> for TrashInfo {
+    fn from(t: &TrashBackend) -> Self {
+        match t {
+            TrashBackend::System => TrashInfo::System,
+            TrashBackend::Dir(d) => TrashInfo::Dir { path: d.clone() },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,10 +72,10 @@ pub struct DoctorReport {
     /// buscar en la Papelera por falta de permiso (I-2).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub trash_unreadable_ops: Vec<String>,
-    pub trash: String,
+    pub trash: TrashInfo,
     pub exec_lock_free: bool,
     pub full_disk_access: FdaState,
-    pub running_apps_probe: Result<usize, String>,
+    pub running_apps: AppsProbe,
     pub catalog_version: String,
 }
 
@@ -128,14 +156,15 @@ pub(crate) fn run(core: &Core) -> DoctorReport {
         journal_records: records.len(),
         journal_problems: problems,
         trash_unreadable_ops,
-        trash: env.trash.describe(),
+        trash: TrashInfo::from(&env.trash),
         exec_lock_free,
         full_disk_access: fda_preflight(&env.home),
-        running_apps_probe: core
-            .apps
-            .running_bundle_ids()
-            .map(|s| s.len())
-            .map_err(|e| e.to_string()),
+        running_apps: match core.apps.running_bundle_ids() {
+            Ok(ids) => AppsProbe::Ok { count: ids.len() },
+            Err(e) => AppsProbe::Unavailable {
+                detail: e.to_string(),
+            },
+        },
         catalog_version: core.catalog().catalog_version.clone(),
     }
 }

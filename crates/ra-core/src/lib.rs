@@ -10,62 +10,33 @@
 
 mod doctor;
 mod env;
+mod error;
 mod scan;
 mod selection;
 
 use std::path::Path;
 use std::time::SystemTime;
 
-pub use doctor::{DoctorReport, FdaState};
+pub use doctor::{AppsProbe, DoctorReport, FdaState, TrashInfo};
 pub use env::{BUNDLE_ID, Env, EnvError};
-pub use ra_catalog::{Catalog, Localized, Risk};
-pub use ra_exec::{ExecReport, ItemReport, Outcome, SkipCause, TrashBackend};
-pub use ra_history::{OpSummary, UndoPlan, UndoState};
+pub use error::{CoreError, ErrorClass};
+pub use ra_catalog::{Block, Catalog, Localized, Risk};
+pub use ra_exec::{ExecReport, InUseDetail, ItemReport, Outcome, SkipCause, TrashBackend};
+pub use ra_history::{
+    HistoryKind, NotRecoverable, NotRecoverableReason, OpSummary, UndoError, UndoPlan, UndoState,
+};
 pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};
-pub use ra_safety::{ConfigState, Exclusion, FileKind, Origin, RunningApps, SystemApps};
+pub use ra_safety::apps::AppBlock;
+pub use ra_safety::{
+    ConfigState, Exclusion, ExclusionMatch, FileKind, FlagViolation, Origin, ProtectionReason,
+    RunningApps, SystemApps,
+};
 pub use scan::{CategorySummary, ScanReport, ScanStatus, VolumeState};
 
 use ra_exec::{ExecContext, ExecLock};
 use ra_history::HistoryPaths;
 use ra_plan::PlanInputs;
 use ra_safety::{AppProbe, Config, Exclusions, ProtectedList};
-
-/// Errores de la fachada, ya clasificados para los códigos de salida.
-#[derive(Debug, thiserror::Error)]
-pub enum CoreError {
-    #[error("{0}")]
-    Usage(String),
-    #[error("{0}")]
-    Permission(String),
-    /// Abortado por seguridad o plan cambiado (código 5).
-    #[error("{0}")]
-    Safety(String),
-    /// Otro ejecutor activo (código 6).
-    #[error("otro proceso de Rotten Apple está ejecutando una operación")]
-    Locked,
-    #[error("{0}")]
-    NotFound(String),
-    #[error("{0}")]
-    Other(String),
-}
-
-impl From<ra_exec::ExecError> for CoreError {
-    fn from(e: ra_exec::ExecError) -> Self {
-        CoreError::Other(e.to_string())
-    }
-}
-
-impl From<ra_history::JournalError> for CoreError {
-    fn from(e: ra_history::JournalError) -> Self {
-        CoreError::Other(e.to_string())
-    }
-}
-
-impl From<std::io::Error> for CoreError {
-    fn from(e: std::io::Error) -> Self {
-        CoreError::Other(e.to_string())
-    }
-}
 
 /// Plan con su simulación (lo que muestra la revisión).
 #[derive(Debug, Clone)]
@@ -126,11 +97,16 @@ impl Core {
 
     /// Exclusiones válidas o aborto por seguridad (RF-SEG-05).
     fn exclusions_or_abort(&self) -> Result<Exclusions, CoreError> {
-        self.config_state().exclusions(&self.env.home).map_err(|e| {
-            CoreError::Safety(format!(
-                "{e}. No se ejecuta ninguna acción hasta corregirlo."
-            ))
-        })
+        let state = self.config_state();
+        if let ConfigState::Corrupt { path, reason } = state {
+            return Err(CoreError::ConfigCorrupt { path, reason });
+        }
+        state
+            .exclusions(&self.env.home)
+            .map_err(|reason| CoreError::ConfigCorrupt {
+                path: self.env.config_path.clone(),
+                reason,
+            })
     }
 
     fn catalog_for(&self, categories: Option<&[String]>) -> Result<Catalog, CoreError> {
@@ -139,7 +115,7 @@ impl Core {
         };
         for c in cats {
             if self.catalog.category(&c.to_uppercase()).is_none() {
-                return Err(CoreError::Usage(format!("categoría desconocida: {c}")));
+                return Err(CoreError::UnknownCategory(c.clone()));
             }
         }
         Ok(self
@@ -220,15 +196,10 @@ impl Core {
         by: &str,
     ) -> Result<ExecReport, CoreError> {
         if plan.home() != self.env.home {
-            return Err(CoreError::Safety(format!(
-                "el plan es de otra carpeta personal ({})",
-                plan.home().display()
-            )));
+            return Err(CoreError::WrongHome(plan.home().to_path_buf()));
         }
         let origin = plan.origin();
-        let approved = plan
-            .approve(reviewed_hash, SystemTime::now())
-            .map_err(|e| CoreError::Safety(e.to_string()))?;
+        let approved = plan.approve(reviewed_hash, SystemTime::now())?;
         // La configuración se vuelve a validar justo antes de actuar.
         let exclusions = self.exclusions_or_abort()?;
         let lock = self.lock()?;
@@ -267,11 +238,9 @@ impl Core {
                 .into_iter()
                 .find(|o| matches!(o.undo_state, UndoState::Restorable | UndoState::Partial))
                 .map(|o| o.op_id)
-                .ok_or_else(|| {
-                    CoreError::NotFound("no hay ninguna operación que deshacer".into())
-                })?,
+                .ok_or(CoreError::NothingToUndo)?,
         };
-        let plan = ra_history::prepare_undo(&records, &op, items).map_err(CoreError::NotFound)?;
+        let plan = ra_history::prepare_undo(&records, &op, items)?;
         let dry_run = ra_exec::dry_run_undo(&plan);
         Ok(UndoPreview { plan, dry_run })
     }
@@ -327,10 +296,7 @@ impl Core {
         match self.config_state() {
             ConfigState::Missing => Ok(Config::default()),
             ConfigState::Loaded(c) => Ok(c),
-            ConfigState::Corrupt { path, reason } => Err(CoreError::Safety(format!(
-                "{} está corrupto ({reason}); corrígelo antes de cambiar las exclusiones",
-                path.display()
-            ))),
+            ConfigState::Corrupt { path, reason } => Err(CoreError::ConfigCorrupt { path, reason }),
         }
     }
 
@@ -346,7 +312,7 @@ impl Core {
         add: bool,
         dry_run: bool,
     ) -> Result<(Exclusion, bool), CoreError> {
-        let ex = Exclusion::parse(raw).map_err(CoreError::Usage)?;
+        let ex = Exclusion::parse(raw).map_err(CoreError::InvalidExclusion)?;
         let mut config = self.editable_config()?;
         let changed = if add {
             config.add(&ex)
@@ -355,7 +321,7 @@ impl Core {
         };
         if changed && !dry_run {
             // Se valida contra la carpeta personal antes de guardar.
-            Exclusions::compile(&config, &self.env.home).map_err(CoreError::Usage)?;
+            Exclusions::compile(&config, &self.env.home).map_err(CoreError::InvalidExclusion)?;
             config.save(&self.env.config_path)?;
         }
         Ok((ex, changed))

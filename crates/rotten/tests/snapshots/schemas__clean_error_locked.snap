@@ -5,8 +5,9 @@ expression: "redact(fx, &doc)"
 {
   "command": "clean",
   "error": {
+    "code": "locked",
     "exit_code": 6,
-    "message": "otro proceso de Rotten Apple está ejecutando una operación"
+    "message": "another Rotten Apple process is running an operation"
   },
-  "schema_version": 1
+  "schema_version": 2
 }
