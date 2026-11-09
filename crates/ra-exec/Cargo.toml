@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+blake3.workspace = true
 objc2.workspace = true
 objc2-foundation.workspace = true
 ra-history.workspace = true
@@ -16,11 +17,11 @@ ra-platform.workspace = true
 ra-safety.workspace = true
 rustix.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 ra-catalog.workspace = true
-serde_json.workspace = true
 tempfile.workspace = true
 
 [lints]

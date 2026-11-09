@@ -319,6 +319,50 @@ fn free_everything() {
     insta::assert_json_snapshot!("free_error_not_freeable", doc);
 }
 
+/// `rotten trash` y `rotten trash empty` (T-12).
+#[test]
+fn trash_list_and_empty() {
+    let fx = fixture();
+    check(&fx, "trash_list_nothing", &["trash", "--json"], 0);
+    check(
+        &fx,
+        "trash_empty_nothing",
+        &["trash", "empty", "--yes", "--json"],
+        0,
+    );
+    let (code, doc) = fx.run(&["clean", "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    fs::write(fx.trash.join("de-otra-app.txt"), b"ajeno").expect("write");
+    check(&fx, "trash_list", &["trash", "--json"], 0);
+    fs::set_permissions(&fx.trash, fs::Permissions::from_mode(0o000)).expect("chmod");
+    let list = fx.run(&["trash", "--json"]);
+    let empty = fx.run(&["trash", "empty", "--yes", "--json"]);
+    fs::set_permissions(&fx.trash, fs::Permissions::from_mode(0o755)).expect("chmod");
+    assert_eq!(list.0, 0, "{:#}", list.1);
+    insta::assert_json_snapshot!("trash_list_unreadable", redact(&fx, &list.1));
+    assert_eq!(empty.0, 3, "{:#}", empty.1);
+    insta::assert_json_snapshot!("trash_empty_error_unreadable", redact(&fx, &empty.1));
+    check(
+        &fx,
+        "trash_empty_dry_run",
+        &["trash", "empty", "--dry-run", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "trash_empty_error_no_yes",
+        &["trash", "empty", "--json"],
+        2,
+    );
+    check(
+        &fx,
+        "trash_empty_executed",
+        &["trash", "empty", "--yes", "--json"],
+        0,
+    );
+    check(&fx, "history_trash_emptied", &["history", "--json"], 0);
+}
+
 #[test]
 fn doctor() {
     let fx = fixture();
@@ -405,6 +449,10 @@ fn sample_documents() -> Vec<Value> {
     docs.push(fx.run(&["free", &op, "--dry-run", "--json"]).1);
     docs.push(fx.run(&["free", &op, "--yes", "--json"]).1);
     docs.push(fx.run(&["free", "no-such-op", "--json"]).1);
+    fs::write(fx.trash.join("de-otra-app.txt"), b"ajeno").expect("write");
+    docs.push(fx.run(&["trash", "--json"]).1);
+    docs.push(fx.run(&["trash", "empty", "--dry-run", "--json"]).1);
+    docs.push(fx.run(&["trash", "empty", "--yes", "--json"]).1);
     docs.push(fx.run(&["history", "--json"]).1);
     docs
 }

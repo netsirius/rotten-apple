@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ra_exec::{ExecContext, ExecReport};
 use ra_history::{FreePlan, Record};
@@ -66,12 +66,13 @@ pub struct FreeResult {
 
 /// Una carpeta por volumen: la de la Papelera del primer elemento de cada
 /// volumen.
-fn volumes(plan: &FreePlan) -> BTreeMap<u64, PathBuf> {
+pub(crate) fn volume_dirs<'a>(
+    items: impl IntoIterator<Item = (u64, &'a Path)>,
+) -> BTreeMap<u64, PathBuf> {
     let mut out = BTreeMap::new();
-    for it in &plan.ready {
-        if let Some(parent) = it.path.parent() {
-            out.entry(it.identity.dev)
-                .or_insert_with(|| parent.to_path_buf());
+    for (dev, path) in items {
+        if let Some(parent) = path.parent() {
+            out.entry(dev).or_insert_with(|| parent.to_path_buf());
         }
     }
     out
@@ -86,6 +87,67 @@ fn free_space(dirs: &BTreeMap<u64, PathBuf>) -> BTreeMap<u64, Option<u64>> {
             )
         })
         .collect()
+}
+
+/// Ejecuta `exec` midiendo con `statfs` el espacio libre de cada volumen de
+/// `dirs` antes y después (RF-SEG-12 e, M-5).
+pub(crate) fn measured(
+    dirs: BTreeMap<u64, PathBuf>,
+    exec: impl FnOnce() -> Result<ExecReport, CoreError>,
+) -> Result<FreeResult, CoreError> {
+    let before = free_space(&dirs);
+    let report = exec()?;
+    let after = free_space(&dirs);
+    let mut measured = Some(0i64);
+    let mut deltas = Vec::new();
+    for (dev, path) in dirs {
+        match (
+            before.get(&dev).copied().flatten(),
+            after.get(&dev).copied().flatten(),
+        ) {
+            (Some(b), Some(a)) => {
+                let freed =
+                    i64::try_from(a).unwrap_or(i64::MAX) - i64::try_from(b).unwrap_or(i64::MAX);
+                measured = measured.map(|m| m + freed);
+                deltas.push(VolumeDelta {
+                    path,
+                    free_before: b,
+                    free_after: a,
+                    freed_bytes: freed,
+                });
+            }
+            _ => measured = None,
+        }
+    }
+    let space = SpaceReport {
+        estimated_bytes: report.bytes_done,
+        measured_bytes: measured,
+        volumes: deltas,
+    };
+    Ok(FreeResult { report, space })
+}
+
+/// El contexto del ejecutor para borrar de la Papelera, con el cerrojo
+/// tomado y la recuperación hecha.
+pub(crate) struct Ctx {
+    pub(crate) lock: ra_exec::ExecLock,
+    pub(crate) protected: ra_safety::ProtectedList,
+    pub(crate) exclusions: Exclusions,
+    pub(crate) apps: AppProbe,
+    pub(crate) history: ra_history::HistoryPaths,
+}
+
+impl Ctx {
+    pub(crate) fn exec<'a>(&'a self, core: &'a Core, by: &'a str) -> ExecContext<'a> {
+        ExecContext {
+            history: &self.history,
+            protected: &self.protected,
+            exclusions: &self.exclusions,
+            apps: &self.apps,
+            trash: &core.env.trash,
+            by,
+        }
+    }
 }
 
 impl Core {
@@ -136,22 +198,9 @@ impl Core {
         reviewed_hash: &str,
         by: &str,
     ) -> Result<FreeResult, CoreError> {
-        let lock = self.lock()?;
-        let protected = self.protected();
-        let exclusions =
-            Exclusions::compile(&Config::default(), &self.env.home).map_err(CoreError::Other)?;
-        let apps = AppProbe::snapshot(self.apps.as_ref());
-        let history = self.history_paths();
-        let ctx = ExecContext {
-            history: &history,
-            protected: &protected,
-            exclusions: &exclusions,
-            apps: &apps,
-            trash: &self.env.trash,
-            by,
-        };
-        ra_exec::recover_incomplete(&ctx, &lock)?;
-        let (records, _) = ra_history::read_journal(&history)?;
+        let ctx = self.trash_ctx(by)?;
+        let exec = ctx.exec(self, by);
+        let (records, _) = ra_history::read_journal(&ctx.history)?;
         let fresh = self.free_plan(&records, &plan.ops)?;
         if fresh.plan_hash != reviewed_hash {
             return Err(CoreError::Plan(PlanError::HashMismatch {
@@ -160,36 +209,29 @@ impl Core {
             }));
         }
         Self::trash_readable(&fresh)?;
-        let dirs = volumes(&fresh);
-        let before = free_space(&dirs);
-        let report = ra_exec::execute_free(&fresh, &ctx, &lock)?;
-        let after = free_space(&dirs);
-        let mut measured = Some(0i64);
-        let mut deltas = Vec::new();
-        for (dev, path) in dirs {
-            match (
-                before.get(&dev).copied().flatten(),
-                after.get(&dev).copied().flatten(),
-            ) {
-                (Some(b), Some(a)) => {
-                    let freed =
-                        i64::try_from(a).unwrap_or(i64::MAX) - i64::try_from(b).unwrap_or(i64::MAX);
-                    measured = measured.map(|m| m + freed);
-                    deltas.push(VolumeDelta {
-                        path,
-                        free_before: b,
-                        free_after: a,
-                        freed_bytes: freed,
-                    });
-                }
-                _ => measured = None,
-            }
-        }
-        let space = SpaceReport {
-            estimated_bytes: report.bytes_done,
-            measured_bytes: measured,
-            volumes: deltas,
+        let dirs = volume_dirs(
+            fresh
+                .ready
+                .iter()
+                .map(|it| (it.identity.dev, it.path.as_path())),
+        );
+        measured(dirs, || {
+            Ok(ra_exec::execute_free(&fresh, &exec, &ctx.lock)?)
+        })
+    }
+
+    /// Toma el cerrojo, prepara el contexto del ejecutor y completa
+    /// cualquier operación interrumpida antes de borrar nada.
+    pub(crate) fn trash_ctx(&self, by: &str) -> Result<Ctx, CoreError> {
+        let ctx = Ctx {
+            lock: self.lock()?,
+            protected: self.protected(),
+            exclusions: Exclusions::compile(&Config::default(), &self.env.home)
+                .map_err(CoreError::Other)?,
+            apps: AppProbe::snapshot(self.apps.as_ref()),
+            history: self.history_paths(),
         };
-        Ok(FreeResult { report, space })
+        ra_exec::recover_incomplete(&ctx.exec(self, by), &ctx.lock)?;
+        Ok(ctx)
     }
 }

@@ -221,6 +221,7 @@ pub fn core_error(i: &I18n, e: &CoreError, home: &Path) -> String {
         }
         E::Free(FreeError::NotFreeable { op }) => tr!(i, "error-not-freeable", op = op.as_str()),
         E::TrashUnreadable { path: p } => tr!(i, "error-trash-unreadable", path = path(p, home)),
+        E::EmptyUnreadable { path: p } => tr!(i, "error-empty-unreadable", path = path(p, home)),
     }
 }
 

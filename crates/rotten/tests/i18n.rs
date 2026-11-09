@@ -161,6 +161,21 @@ fn scenario<T>(mut run: impl FnMut(&Fx, &[&str]) -> T) -> Vec<(String, T)> {
     step(&fx, &["free", &op, "--yes"]);
     step(&fx, &["history"]);
 
+    // La Papelera entera (T-12): lo de Rotten Apple y algo ajeno.
+    step(&fx, &["clean", "--yes"]);
+    fs::write(fx.trash.join("de-otra-app.txt"), b"ajeno").expect("write");
+    step(&fx, &["trash"]);
+    step(&fx, &["trash", "empty", "--dry-run"]);
+    step(&fx, &["trash", "empty"]);
+    fs::set_permissions(&fx.trash, fs::Permissions::from_mode(0o000)).expect("chmod");
+    step(&fx, &["trash"]);
+    step(&fx, &["trash", "empty", "--yes"]);
+    fs::set_permissions(&fx.trash, fs::Permissions::from_mode(0o755)).expect("chmod");
+    step(&fx, &["trash", "empty", "--yes"]);
+    step(&fx, &["trash", "empty", "--yes"]);
+    step(&fx, &["trash"]);
+    step(&fx, &["history"]);
+
     // Configuración corrupta.
     fs::write(fx.state.join("config.toml"), "[exclusions\npaths = [").expect("write");
     step(&fx, &["scan"]);
@@ -339,6 +354,7 @@ fn help_in_both_languages() {
         &["free"],
         &["trash"],
         &["trash", "put"],
+        &["trash", "empty"],
     ];
     for cmd in commands {
         for (lang, usage, options) in [(ES, "Uso:", "Opciones:"), (EN, "Usage:", "Options:")] {

@@ -2,10 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/netsirius/rotten-apple/schemas/trash.v2.schema.json",
   "title": "rotten trash --json (schema_version 2)",
-  "description": "rotten trash put <ruta…> (T-10): plan por selección explícita con su simulación (--dry-run) o con el informe de ejecución. O el documento de error común. Los $defs del plan y de los informes son copia de clean.v1.",
+  "description": "rotten trash put <ruta…> (T-10): plan por selección explícita con su simulación (--dry-run) o con el informe de ejecución. rotten trash (T-12): lo que hay en la Papelera por volumen (action «list»). rotten trash empty (T-12): plan para vaciarla con su simulación o con el informe y el espacio medido (action «empty»). O el documento de error común. Los $defs del plan y de los informes son copia de clean.v1; los de «space» e «identity», de free.v2.",
   "oneOf": [
     { "$ref": "#/$defs/dry_run" },
     { "$ref": "#/$defs/executed" },
+    { "$ref": "#/$defs/list" },
+    { "$ref": "#/$defs/empty_dry_run" },
+    { "$ref": "#/$defs/empty_executed" },
     { "$ref": "#/$defs/error" }
   ],
   "$defs": {
@@ -50,6 +53,122 @@
         "report": { "$ref": "#/$defs/exec_report" }
       }
     },
+
+    "list": {
+      "description": "rotten trash: una entrada por carpeta de la Papelera (~/.Trash y /Volumes/<X>/.Trashes/<uid>, o solo ROTTEN_TRASH_DIR). Sin Acceso total al disco, readable es false y solo se da lo que anotó el journal.",
+      "type": "object",
+      "required": ["schema_version", "command", "action", "readable", "volumes"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "trash" },
+        "action": { "const": "list" },
+        "readable": { "description": "Todas las carpetas se han podido leer.", "type": "boolean" },
+        "volumes": { "type": "array", "items": { "$ref": "#/$defs/trash_volume" } }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "required": ["items", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "items": { "$ref": "#/$defs/count" },
+        "bytes": { "description": "Bytes asignados (st_blocks × 512, enlaces duros una vez por entrada).", "$ref": "#/$defs/count" }
+      }
+    },
+    "trash_volume": {
+      "type": "object",
+      "required": ["path", "readable", "total", "by_operation", "others"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "readable": { "type": "boolean" },
+        "total": {
+          "description": "Entradas de primer nivel (sin .DS_Store) y su tamaño; null si no se puede leer.",
+          "anyOf": [{ "$ref": "#/$defs/totals" }, { "type": "null" }]
+        },
+        "by_operation": {
+          "description": "Lo que mandó Rotten Apple, por operación: con la carpeta legible, lo que sigue allí (reconocido por inode) y medido; sin ella, lo que dice el journal.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["op_id", "items", "bytes"],
+            "additionalProperties": false,
+            "properties": {
+              "op_id": { "type": "string", "minLength": 1 },
+              "items": { "$ref": "#/$defs/count" },
+              "bytes": { "$ref": "#/$defs/count" }
+            }
+          }
+        },
+        "others": {
+          "description": "Lo demás; null si no se puede leer.",
+          "anyOf": [{ "$ref": "#/$defs/totals" }, { "type": "null" }]
+        }
+      }
+    },
+
+    "empty_dry_run": {
+      "type": "object",
+      "required": ["schema_version", "command", "action", "dry_run", "plan", "report"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "trash" },
+        "action": { "const": "empty" },
+        "dry_run": { "const": true },
+        "plan": { "$ref": "#/$defs/empty_plan" },
+        "report": { "$ref": "#/$defs/exec_report" }
+      }
+    },
+    "empty_executed": {
+      "type": "object",
+      "required": ["schema_version", "command", "action", "dry_run", "plan", "report", "space"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "trash" },
+        "action": { "const": "empty" },
+        "dry_run": { "const": false },
+        "plan": { "$ref": "#/$defs/empty_plan" },
+        "report": { "$ref": "#/$defs/exec_report" },
+        "space": { "$ref": "#/$defs/space" }
+      }
+    },
+    "empty_plan": {
+      "description": "Plan de rotten trash empty: cada entrada de primer nivel con su identidad leída en la Papelera. Al ejecutar, el hash debe ser el revisado y cada entrada debe seguir siendo idéntica (ctime incluido); lo que llegó después no está en el plan.",
+      "type": "object",
+      "required": ["trash_dirs", "items", "totals", "plan_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "trash_dirs": { "type": "array", "items": { "$ref": "#/$defs/path" } },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/empty_item" } },
+        "totals": { "$ref": "#/$defs/totals" },
+        "plan_hash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "empty_item": {
+      "type": "object",
+      "required": ["item_id", "path", "identity", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "item_id": { "type": "integer", "minimum": 1 },
+        "path": { "$ref": "#/$defs/path" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "bytes": { "$ref": "#/$defs/count" },
+        "of": {
+          "description": "Operación y elemento de Rotten Apple que la mandaron a la Papelera, si consta en el journal; su operación pasa a irreversible.",
+          "type": "object",
+          "required": ["op", "item"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "type": "string", "minLength": 1 },
+            "item": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "space": {"description": "RF-SEG-12 (e): lo estimado (suma de lo anotado de lo borrado) frente a lo medido con statfs antes y después, por volumen. Los enlaces duros, los clones APFS y las instantáneas hacen que se libere menos.", "type": "object", "required": ["estimated_bytes", "measured_bytes", "volumes"], "additionalProperties": false, "properties": {"estimated_bytes": {"$ref": "#/$defs/count"}, "measured_bytes": {"description": "Suma de freed_bytes; null si algún volumen no se pudo medir. Puede ser negativo si otra cosa escribió en el disco a la vez.", "type": ["integer", "null"]}, "volumes": {"type": "array", "items": {"type": "object", "required": ["path", "free_before", "free_after", "freed_bytes"], "additionalProperties": false, "properties": {"path": {"$ref": "#/$defs/path"}, "free_before": {"$ref": "#/$defs/count"}, "free_after": {"$ref": "#/$defs/count"}, "freed_bytes": {"$ref": "#/$defs/int"}}}}}},
 
     "plan": {
       "description": "Documento de plan (rotten.plan.v2) tal como lo serializa ra-plan; su hash se verifica al ejecutar.",

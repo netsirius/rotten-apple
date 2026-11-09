@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod doctor;
+mod empty;
 mod env;
 mod error;
 mod free;
@@ -19,13 +20,16 @@ use std::path::Path;
 use std::time::SystemTime;
 
 pub use doctor::{AppsProbe, DoctorReport, FdaState, TrashInfo};
+pub use empty::{EmptyPreview, OpInTrash, TrashView, TrashVolume};
 pub use env::{BUNDLE_ID, Env, EnvError};
 pub use error::{CoreError, ErrorClass};
 pub use free::{FreePreview, FreeResult, SpaceReport, VolumeDelta};
 pub use ra_catalog::{Block, Catalog, Localized, Risk};
-pub use ra_exec::{ExecReport, InUseDetail, ItemReport, Outcome, SkipCause, TrashBackend};
+pub use ra_exec::{
+    EmptyItem, EmptyPlan, ExecReport, InUseDetail, ItemReport, Outcome, SkipCause, TrashBackend,
+};
 pub use ra_history::{
-    FreeError, FreeItem, FreePlan, HistoryKind, ItemRef, NotFreeable, NotRecoverable,
+    FreeError, FreeItem, FreePlan, FreeTotals, HistoryKind, ItemRef, NotFreeable, NotRecoverable,
     NotRecoverableReason, OpSummary, UndoError, UndoPlan, UndoState,
 };
 pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};

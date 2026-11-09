@@ -85,6 +85,11 @@ pub enum CoreError {
     /// adivina ni se borra nada (CU-08 A1).
     #[error("cannot read the Trash ({}): grant Full Disk Access to your terminal and run `rotten doctor`. Nothing is deleted.", path.display())]
     TrashUnreadable { path: PathBuf },
+    /// `rotten trash empty` sin poder leer alguna carpeta de la Papelera:
+    /// no se vacía a medias; lo de Rotten Apple se puede liberar con
+    /// `rotten free`, que no necesita listar la Papelera.
+    #[error("cannot read the Trash ({}): grant Full Disk Access to your terminal and run `rotten doctor`. Nothing is deleted. To free only what Rotten Apple sent there, use `rotten free <op-id>`.", path.display())]
+    EmptyUnreadable { path: PathBuf },
 }
 
 impl CoreError {
@@ -96,7 +101,9 @@ impl CoreError {
             | E::InvalidExclusion(_)
             | E::NoPaths
             | E::RelativePath(_) => ErrorClass::Usage,
-            E::Permission(_) | E::TrashUnreadable { .. } => ErrorClass::Permission,
+            E::Permission(_) | E::TrashUnreadable { .. } | E::EmptyUnreadable { .. } => {
+                ErrorClass::Permission
+            }
             E::Free(FreeError::NoOperations) => ErrorClass::Usage,
             E::Safety(_)
             | E::ConfigCorrupt { .. }
@@ -142,7 +149,7 @@ impl CoreError {
             E::Free(FreeError::NoOperations) => "no_operations",
             E::Free(FreeError::UnknownOperation { .. }) => "unknown_operation",
             E::Free(FreeError::NotFreeable { .. }) => "not_freeable",
-            E::TrashUnreadable { .. } => "trash_unreadable",
+            E::TrashUnreadable { .. } | E::EmptyUnreadable { .. } => "trash_unreadable",
         }
     }
 }

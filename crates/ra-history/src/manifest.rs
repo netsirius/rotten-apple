@@ -112,6 +112,8 @@ pub enum HistoryKind {
     Undo,
     /// «Liberar ahora» (`rotten free`): borrado permanente de la Papelera.
     Free,
+    /// Vaciar la Papelera (`rotten trash empty`).
+    TrashEmpty,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,6 +212,7 @@ impl Manifest {
         let kind = match self.kind {
             OpKind::Undo => HistoryKind::Undo,
             OpKind::Free => HistoryKind::Free,
+            OpKind::TrashEmpty => HistoryKind::TrashEmpty,
             OpKind::Clean
                 if self
                     .items
@@ -644,6 +647,60 @@ impl FreePlan {
         let text = serde_json::to_string(&body).unwrap_or_default();
         format!("blake3:{}", blake3::hash(text.as_bytes()).to_hex())
     }
+}
+
+/// Elemento que, según el journal, una operación dejó en la Papelera y
+/// sigue allí (estado `Trashed`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashedItem {
+    pub of: ItemRef,
+    /// Dónde quedó en la Papelera.
+    pub path: PathBuf,
+    pub original_path: PathBuf,
+    pub identity: Identity,
+    /// Tamaño anotado en el journal.
+    pub bytes: u64,
+    /// Papelera que usó la operación: `system` o `dir:<ruta>`.
+    pub trash: String,
+}
+
+/// Todo lo que el journal da por movido a la Papelera y aún allí, de todas
+/// las operaciones que mandaron cosas a la Papelera, en orden del journal.
+pub fn trashed_items(records: &[Record]) -> Vec<TrashedItem> {
+    let mut ops: Vec<&str> = Vec::new();
+    for r in records {
+        if let Event::OpStarted {
+            kind: OpKind::Clean,
+            mode: OpMode::Trash,
+            ..
+        } = &r.event
+            && !ops.contains(&r.op.as_str())
+        {
+            ops.push(&r.op);
+        }
+    }
+    let mut out = Vec::new();
+    for op in ops {
+        let Some(m) = manifest_for(records, op) else {
+            continue;
+        };
+        for i in m.items {
+            if let (ItemState::Trashed, Some(path)) = (&i.state, i.trashed_path) {
+                out.push(TrashedItem {
+                    of: ItemRef {
+                        op: op.to_owned(),
+                        item: i.item_id,
+                    },
+                    path,
+                    original_path: i.original_path,
+                    identity: i.identity,
+                    bytes: i.bytes,
+                    trash: m.trash.clone(),
+                });
+            }
+        }
+    }
+    out
 }
 
 /// Por qué no se puede preparar una liberación.

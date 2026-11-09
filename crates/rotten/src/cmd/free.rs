@@ -69,7 +69,7 @@ fn print_plan(ui: &Ui, p: &FreePreview) {
     }
 }
 
-fn print_space(ui: &Ui, s: &SpaceReport) {
+pub(crate) fn print_space(ui: &Ui, s: &SpaceReport) {
     let estimated = ui.size(s.estimated_bytes);
     match s.measured_bytes {
         Some(m) => {

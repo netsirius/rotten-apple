@@ -17,16 +17,21 @@
 
 #![forbid(unsafe_code)]
 
+mod empty;
 mod lock;
 mod run;
 mod trash;
 mod verify;
 
+pub use empty::{
+    EmptyItem, EmptyPlan, TrashEntry, Unreadable, attribute, plan_empty, read_trash_dir,
+    trash_roots,
+};
 pub use lock::ExecLock;
 pub use ra_plan::ApprovedPlan;
 pub use run::{
-    ExecContext, ExecError, ExecReport, ItemReport, Outcome, dry_run, dry_run_free, dry_run_undo,
-    execute, execute_free, execute_undo, recover_incomplete,
+    ExecContext, ExecError, ExecReport, ItemReport, Outcome, dry_run, dry_run_empty, dry_run_free,
+    dry_run_undo, execute, execute_empty, execute_free, execute_undo, recover_incomplete,
 };
 pub use trash::{TrashBackend, in_trash_top_level, unique_name};
 pub use verify::{InUseDetail, SkipCause};

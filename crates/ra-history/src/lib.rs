@@ -21,8 +21,8 @@ pub use journal::{
 };
 pub use manifest::{
     FreeError, FreeItem, FreePlan, FreeTotals, HistoryKind, ItemState, Manifest, ManifestItem,
-    NotFreeable, NotRecoverable, NotRecoverableReason, OpSummary, UndoError, UndoItem, UndoPlan,
-    UndoState, list_ops, manifest_for, prepare_free, prepare_undo,
+    NotFreeable, NotRecoverable, NotRecoverableReason, OpSummary, TrashedItem, UndoError, UndoItem,
+    UndoPlan, UndoState, list_ops, manifest_for, prepare_free, prepare_undo, trashed_items,
 };
 
 use std::path::{Path, PathBuf};

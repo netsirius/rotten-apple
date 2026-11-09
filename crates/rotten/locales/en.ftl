@@ -106,6 +106,38 @@ deleted-permanently = Permanently deleted: { $count ->
 
 trash-nothing = Nothing to move to the Trash.
 
+## trash
+
+trash-volume = { $path }: { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+} ({ $size })
+trash-volume-unreadable = ! { $path }: cannot be read without Full Disk Access (run `rotten doctor`); only what Rotten Apple recorded in its history is shown
+trash-by-op = Rotten Apple, { $op }: { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+} ({ $size }) · to free it: rotten free { $op }
+trash-others = Other: { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+} ({ $size })
+to-empty = To empty it (cannot be undone): rotten trash empty
+
+## trash empty
+
+empty-header = Empty the Trash: { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+} ({ $size }) will be deleted for good
+empty-item = [{ $id }] { $path }  { $size }
+empty-item-op = [{ $id }] { $path }  { $size }  (from { $op })
+empty-item-would-skip = [{ $id }] { $path }  { $size }  (would be skipped: { $reason })
+confirm-empty = Empty the Trash and delete { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+} ({ $size }) for good? This cannot be undone.
+empty-nothing = The Trash is already empty.
+
 ## free
 
 free-header = Free { $count ->
@@ -136,6 +168,7 @@ history-op = { $op }  { $date }  { $kind ->
     [clean] clean
     [trash_put] trash put
     [free] free
+    [trash_empty] empty Trash
    *[undo] undo { $of }
 }  { $count ->
     [one] { $count } item
@@ -303,6 +336,7 @@ error-unknown-item = operation { $op } has no item { $item }
 error-no-operations = give at least one operation
 error-not-freeable = operation { $op } did not move anything to the Trash
 error-trash-unreadable = cannot read the Trash ({ $path }): grant Full Disk Access to your terminal and run `rotten doctor`. Nothing is deleted.
+error-empty-unreadable = cannot read the Trash ({ $path }): grant Full Disk Access to your terminal and run `rotten doctor`. Nothing is deleted. To free only what Rotten Apple sent there: rotten free <operation>.
 error-no-home = the home folder is unknown: set HOME
 error-env-path = { $var }: { $path }: { $detail }
 
@@ -348,7 +382,9 @@ cli-cmd-exclude-list = Lists the exclusions
 cli-cmd-exclude-remove = Removes an exclusion
 cli-cmd-exclude-remove-arg-value = The exclusion to remove
 cli-cmd-exclude-remove-arg-dry_run = Shows the change without saving it
-cli-cmd-trash = Trash
+cli-cmd-trash = Trash: with no subcommand, what is in it per volume and what Rotten Apple sent
+cli-cmd-trash-empty = Empties the whole Trash after reviewing it (cannot be undone)
+cli-cmd-trash-empty-arg-dry_run = Shows the exact plan without deleting anything
 cli-cmd-trash-put = Moves the given paths to the Trash after reviewing them; it can be undone
 cli-cmd-trash-put-arg-paths = Files or folders to move to the Trash
 cli-cmd-trash-put-arg-dry_run = Shows the exact plan without changing anything

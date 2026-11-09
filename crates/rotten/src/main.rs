@@ -610,6 +610,7 @@ fn history(ui: &Ui, core: &Core) -> Exit {
             HistoryKind::TrashPut => "trash_put",
             HistoryKind::Undo => "undo",
             HistoryKind::Free => "free",
+            HistoryKind::TrashEmpty => "trash_empty",
         };
         ui.say(tr!(
             ui,

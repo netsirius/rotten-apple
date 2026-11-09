@@ -12,8 +12,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use ra_history::{
-    Event, FreeItem, FreePlan, HistoryPaths, Journal, JournalError, OpKind, OpMode, OpStatus,
-    StepAction, UndoPlan, manifest_for, read_journal,
+    Event, FreeItem, FreePlan, HistoryPaths, ItemRef, Journal, JournalError, OpKind, OpMode,
+    OpStatus, StepAction, UndoPlan, manifest_for, read_journal,
 };
 use ra_plan::{Action, ApprovedPlan, Plan, PlanItem};
 use ra_platform::files::OpenFiles;
@@ -23,6 +23,7 @@ use ra_safety::{AppProbe, Exclusions, FileKind, ProtectedList};
 use rustix::fs::{AtFlags, Dir, Mode, OFlags, RenameFlags};
 use serde::{Deserialize, Serialize};
 
+use crate::empty::EmptyPlan;
 use crate::lock::ExecLock;
 use crate::trash::{TrashBackend, find_trashed};
 use crate::verify::{Guards, SkipCause, open_error, verify};
@@ -655,29 +656,85 @@ fn execute_undo_batched(
     Ok(report)
 }
 
-/// La entrada de la Papelera sigue siendo el objeto que anotó el journal:
-/// mismo volumen, inode, tipo, tamaño y `mtime` (`same_after_move`: mover a
-/// la Papelera cambia `ctime`), y sin flags que impidan borrarla. Devuelve
-/// la carpeta abierta sin seguir enlaces y el nombre.
-fn check_free(it: &FreeItem) -> Result<(OwnedFd, &OsStr), SkipCause> {
-    let (parent, name) = open_parent_nofollow(&it.path).map_err(open_error)?;
+/// Cómo se revalida una entrada de la Papelera justo antes de borrarla.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Revalidate {
+    /// `rotten free`: la identidad se anotó antes de moverla a la
+    /// Papelera; mismo volumen, inode, tipo, tamaño y `mtime`
+    /// (`same_after_move`: mover cambia `ctime`).
+    AfterMove,
+    /// `rotten trash empty`: la identidad se leyó en la propia Papelera al
+    /// preparar el plan; debe coincidir entera, `ctime` incluido.
+    Exact,
+}
+
+/// Una entrada de la Papelera que borrar, venga de `free` o de
+/// `trash empty`. Las dos pasan por el mismo camino de borrado.
+struct TrashDelete<'a> {
+    item_id: u32,
+    path: &'a Path,
+    identity: ra_safety::Identity,
+    bytes: u64,
+    /// La operación y el elemento que la mandaron a la Papelera, si se sabe.
+    of: Option<&'a ItemRef>,
+    check: Revalidate,
+}
+
+fn free_items(plan: &FreePlan) -> Vec<TrashDelete<'_>> {
+    plan.ready
+        .iter()
+        .map(|it: &FreeItem| TrashDelete {
+            item_id: it.item_id,
+            path: &it.path,
+            identity: it.identity,
+            bytes: it.bytes,
+            of: Some(&it.of),
+            check: Revalidate::AfterMove,
+        })
+        .collect()
+}
+
+fn empty_items(plan: &EmptyPlan) -> Vec<TrashDelete<'_>> {
+    plan.items
+        .iter()
+        .map(|it| TrashDelete {
+            item_id: it.item_id,
+            path: &it.path,
+            identity: it.identity,
+            bytes: it.bytes,
+            of: it.of.as_ref(),
+            check: Revalidate::Exact,
+        })
+        .collect()
+}
+
+/// La entrada de la Papelera sigue siendo el objeto del plan (según
+/// [`Revalidate`]) y no tiene flags que impidan borrarla. Devuelve la
+/// carpeta abierta sin seguir enlaces y el nombre.
+fn check_trash_entry<'a>(it: &TrashDelete<'a>) -> Result<(OwnedFd, &'a OsStr), SkipCause> {
+    let (parent, name) = open_parent_nofollow(it.path).map_err(open_error)?;
     let st = rustix::fs::statat(parent.as_fd(), name, AtFlags::SYMLINK_NOFOLLOW)
         .map_err(|e| open_error(e.into()))?;
-    if !ra_safety::Identity::from_stat(&st).same_after_move(&it.identity) {
+    let now = ra_safety::Identity::from_stat(&st);
+    let same = match it.check {
+        Revalidate::AfterMove => now.same_after_move(&it.identity),
+        Revalidate::Exact => now == it.identity,
+    };
+    if !same {
         return Err(SkipCause::IdentityChanged);
     }
     check_flags(st.st_flags).map_err(|flag| SkipCause::Flags { flag })?;
     Ok((parent, name))
 }
 
-/// Simulación de `rotten free`: las mismas comprobaciones, sin borrar nada.
-pub fn dry_run_free(plan: &FreePlan) -> ExecReport {
+/// Simulación: las mismas comprobaciones, sin borrar nada.
+fn dry_run_trash(items: &[TrashDelete<'_>]) -> ExecReport {
     let mut report = ExecReport {
         dry_run: true,
         ..Default::default()
     };
-    for it in &plan.ready {
-        let outcome = match check_free(it) {
+    for it in items {
+        let outcome = match check_trash_entry(it) {
             Ok(_) => Outcome::Would {
                 action: would(Action::Delete),
             },
@@ -688,12 +745,22 @@ pub fn dry_run_free(plan: &FreePlan) -> ExecReport {
         };
         report.push(ItemReport {
             item_id: it.item_id,
-            path: it.path.clone(),
+            path: it.path.to_path_buf(),
             bytes: it.bytes,
             outcome,
         });
     }
     report
+}
+
+/// Simulación de `rotten free`.
+pub fn dry_run_free(plan: &FreePlan) -> ExecReport {
+    dry_run_trash(&free_items(plan))
+}
+
+/// Simulación de `rotten trash empty`.
+pub fn dry_run_empty(plan: &EmptyPlan) -> ExecReport {
+    dry_run_trash(&empty_items(plan))
 }
 
 /// Borra para siempre de la Papelera los elementos del plan («Liberar
@@ -711,6 +778,74 @@ pub fn execute_free(
 fn execute_free_batched(
     plan: &FreePlan,
     ctx: &ExecContext<'_>,
+    lock: &ExecLock,
+    batch: usize,
+) -> Result<ExecReport, ExecError> {
+    let sources: Vec<&str> = plan.ops.iter().map(String::as_str).collect();
+    delete_from_trash_batched(
+        OpKind::Free,
+        &plan.plan_hash,
+        (plan.totals.items, plan.totals.bytes),
+        &free_items(plan),
+        &sources,
+        ctx,
+        lock,
+        batch,
+    )
+}
+
+/// Vacía la Papelera (`rotten trash empty`, CU-08): borra para siempre
+/// cada entrada revisada que siga siendo exactamente la misma. Lo que
+/// apareció después de revisar no está en el plan y no se toca. Las
+/// entradas que mandó Rotten Apple llevan `of` y su operación pasa a
+/// irreversible.
+pub fn execute_empty(
+    plan: &EmptyPlan,
+    ctx: &ExecContext<'_>,
+    lock: &ExecLock,
+) -> Result<ExecReport, ExecError> {
+    execute_empty_batched(plan, ctx, lock, fsync_batch())
+}
+
+fn execute_empty_batched(
+    plan: &EmptyPlan,
+    ctx: &ExecContext<'_>,
+    lock: &ExecLock,
+    batch: usize,
+) -> Result<ExecReport, ExecError> {
+    let mut sources: Vec<&str> = Vec::new();
+    for it in &plan.items {
+        if let Some(of) = &it.of
+            && !sources.contains(&of.op.as_str())
+        {
+            sources.push(&of.op);
+        }
+    }
+    delete_from_trash_batched(
+        OpKind::TrashEmpty,
+        &plan.plan_hash,
+        (plan.totals.items, plan.totals.bytes),
+        &empty_items(plan),
+        &sources,
+        ctx,
+        lock,
+        batch,
+    )
+}
+
+/// El único camino que borra de la Papelera. Por lotes: las intenciones
+/// del lote llegan al disco con un `fsync` y cada una es durable antes de
+/// su `unlink`; justo antes se revalida la entrada. Al terminar se guardan
+/// el manifiesto de la operación y los de `sources`, las operaciones a las
+/// que pertenecían las entradas borradas.
+#[allow(clippy::too_many_arguments)]
+fn delete_from_trash_batched(
+    kind: OpKind,
+    plan_hash: &str,
+    (items, bytes): (u64, u64),
+    entries: &[TrashDelete<'_>],
+    sources: &[&str],
+    ctx: &ExecContext<'_>,
     _lock: &ExecLock,
     batch: usize,
 ) -> Result<ExecReport, ExecError> {
@@ -719,12 +854,12 @@ fn execute_free_batched(
     let mut j = Journal::open(ctx.history, &op, now)?;
     j.write(
         Event::OpStarted {
-            kind: OpKind::Free,
+            kind,
             mode: OpMode::Permanent,
-            plan_hash: Some(plan.plan_hash.clone()),
+            plan_hash: Some(plan_hash.to_owned()),
             undo_of: None,
-            items: plan.totals.items,
-            bytes: plan.totals.bytes,
+            items,
+            bytes,
             by: ctx.by.to_owned(),
             trash: ctx.trash.describe(),
         },
@@ -736,12 +871,12 @@ fn execute_free_batched(
     };
     run_batched(
         &mut j,
-        &plan.ready,
+        entries,
         batch,
         |it| Event::ItemIntent {
             item: it.item_id,
             action: StepAction::Delete,
-            path: it.path.clone(),
+            path: it.path.to_path_buf(),
             identity: it.identity,
             target: None,
             category: None,
@@ -749,10 +884,10 @@ fn execute_free_batched(
             bytes: it.bytes,
             parent_mode: None,
             origin: None,
-            of: Some(it.of.clone()),
+            of: it.of.cloned(),
         },
         |it| {
-            let outcome = match check_free(it) {
+            let outcome = match check_trash_entry(it) {
                 Err(cause) => Outcome::Skipped {
                     message: cause.to_string(),
                     cause,
@@ -775,7 +910,7 @@ fn execute_free_batched(
             };
             ItemReport {
                 item_id: it.item_id,
-                path: it.path.clone(),
+                path: it.path.to_path_buf(),
                 bytes: it.bytes,
                 outcome,
             }
@@ -793,7 +928,7 @@ fn execute_free_batched(
         true,
     )?;
     let mut ops: Vec<&str> = vec![&op];
-    ops.extend(plan.ops.iter().map(String::as_str));
+    ops.extend(sources);
     save_manifests(ctx.history, &ops)?;
     Ok(report)
 }
@@ -1395,6 +1530,86 @@ mod batch_tests {
             let saved = fs::read_to_string(fx.history.manifests_dir.join(format!("{op}.json")))
                 .expect("manifiesto");
             assert!(saved.contains("\"deleted\""), "{saved}");
+        }
+    }
+
+    /// T-12: vaciar la Papelera pasa por el mismo camino. Cada `unlink`
+    /// llega con su intención durable; se exige la identidad exacta (un
+    /// `chmod`, que solo cambia `ctime`, basta para omitir); lo que aparece
+    /// después de preparar el plan no se toca; y las operaciones de Rotten
+    /// Apple afectadas marcan sus elementos como borrados.
+    #[test]
+    fn empty_unlinks_only_after_its_intent_is_durable() {
+        for batch in [1, 2, 100] {
+            let fx = Fx::new();
+            let paths = fx.files(3);
+            let approved = fx.approved(&paths, Action::Trash);
+            let r = execute_batched(&approved, &fx.ctx(), &fx.lock(), 8).expect("ejecutar");
+            let op = r.op_id.expect("op");
+            fs::write(fx.trash_dir.join("ajeno.txt"), b"de otra app").expect("write");
+            fs::create_dir(fx.trash_dir.join("carpeta-ajena")).expect("mkdir");
+            fs::write(fx.trash_dir.join("carpeta-ajena/x"), b"x").expect("write");
+            let (records, _) = read_journal(&fx.history).expect("journal");
+            let known = ra_history::trashed_items(&records);
+            let plan =
+                crate::plan_empty(std::slice::from_ref(&fx.trash_dir), &known).expect("plan");
+            let names: Vec<_> = plan
+                .items
+                .iter()
+                .map(|i| i.path.file_name().expect("nombre").to_owned())
+                .collect();
+            assert_eq!(
+                names,
+                [
+                    "ajeno.txt",
+                    "carpeta-ajena",
+                    "f-00.log",
+                    "f-01.log",
+                    "f-02.log",
+                    "z-dir"
+                ]
+            );
+            let of: Vec<bool> = plan.items.iter().map(|i| i.of.is_some()).collect();
+            assert_eq!(of, [false, false, true, true, true, true]);
+            // Después de revisar: un ajeno cambia, uno de Rotten Apple solo
+            // cambia de permisos y aparece algo nuevo.
+            fs::write(fx.trash_dir.join("ajeno.txt"), b"otro contenido").expect("write");
+            fs::set_permissions(
+                fx.trash_dir.join("f-01.log"),
+                fs::Permissions::from_mode(0o600),
+            )
+            .expect("chmod");
+            fs::write(fx.trash_dir.join("nuevo.txt"), b"llega tarde").expect("write");
+            let dry = dry_run_empty(&plan);
+            assert_eq!((dry.would, dry.skipped), (4, 2), "lote {batch}");
+            take_probes();
+            let e = execute_empty_batched(&plan, &fx.ctx(), &fx.lock(), batch).expect("vaciar");
+            let (acted, batches) = check_write_ahead(&take_probes());
+            assert_eq!(batches, plan.items.len().div_ceil(batch), "lote {batch}");
+            assert_eq!(acted, vec![2, 3, 5, 6], "lote {batch}");
+            assert_eq!((e.done, e.skipped, e.failed), (4, 2, 0), "lote {batch}");
+            let mut left: Vec<_> = fs::read_dir(&fx.trash_dir)
+                .expect("ls")
+                .map(|d| d.expect("entrada").file_name())
+                .collect();
+            left.sort();
+            assert_eq!(left, ["ajeno.txt", "f-01.log", "nuevo.txt"], "lote {batch}");
+            // La operación original: lo borrado pasa a borrado.
+            let (records, _) = read_journal(&fx.history).expect("journal");
+            let m = manifest_for(&records, &op).expect("manifiesto");
+            for i in &m.items {
+                let name = i.original_path.file_name().expect("nombre");
+                let want = if name == "f-01.log" {
+                    ItemState::Trashed
+                } else {
+                    ItemState::Deleted
+                };
+                assert_eq!(i.state, want, "lote {batch}: {name:?}");
+            }
+            assert_eq!(
+                states(&fx, e.op_id.as_deref().expect("op")).len(),
+                plan.items.len()
+            );
         }
     }
 

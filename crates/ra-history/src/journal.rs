@@ -20,6 +20,9 @@ pub enum OpKind {
     /// «Liberar ahora» (`rotten free`): borra para siempre de la Papelera
     /// elementos que otras operaciones mandaron allí.
     Free,
+    /// Vaciar la Papelera (`rotten trash empty`): borra para siempre cada
+    /// entrada de primer nivel revisada, la mandara Rotten Apple o no.
+    TrashEmpty,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
