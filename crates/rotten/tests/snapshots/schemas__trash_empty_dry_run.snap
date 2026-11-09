@@ -10,6 +10,7 @@ expression: "redact(fx, &doc)"
     "items": [
       {
         "bytes": 4096,
+        "digest": "[digest]",
         "identity": {
           "ctime": "[ctime]",
           "ctime_nsec": "[ctime_nsec]",
@@ -29,6 +30,7 @@ expression: "redact(fx, &doc)"
       },
       {
         "bytes": 4096,
+        "digest": "[digest]",
         "identity": {
           "ctime": "[ctime]",
           "ctime_nsec": "[ctime_nsec]",
@@ -44,6 +46,7 @@ expression: "redact(fx, &doc)"
       },
       {
         "bytes": 4096,
+        "digest": "[digest]",
         "identity": {
           "ctime": "[ctime]",
           "ctime_nsec": "[ctime_nsec]",
@@ -63,6 +66,7 @@ expression: "redact(fx, &doc)"
       },
       {
         "bytes": 4096,
+        "digest": "[digest]",
         "identity": {
           "ctime": "[ctime]",
           "ctime_nsec": "[ctime_nsec]",

@@ -121,6 +121,7 @@ trash-others = Otros: { $count ->
     [one] { $count } elemento
    *[other] { $count } elementos
 } ({ $size })
+trash-partial = ! Algo dentro no se pudo leer entero: el tamaño real es mayor y eso no se vaciará
 to-empty = Para vaciarla (no se puede deshacer): rotten trash empty
 
 ## trash empty
@@ -208,6 +209,8 @@ not-recoverable-already-restored = ya se restauró
 not-recoverable-unknown = paradero desconocido tras un cierre abrupto
 not-recoverable-unknown-detail = paradero desconocido tras un cierre abrupto: { $detail }
 not-recoverable-never-moved = no se llegó a mover
+not-recoverable-other-trash = la mandó a otra Papelera distinta de la que se usa ahora
+not-recoverable-volume-not-mounted = su Papelera no está disponible (¿está montado el volumen?)
 
 ## doctor
 
@@ -273,6 +276,8 @@ skip-symlink-in-path = hay un enlace simbólico en la ruta
 skip-identity-changed = ha cambiado desde la revisión
 skip-contents-changed = su contenido ha cambiado desde la revisión
 skip-conflict-exists = ya hay algo en la ruta original
+skip-outside-trash = no está en la Papelera que se usa
+skip-not-verifiable = no se puede comprobar que lo que tiene dentro siga como al revisarlo
 skip-in-use = lo usa { $process } (pid { $pid })
 skip-in-use-unknown = no se puede saber si está en uso: { $detail }
 skip-overlaps = está dentro de { $path }, que ya está en el plan
@@ -320,6 +325,8 @@ error-relative-path = la ruta debe ser absoluta: { $path }
 error-config-corrupt = { $path } está corrupto ({ $reason }): no se hace nada hasta arreglarlo
 error-wrong-home = el plan es de otra carpeta personal ({ $path })
 error-plan-changed = el plan ha cambiado desde la revisión: revísalo de nuevo
+error-free-plan-changed = el plan ha cambiado desde la revisión; ya no están: { $items }. No se borra nada: revísalo de nuevo
+error-trash-gone = la carpeta de la Papelera { $path } ya no está (¿se ha desmontado su volumen?). No se borra nada.
 error-plan-expired = la revisión es demasiado antigua ({ $minutes ->
     [one] { $minutes } minuto
    *[other] { $minutes } minutos

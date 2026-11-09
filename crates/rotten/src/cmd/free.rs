@@ -17,13 +17,6 @@ use crate::{Exit, Ui, exec_exit, print_problems, render};
 
 const COMMAND: &str = "free";
 
-/// M-5: tolerancia entre lo estimado y lo medido, máx(5 %, 200 MB).
-fn far_below(estimated: u64, measured: i64) -> bool {
-    let measured = u64::try_from(measured).unwrap_or(0);
-    let tolerance = (estimated / 20).max(200_000_000);
-    estimated.saturating_sub(measured) > tolerance
-}
-
 fn print_plan(ui: &Ui, p: &FreePreview) {
     ui.say(tr!(
         ui,
@@ -79,7 +72,7 @@ pub(crate) fn print_space(ui: &Ui, s: &SpaceReport) {
                 measured = ui.size(u64::try_from(m).unwrap_or(0)),
                 estimated = estimated
             ));
-            if far_below(s.estimated_bytes, m) {
+            if ra_core::far_below(s.estimated_bytes, m) {
                 ui.say(tr!(ui, "freed-space-less"));
             }
         }
@@ -92,9 +85,15 @@ pub fn run(ui: &Ui, core: &Core, ops: &[String], dry_run: bool) -> Exit {
         Ok(p) => p,
         Err(e) => return ui.core_error(COMMAND, &e),
     };
-    // Algo de lo pedido ya no está en la Papelera tal como se anotó: la
-    // operación no queda completa (como `undo`).
-    let left_out = !preview.plan.not_freeable.is_empty();
+    // Algo de lo pedido sigue sin liberar y no se puede liberar ahora (ya
+    // no está en la Papelera tal como se anotó, paradero incierto, otra
+    // Papelera, volumen sin montar): la operación no queda completa (4). Lo
+    // ya borrado o restaurado no deja nada pendiente.
+    let left_out = preview
+        .plan
+        .not_freeable
+        .iter()
+        .any(|n| !n.reason.is_settled());
     if !ui.json {
         print_plan(ui, &preview);
     }
@@ -115,9 +114,10 @@ pub fn run(ui: &Ui, core: &Core, ops: &[String], dry_run: bool) -> Exit {
     }
     if preview.plan.ready.is_empty() {
         if ui.json {
+            // M6: no se ha medido nada.
             let space = SpaceReport {
                 estimated_bytes: 0,
-                measured_bytes: Some(0),
+                measured_bytes: None,
                 volumes: vec![],
             };
             ui.emit(
@@ -165,20 +165,5 @@ pub fn run(ui: &Ui, core: &Core, ops: &[String], dry_run: bool) -> Exit {
         Exit::Partial
     } else {
         exec_exit(&result.report)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn m5_tolerance() {
-        assert!(!far_below(1_000, 0));
-        assert!(!far_below(1_000_000_000, 960_000_000));
-        assert!(far_below(1_000_000_000, 700_000_000));
-        assert!(far_below(5_000_000_000, 4_000_000_000));
-        assert!(!far_below(5_000_000_000, 4_800_000_000));
-        assert!(far_below(300_000_000, -1));
     }
 }

@@ -56,6 +56,11 @@ pub struct ManifestItem {
     /// journals anteriores a T-10 y en las restauraciones.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+    /// Cuándo quedó en la Papelera, según el journal (RFC 3339, ms): el
+    /// `ts` del `item_done` que lo movió o, si se reconcilió tras un corte,
+    /// el de su intención (antes del movimiento: del lado seguro).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved_at: Option<String>,
     #[serde(flatten)]
     pub state: ItemState,
 }
@@ -302,6 +307,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                         bytes: *bytes,
                         parent_mode: *parent_mode,
                         origin: *origin,
+                        moved_at: Some(r.ts.clone()),
                         state: ItemState::Pending,
                     },
                 );
@@ -313,6 +319,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                     i.state = match i.action {
                         StepAction::Trash => {
                             i.trashed_path = result_path.clone();
+                            i.moved_at = Some(r.ts.clone());
                             ItemState::Trashed
                         }
                         StepAction::Delete => ItemState::Deleted,
@@ -397,15 +404,36 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
             })
             .collect();
         for r in records.iter() {
+            // Lo borrado de la Papelera queda borrado; una carpeta cuyo
+            // borrado se cortó a medias, en paradero incierto (le falta
+            // parte). Si la recuperación no pudo comprobarlo, no cambia.
             let freed = match &r.event {
-                Event::ItemDone { item, .. } => freed_by.get(&(r.op.as_str(), *item)),
-                Event::ItemReconciled { item, state, .. } if state == "deleted" => {
-                    freed_by.get(&(r.op.as_str(), *item))
-                }
+                Event::ItemDone { item, .. } => freed_by
+                    .get(&(r.op.as_str(), *item))
+                    .map(|of| (of, ItemState::Deleted)),
+                Event::ItemReconciled {
+                    item,
+                    state,
+                    detail,
+                    ..
+                } => freed_by
+                    .get(&(r.op.as_str(), *item))
+                    .and_then(|of| match state.as_str() {
+                        "deleted" => Some((of, ItemState::Deleted)),
+                        "partial" => Some((
+                            of,
+                            ItemState::Unknown {
+                                detail: detail.clone(),
+                            },
+                        )),
+                        _ => None,
+                    }),
                 _ => None,
             };
-            if let Some(i) = freed.and_then(|of| items.get_mut(of)) {
-                i.state = ItemState::Deleted;
+            if let Some((of, state)) = freed
+                && let Some(i) = items.get_mut(of)
+            {
+                i.state = state;
                 continue;
             }
             if !undo_ops.contains(&r.op.as_str()) {
@@ -489,6 +517,25 @@ pub enum NotRecoverableReason {
     /// No se llegó a mover (omitido, fallido o interrumpido antes).
     #[error("it was never moved")]
     NeverMoved,
+    /// La operación lo mandó a otra Papelera que la que se usa ahora
+    /// (otro `ROTTEN_TRASH_DIR`, o un journal manipulado): no se toca.
+    #[error("it was sent to a different Trash than the one in use")]
+    OtherTrash,
+    /// La carpeta de la Papelera donde quedó no existe (volumen sin montar).
+    #[error("its Trash is not available (is the volume mounted?)")]
+    VolumeNotMounted,
+}
+
+impl NotRecoverableReason {
+    /// Para liberar: ya no queda nada que hacer con él (se borró, se
+    /// restauró o nunca llegó a la Papelera). Los demás motivos dejan algo
+    /// sin liberar (código 4).
+    pub fn is_settled(&self) -> bool {
+        matches!(
+            self,
+            Self::Deleted | Self::AlreadyRestored | Self::NeverMoved
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -526,7 +573,15 @@ pub fn prepare_undo(
 ) -> Result<UndoPlan, UndoError> {
     let m =
         manifest_for(records, op).ok_or_else(|| UndoError::UnknownOperation { op: op.into() })?;
-    if m.kind != OpKind::Clean {
+    // Un deshacer no se deshace, y una operación de la que todo lo que se
+    // movió se borró después (de la Papelera, o era un borrado permanente)
+    // tampoco. Si algo está en paradero incierto o ya no está en la
+    // Papelera, se prepara el plan para decir el motivo de cada elemento.
+    let all_deleted = m.undo_state() == UndoState::Irreversible
+        && m.items
+            .iter()
+            .all(|i| !matches!(i.state, ItemState::Trashed | ItemState::Unknown { .. }));
+    if m.kind != OpKind::Clean || all_deleted {
         return Err(UndoError::NotUndoable { op: op.into() });
     }
     if let Some(ids) = items {
@@ -611,6 +666,18 @@ pub struct FreeItem {
     pub bytes: u64,
     /// Papelera que usó la operación: `system` o `dir:<ruta>`.
     pub trash: String,
+    /// Cuándo quedó en la Papelera ([`ManifestItem::moved_at`]). Si es una
+    /// carpeta, nada de dentro puede haber cambiado después.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved_at: Option<String>,
+}
+
+impl FreeItem {
+    /// [`FreeItem::moved_at`] como instante; `None` si falta o no se
+    /// entiende (quien lo use debe omitir el elemento si es una carpeta).
+    pub fn moved_at_time(&self) -> Option<std::time::SystemTime> {
+        humantime::parse_rfc3339(self.moved_at.as_deref()?).ok()
+    }
 }
 
 /// Elemento de una operación pedida que no se puede liberar.
@@ -716,13 +783,13 @@ pub enum FreeError {
 }
 
 /// Prepara la liberación de `ops`: cada elemento que el journal da por
-/// movido a la Papelera y cuya ruta acepta `in_trash` (que está en el primer
-/// nivel de la Papelera que anotó la operación). Nunca entra nada que no
-/// esté registrado para esas operaciones.
+/// movido a la Papelera y que acepta `in_trash` (que su Papelera es la que
+/// se usa y que está en su primer nivel); si no lo acepta, devuelve el
+/// motivo. Nunca entra nada que no esté registrado para esas operaciones.
 pub fn prepare_free(
     records: &[Record],
     ops: &[String],
-    in_trash: impl Fn(&FreeItem) -> bool,
+    in_trash: impl Fn(&FreeItem) -> Result<(), NotRecoverableReason>,
 ) -> Result<FreePlan, FreeError> {
     let mut unique: Vec<String> = Vec::new();
     for op in ops {
@@ -760,14 +827,17 @@ pub fn prepare_free(
                         identity: i.identity,
                         bytes: i.bytes,
                         trash: m.trash.clone(),
+                        moved_at: i.moved_at.clone(),
                     };
-                    if in_trash(&item) {
-                        plan.totals.items += 1;
-                        plan.totals.bytes += item.bytes;
-                        plan.ready.push(item);
-                        continue;
+                    match in_trash(&item) {
+                        Ok(()) => {
+                            plan.totals.items += 1;
+                            plan.totals.bytes += item.bytes;
+                            plan.ready.push(item);
+                            continue;
+                        }
+                        Err(reason) => reason,
                     }
-                    NotRecoverableReason::NotInTrash
                 }
                 (ItemState::Trashed, None) => NotRecoverableReason::NotInTrash,
                 (ItemState::Deleted, _) => NotRecoverableReason::Deleted,
@@ -933,11 +1003,11 @@ mod tests {
     fn unknown_ops_and_items_are_errors() {
         assert!(prepare_undo(&[], "nada", None).is_err());
         assert_eq!(
-            prepare_free(&[], &["nada".into()], |_| true),
+            prepare_free(&[], &["nada".into()], |_| Ok(())),
             Err(FreeError::UnknownOperation { op: "nada".into() })
         );
         assert_eq!(
-            prepare_free(&[], &[], |_| true),
+            prepare_free(&[], &[], |_| Ok(())),
             Err(FreeError::NoOperations)
         );
     }
@@ -1025,7 +1095,11 @@ mod tests {
         let (recs, _) = crate::read_journal(&paths).expect("read");
         // Solo lo que acepta el filtro (la Papelera de la operación) entra.
         let plan = prepare_free(&recs, &["op-clean".into(), "op-clean".into()], |i| {
-            i.item_id == 1 || i.of.item == 2
+            if i.item_id == 1 || i.of.item == 2 {
+                Ok(())
+            } else {
+                Err(NotRecoverableReason::NotInTrash)
+            }
         })
         .expect("plan");
         assert_eq!(plan.ops, vec!["op-clean"]);
@@ -1044,7 +1118,7 @@ mod tests {
         );
         // Un deshacer no se libera.
         assert_eq!(
-            prepare_free(&recs, &["op-undo".into()], |_| true),
+            prepare_free(&recs, &["op-undo".into()], |_| Ok(())),
             Err(FreeError::NotFreeable {
                 op: "op-undo".into()
             })
@@ -1103,7 +1177,7 @@ mod tests {
         assert_eq!(by_id("op-free").kind, HistoryKind::Free);
         assert_eq!(by_id("op-free").undo_state, UndoState::NotApplicable);
         // Ya no queda nada que liberar ni que deshacer.
-        let again = prepare_free(&recs, &["op-clean".into()], |_| true).expect("plan");
+        let again = prepare_free(&recs, &["op-clean".into()], |_| Ok(())).expect("plan");
         assert!(again.ready.is_empty());
         assert_eq!(again.not_freeable.len(), 3);
         assert!(

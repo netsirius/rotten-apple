@@ -102,9 +102,22 @@ fn clean_then_free_empties_those_items_only() {
     let (code, doc) = fx.run(&["undo", "--yes", "--json"]);
     assert_eq!(code, 1, "{doc:#}");
     assert_eq!(doc["error"]["code"], "nothing_to_undo");
-    // Ya no queda nada que liberar: se dice y no se borra nada más.
+    // I5: deshacer esa operación, nombrándola, tampoco: es irreversible (1).
+    for args in [
+        ["undo", &op, "--yes", "--json"],
+        ["undo", &op, "--dry-run", "--json"],
+    ] {
+        let (code, doc) = fx.run(&args);
+        assert_eq!(code, 1, "{args:?}: {doc:#}");
+        assert_eq!(doc["error"]["code"], "not_undoable", "{args:?}");
+    }
+    // Ya no queda nada que liberar: se dice, no se borra nada más y no es
+    // un resultado parcial (0).
+    let (code, doc) = fx.run(&["free", &op, "--dry-run", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
     let (code, doc) = fx.run(&["free", &op, "--yes", "--json"]);
-    assert_eq!(code, 4, "{doc:#}");
+    assert_eq!(code, 0, "{doc:#}");
+    assert!(doc["space"]["measured_bytes"].is_null(), "M6: {doc:#}");
     assert!(doc["plan"]["ready"].as_array().expect("ready").is_empty());
     assert!(
         doc["plan"]["not_freeable"]
@@ -268,12 +281,38 @@ fn partly_restored_then_freed() {
             .as_str()
             .expect("ruta"),
     );
+    // Lo restaurado no queda pendiente: todo lo demás se libera (0).
     let (code, doc) = fx.run(&["free", &op, "--yes", "--json"]);
-    assert_eq!(code, 4, "{doc:#}");
+    assert_eq!(code, 0, "{doc:#}");
     assert_eq!(doc["report"]["done"], trashed.len() - 1);
     assert_eq!(doc["plan"]["not_freeable"][0]["reason"], "already_restored");
     assert!(restored.exists());
     assert_eq!(op_in_history(&fx, &op)["undo_state"], "partly_restored");
+    // Restaurada en parte y el resto borrado: nada que deshacer y algo que
+    // ya no vuelve (4).
+    let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
+    assert_eq!(code, 4, "{doc:#}");
+}
+
+/// Códigos de `undo <op>`: restaurada entera, 0 (no queda nada pendiente);
+/// `clean --permanent`, irreversible: 1 con `not_undoable`.
+#[test]
+fn undo_exit_codes_of_restored_and_permanent_operations() {
+    let fx = fixture();
+    let (op, _) = clean(&fx);
+    let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert_eq!(op_in_history(&fx, &op)["undo_state"], "restored");
+    let (code, doc) = fx.run(&["undo", &op, "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert!(doc["report"]["done"] == 0, "{doc:#}");
+
+    let (code, doc) = fx.run(&["clean", "--permanent", "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    let permanent = doc["report"]["op_id"].as_str().expect("op").to_owned();
+    let (code, doc) = fx.run(&["undo", &permanent, "--yes", "--json"]);
+    assert_eq!(code, 1, "{doc:#}");
+    assert_eq!(doc["error"]["code"], "not_undoable");
 }
 
 /// Sin permiso para leer la Papelera (sin Acceso total al disco) no se
@@ -301,44 +340,95 @@ fn unreadable_trash_exits_3_and_deletes_nothing() {
     }
 }
 
-/// Una línea del journal que dice que un documento está «en la Papelera»
-/// no basta: solo se borra lo que está en el primer nivel de la Papelera de
-/// la operación, aunque la identidad coincida.
-#[test]
-fn a_journal_path_outside_the_trash_is_never_deleted() {
-    let fx = fixture();
-    let doc_path = fx.p("Documents/tesis.docx");
-    let m = fs::symlink_metadata(&doc_path).expect("lstat");
+/// Escribe una operación `forged` que dice haber mandado `path` «a la
+/// Papelera» `trash` (descriptor de `op_started`), con su identidad real.
+fn forge(fx: &Fx, trash: &str, path: &Path) {
+    let m = fs::symlink_metadata(path).expect("lstat");
     let identity = json!({
         "dev": m.dev(), "ino": m.ino(), "kind": "file", "size": m.size(),
         "mtime": m.mtime(), "mtime_nsec": m.mtime_nsec(),
         "ctime": m.ctime(), "ctime_nsec": m.ctime_nsec(),
     });
     let ts = "2026-11-01T10:00:00.000Z";
-    let trash = format!("dir:{}", fx.trash.display());
     let lines = [
         json!({"schema_version":1,"ts":ts,"op":"forged","ev":"op_started","kind":"clean","mode":"trash","items":1,"bytes":1,"by":"cli","trash":trash}),
-        json!({"schema_version":1,"ts":ts,"op":"forged","ev":"item_intent","item":1,"action":"trash","path":doc_path,"identity":identity,"bytes":1}),
-        json!({"schema_version":1,"ts":ts,"op":"forged","ev":"item_done","item":1,"result_path":doc_path}),
+        json!({"schema_version":1,"ts":ts,"op":"forged","ev":"item_intent","item":1,"action":"trash","path":path,"identity":identity,"bytes":1}),
+        json!({"schema_version":1,"ts":ts,"op":"forged","ev":"item_done","item":1,"result_path":path}),
         json!({"schema_version":1,"ts":ts,"op":"forged","ev":"op_finished","status":"completed","done":1,"skipped":0,"failed":0}),
     ];
     let dir = fx.state.join("journal");
     fs::create_dir_all(&dir).expect("mkdir");
     let text: String = lines.iter().map(|l| format!("{l}\n")).collect();
     fs::write(dir.join("2026-11.jsonl"), text).expect("write");
-
-    let (code, doc) = fx.run(&["free", "forged", "--yes", "--json"]);
-    assert_eq!(code, 4, "{doc:#}");
-    assert!(doc["plan"]["ready"].as_array().expect("ready").is_empty());
-    assert_eq!(doc["plan"]["not_freeable"][0]["reason"], "not_in_trash");
-    assert!(
-        doc_path.exists(),
-        "nunca se borra lo que no está en la Papelera"
-    );
 }
 
-/// M-5: lo liberado medido con `statfs` coincide con lo estimado ±
-/// máx(5 %, 200 MB). Con un fichero de 32 MiB.
+/// Una línea del journal que dice que un documento está «en la Papelera»
+/// no basta (B1 de la revisión):
+///
+/// - con el descriptor de la Papelera en uso, solo se borra lo que está en
+///   su primer nivel (`not_in_trash`);
+/// - con un descriptor que apunta a otra carpeta (`dir:~/Documents`, donde
+///   el documento sí está «en el primer nivel») o a la Papelera del
+///   sistema cuando se usa `ROTTEN_TRASH_DIR`, la operación no se puede
+///   liberar (`other_trash`).
+///
+/// En los tres casos sale con 4 y el documento sigue ahí.
+#[test]
+fn a_journal_path_outside_the_trash_is_never_deleted() {
+    for (desc, reason) in [
+        ("trash", "not_in_trash"),
+        ("documents", "other_trash"),
+        ("system", "other_trash"),
+    ] {
+        let fx = fixture();
+        let doc_path = fx.p("Documents/tesis.docx");
+        let trash = match desc {
+            "trash" => format!("dir:{}", fx.trash.display()),
+            "documents" => format!("dir:{}", fx.p("Documents").display()),
+            _ => "system".to_owned(),
+        };
+        forge(&fx, &trash, &doc_path);
+        let (code, dry) = fx.run(&["free", "forged", "--dry-run", "--json"]);
+        assert_eq!(code, 4, "{desc}: {dry:#}");
+        let (code, doc) = fx.run(&["free", "forged", "--yes", "--json"]);
+        assert_eq!(code, 4, "{desc}: {doc:#}");
+        assert!(
+            doc["plan"]["ready"].as_array().expect("ready").is_empty(),
+            "{desc}: {doc:#}"
+        );
+        assert_eq!(
+            doc["plan"]["not_freeable"][0]["reason"], reason,
+            "{desc}: {doc:#}"
+        );
+        assert!(
+            doc_path.exists(),
+            "{desc}: nunca se borra lo que no está en la Papelera en uso"
+        );
+    }
+}
+
+/// Máximo común divisor.
+fn gcd(a: u64, b: u64) -> u64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+/// A qué paso redondea `statfs` el espacio libre, a juzgar por `v`: la
+/// mayor potencia 2^a·5^b que lo divide. Con bloques de 4 KiB sale del
+/// orden de KiB; con un espacio libre redondeado a cientos de MB, de
+/// cientos de MB.
+fn roundness(v: u64) -> u64 {
+    gcd(v, (1u64 << 30) * 5u64.pow(12))
+}
+
+/// M-5: lo liberado medido con `statfs` no se queda por debajo de lo
+/// estimado más allá de máx(5 %, 200 MB), que es lo que el producto
+/// comprueba. Con un fichero de 32 MiB.
+///
+/// Si el volumen resuelve el tamaño (el espacio libre no viene redondeado
+/// a pasos mayores que lo borrado), además: lo medido es al menos la mitad
+/// de lo estimado y no lo supera en más de la tolerancia. Hay entornos que
+/// redondean `statfs` a cientos de MB; ahí esas dos no pueden distinguir
+/// nada y se omiten (se dice en la salida de la prueba).
 #[test]
 fn measured_space_matches_the_estimate_within_m5() {
     let fx = fixture();
@@ -356,8 +446,26 @@ fn measured_space_matches_the_estimate_within_m5() {
         .expect("medido con statfs");
     let tolerance = (estimated / 20).max(200_000_000);
     assert!(
-        (estimated - measured).abs() <= tolerance,
-        "estimado {estimated}, medido {measured}"
+        measured >= estimated - tolerance,
+        "estimado {estimated}, medido {measured}: {doc:#}"
+    );
+    let volumes = doc["space"]["volumes"].as_array().expect("volúmenes");
+    let step = volumes.iter().fold(0, |g, v| {
+        let before = v["free_before"].as_u64().expect("antes");
+        let after = v["free_after"].as_u64().expect("después");
+        g.max(roundness(before).min(roundness(after)))
+    });
+    if step > (estimated as u64) / 4 {
+        eprintln!("statfs redondea a pasos de {step} B: M-5 solo se comprueba por abajo");
+        return;
+    }
+    assert!(
+        measured >= estimated / 2,
+        "estimado {estimated}, medido {measured}: {doc:#}"
+    );
+    assert!(
+        measured <= estimated + tolerance,
+        "estimado {estimated}, medido {measured}: {doc:#}"
     );
 }
 

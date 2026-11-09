@@ -75,6 +75,9 @@ fn list(ui: &Ui, core: &Core) -> Exit {
                 tr!(ui, "trash-others", count = o.items, size = ui.size(o.bytes)),
             );
         }
+        if v.partial {
+            ui.say_in(1, tr!(ui, "trash-partial"));
+        }
     }
     if any {
         ui.say(tr!(ui, "to-empty"));
@@ -139,7 +142,7 @@ fn empty(ui: &Ui, core: &Core, dry_run: bool) -> Exit {
         if ui.json {
             let space = SpaceReport {
                 estimated_bytes: 0,
-                measured_bytes: Some(0),
+                measured_bytes: None,
                 volumes: vec![],
             };
             ui.emit(

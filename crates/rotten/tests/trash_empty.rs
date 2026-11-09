@@ -196,7 +196,7 @@ fn empty_deletes_what_was_reviewed_and_ops_become_irreversible() {
         (1, &json!("nothing_to_undo"))
     );
     let (code, doc) = fx.run(&["free", &clean, "--yes", "--json"]);
-    assert_eq!(code, 4, "{doc:#}");
+    assert_eq!(code, 0, "nada pendiente: {doc:#}");
     assert!(
         doc["plan"]["not_freeable"]
             .as_array()
@@ -241,4 +241,47 @@ fn empty_unreadable_exits_3_and_suggests_free() {
     // listar la Papelera (aquí, legible de nuevo).
     let (code, doc) = fx.run(&["free", &clean, "--dry-run", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
+}
+
+/// I5 (PoC D del revisor): enlaces simbólicos en la Papelera, uno en el
+/// primer nivel que apunta a Documentos y otros dentro de una carpeta (a
+/// Documentos y a un fichero suyo). Se borran los enlaces, nunca lo que
+/// hay al otro lado.
+#[test]
+fn symlinks_in_the_trash_are_deleted_not_followed() {
+    let fx = fixture();
+    let docs = fx.p("Documents");
+    fs::create_dir_all(&docs).expect("mkdir");
+    let secret = docs.join("secreto.txt");
+    fs::write(&secret, b"secreto").expect("write");
+    let before: Vec<_> = {
+        let mut v: Vec<_> = fs::read_dir(&docs)
+            .expect("Documentos")
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        v.sort();
+        v
+    };
+    std::os::unix::fs::symlink(&docs, fx.trash.join("link-a-documentos")).expect("ln");
+    let folder = fx.trash.join("carpeta");
+    fs::create_dir(&folder).expect("mkdir");
+    std::os::unix::fs::symlink(&docs, folder.join("link2")).expect("ln");
+    std::os::unix::fs::symlink(&secret, folder.join("link-fichero")).expect("ln");
+
+    let (code, doc) = fx.run(&["trash", "empty", "--yes", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert_eq!(doc["report"]["done"], 2, "{doc:#}");
+    assert!(names(&fx).is_empty(), "{:?}", names(&fx));
+    assert_eq!(fs::read(&secret).expect("secreto"), b"secreto");
+    let after: Vec<_> = {
+        let mut v: Vec<_> = fs::read_dir(&docs)
+            .expect("Documentos")
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        v.sort();
+        v
+    };
+    assert_eq!(before, after, "Documentos cambió");
 }

@@ -31,7 +31,7 @@
       "properties": {
         "op_id": { "type": "string", "minLength": 1 },
         "kind": {
-          "description": "clean: rotten clean · trash_put: rutas elegidas con rotten trash put · undo: deshacer de otra operación · free: rotten free (borrado permanente de la Papelera) · trash_empty: rotten trash empty (vaciar la Papelera entera).",
+          "description": "clean: rotten clean · trash_put: rutas elegidas con rotten trash put · undo: deshacer de otra operación · free: rotten free (borrado permanente de la Papelera) · trash_empty: rotten trash empty (vaciar la Papelera entera). La lista puede crecer dentro de v2 con comandos nuevos: quien lea el historial debe aceptar valores que no conozca.",
           "enum": ["clean", "trash_put", "undo", "free", "trash_empty"]
         },
         "mode": { "enum": ["trash", "permanent", "restore"] },

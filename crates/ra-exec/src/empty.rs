@@ -5,8 +5,10 @@
 //!   esa; con la del sistema, `~/.Trash` y cada
 //!   `/Volumes/<X>/.Trashes/<uid>` que exista.
 //! - El plan tiene la identidad completa de cada entrada de primer nivel,
-//!   leída en la propia Papelera; al borrar se exige que siga siendo
-//!   idéntica (`ctime` incluido). Lo que aparezca después no está en el plan.
+//!   leída en la propia Papelera, y la huella de lo que tiene dentro
+//!   ([`ra_safety::fingerprint::TrashContents`]); al borrar se exige que
+//!   las dos sigan iguales. Lo que aparezca después, en el primer nivel o
+//!   dentro de una carpeta, no está en el plan y no se borra.
 //! - Una Papelera que no se puede leer no se adivina: es un error.
 //! - `.DS_Store` del primer nivel no entra: es de Finder y guarda los datos
 //!   de «Devolver» de lo que quede en la Papelera.
@@ -25,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use crate::trash::TrashBackend;
 
 /// Nombre que nunca se lista ni se borra en el primer nivel.
-const FINDER_METADATA: &[u8] = b".DS_Store";
+use ra_safety::fingerprint::FINDER_METADATA;
 
 /// Carpetas de la Papelera que usa `backend`, en orden estable.
 pub fn trash_roots(backend: &TrashBackend, home: &Path) -> Vec<PathBuf> {
@@ -61,6 +63,10 @@ pub struct TrashEntry {
     /// Bytes asignados (`st_blocks × 512`, enlaces duros una vez dentro de
     /// la entrada), como `du`.
     pub bytes: u64,
+    /// Huella de lo que tiene dentro; `None` si no se pudo recorrer entera.
+    pub digest: Option<String>,
+    /// `bytes` se quedó corto: no se pudo recorrer todo su contenido.
+    pub partial: bool,
 }
 
 /// Entradas del primer nivel de `dir`, por nombre. Si `dir` no existe, no
@@ -93,32 +99,33 @@ pub fn read_trash_dir(dir: &Path) -> io::Result<Vec<TrashEntry>> {
         let Ok(st) = rustix::fs::statat(&fd, name, AtFlags::SYMLINK_NOFOLLOW) else {
             continue;
         };
-        let bytes = ra_safety::fingerprint::fingerprint_at(fd.as_fd(), name)
-            .map(|f| f.bytes_allocated)
-            .unwrap_or(st.st_blocks as u64 * 512);
+        // Si no se puede recorrer entera, no se infracuenta en silencio: se
+        // marca como parcial y, sin huella, no se borrará.
+        let (bytes, digest, partial) =
+            match ra_safety::fingerprint::trash_contents_at(fd.as_fd(), name) {
+                Ok(c) => (c.bytes_allocated, Some(c.digest), false),
+                Err(_) => (st.st_blocks as u64 * 512, None, true),
+            };
         out.push(TrashEntry {
             path: dir.join(name),
             identity: Identity::from_stat(&st),
             bytes,
+            digest,
+            partial,
         });
     }
     Ok(out)
 }
 
 /// La operación y el elemento que mandaron `entry` a la Papelera, según
-/// el journal: mismo objeto (volumen, inode y tipo), como al deshacer.
-/// Si hay varios, el que además coincide en la ruta.
+/// el journal: mismo objeto (volumen, inode y tipo), como al deshacer. Si
+/// varios elementos del journal tienen ese inode (se reutilizó), el de la
+/// operación más reciente: los anteriores ya no pueden estar allí.
 pub fn attribute<'a>(entry: &TrashEntry, known: &'a [TrashedItem]) -> Option<&'a TrashedItem> {
-    let mut found = None;
-    for k in known {
-        if k.identity.same_object(&entry.identity) {
-            if k.path == entry.path {
-                return Some(k);
-            }
-            found.get_or_insert(k);
-        }
-    }
-    found
+    known
+        .iter()
+        .rev()
+        .find(|k| k.identity.same_object(&entry.identity))
 }
 
 /// Una entrada que `rotten trash empty` borraría.
@@ -130,6 +137,9 @@ pub struct EmptyItem {
     /// Identidad leída en la Papelera al preparar el plan.
     pub identity: Identity,
     pub bytes: u64,
+    /// Huella de lo que tenía dentro al preparar el plan; `None` si no se
+    /// pudo recorrer: entonces no se borra.
+    pub digest: Option<String>,
     /// Operación y elemento de Rotten Apple que la mandaron allí, si consta.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub of: Option<ItemRef>,
@@ -202,6 +212,7 @@ pub fn plan_empty(dirs: &[PathBuf], known: &[TrashedItem]) -> Result<EmptyPlan, 
                 path: e.path,
                 identity: e.identity,
                 bytes: e.bytes,
+                digest: e.digest,
                 of,
             });
         }
@@ -279,7 +290,10 @@ mod tests {
         fs::write(t.join("viejo"), b"3").expect("write");
         let mut stale = known(&t.join("viejo"), "op-0", 1);
         stale.path = t.join("ajeno");
-        let plan = plan_empty(std::slice::from_ref(&t), &[stale, k]).expect("plan");
+        // M4: un elemento más antiguo con el inode de «mio» (reutilizado) y
+        // su misma ruta: gana la operación más reciente.
+        let older = known(&t.join("mio"), "op-antigua", 7);
+        let plan = plan_empty(std::slice::from_ref(&t), &[older, stale, k]).expect("plan");
         let of: Vec<_> = plan.items.iter().map(|i| i.of.clone()).collect();
         assert_eq!(
             of,

@@ -258,7 +258,7 @@
           "additionalProperties": false,
           "properties": {
             "code": {
-              "description": "Código estable del error (no depende del idioma).",
+              "description": "Código estable del error (no depende del idioma): nothing_to_undo, unknown_operation, unknown_item, not_undoable (exit_code 1: un deshacer, o una operación irreversible: se borró de la Papelera o era un borrado permanente), locked…",
               "type": "string",
               "pattern": "^[a-z][a-z_]*$"
             },

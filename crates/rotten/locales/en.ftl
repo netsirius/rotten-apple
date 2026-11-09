@@ -121,6 +121,7 @@ trash-others = Other: { $count ->
     [one] { $count } item
    *[other] { $count } items
 } ({ $size })
+trash-partial = ! Something inside could not be read completely: the real size is larger and it will not be emptied
 to-empty = To empty it (cannot be undone): rotten trash empty
 
 ## trash empty
@@ -208,6 +209,8 @@ not-recoverable-already-restored = it was already restored
 not-recoverable-unknown = whereabouts unknown after an abrupt shutdown
 not-recoverable-unknown-detail = whereabouts unknown after an abrupt shutdown: { $detail }
 not-recoverable-never-moved = it was never moved
+not-recoverable-other-trash = it was sent to a different Trash than the one in use
+not-recoverable-volume-not-mounted = its Trash is not available (is the volume mounted?)
 
 ## doctor
 
@@ -273,6 +276,8 @@ skip-symlink-in-path = there is a symbolic link in the path
 skip-identity-changed = it changed since the review
 skip-contents-changed = its contents changed since the review
 skip-conflict-exists = something already exists at the original path
+skip-outside-trash = it is not in the Trash in use
+skip-not-verifiable = what it contains cannot be checked against the review
 skip-in-use = in use by { $process } (pid { $pid })
 skip-in-use-unknown = cannot tell whether it is in use: { $detail }
 skip-overlaps = it is inside { $path }, which is already in the plan
@@ -320,6 +325,8 @@ error-relative-path = the path must be absolute: { $path }
 error-config-corrupt = { $path } is corrupt ({ $reason }): nothing is done until it is fixed
 error-wrong-home = the plan belongs to another home folder ({ $path })
 error-plan-changed = the plan changed since the review: review it again
+error-free-plan-changed = the plan changed since the review; no longer in it: { $items }. Nothing is deleted: review it again
+error-trash-gone = the Trash folder { $path } is no longer there (was its volume unmounted?). Nothing is deleted.
 error-plan-expired = the review is too old ({ $minutes ->
     [one] { $minutes } minute
    *[other] { $minutes } minutes

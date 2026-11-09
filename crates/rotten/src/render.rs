@@ -129,6 +129,8 @@ pub fn skip_cause(i: &I18n, c: &SkipCause, home: &Path) -> String {
         SkipCause::InUse {
             detail: InUseDetail::Unknown { detail },
         } => tr!(i, "skip-in-use-unknown", detail = detail.as_str()),
+        SkipCause::OutsideTrash => tr!(i, "skip-outside-trash"),
+        SkipCause::NotVerifiable => tr!(i, "skip-not-verifiable"),
     }
 }
 
@@ -154,6 +156,8 @@ pub fn not_recoverable(i: &I18n, r: &NotRecoverableReason) -> String {
             tr!(i, "not-recoverable-unknown-detail", detail = d.as_str())
         }
         NotRecoverableReason::NeverMoved => tr!(i, "not-recoverable-never-moved"),
+        NotRecoverableReason::OtherTrash => tr!(i, "not-recoverable-other-trash"),
+        NotRecoverableReason::VolumeNotMounted => tr!(i, "not-recoverable-volume-not-mounted"),
     }
 }
 
@@ -220,6 +224,15 @@ pub fn core_error(i: &I18n, e: &CoreError, home: &Path) -> String {
             tr!(i, "error-unknown-operation", op = op.as_str())
         }
         E::Free(FreeError::NotFreeable { op }) => tr!(i, "error-not-freeable", op = op.as_str()),
+        E::FreePlanChanged { left } if left.is_empty() => tr!(i, "error-plan-changed"),
+        E::FreePlanChanged { left } => {
+            let ids: Vec<String> = left
+                .iter()
+                .map(|r| format!("{}#{}", r.op, r.item))
+                .collect();
+            tr!(i, "error-free-plan-changed", items = ids.join(", "))
+        }
+        E::TrashGone { path: p } => tr!(i, "error-trash-gone", path = path(p, home)),
         E::TrashUnreadable { path: p } => tr!(i, "error-trash-unreadable", path = path(p, home)),
         E::EmptyUnreadable { path: p } => tr!(i, "error-empty-unreadable", path = path(p, home)),
     }

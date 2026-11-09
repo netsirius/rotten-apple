@@ -9,7 +9,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ra_history::{
     Event, FreeItem, FreePlan, HistoryPaths, ItemRef, Journal, JournalError, OpKind, OpMode,
@@ -23,7 +23,7 @@ use ra_safety::{AppProbe, Exclusions, FileKind, ProtectedList};
 use rustix::fs::{AtFlags, Dir, Mode, OFlags, RenameFlags};
 use serde::{Deserialize, Serialize};
 
-use crate::empty::EmptyPlan;
+use crate::empty::{EmptyPlan, trash_roots};
 use crate::lock::ExecLock;
 use crate::trash::{TrashBackend, find_trashed};
 use crate::verify::{Guards, SkipCause, open_error, verify};
@@ -35,6 +35,8 @@ pub struct ExecContext<'a> {
     pub exclusions: &'a Exclusions,
     pub apps: &'a AppProbe,
     pub trash: &'a TrashBackend,
+    /// Carpeta personal (la Papelera del sistema es `<home>/.Trash`).
+    pub home: &'a Path,
     /// Origen para el journal: `cli`, `gui`…
     pub by: &'a str,
 }
@@ -662,15 +664,23 @@ fn execute_undo_batched(
 
 /// Cómo se revalida una entrada de la Papelera justo antes de borrarla.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Revalidate {
+enum Revalidate<'a> {
     /// `rotten free`: la identidad se anotó antes de moverla a la
     /// Papelera; mismo volumen, inode, tipo, tamaño y `mtime`
-    /// (`same_after_move`: mover cambia `ctime`).
-    AfterMove,
+    /// (`same_after_move`: mover cambia `ctime`). De una carpeta, además,
+    /// nada de lo que tiene dentro, a ninguna profundidad, puede haber
+    /// cambiado después de `moved_at` (cuando se anotó que llegó a la
+    /// Papelera); sin esa fecha no se borra.
+    AfterMove { moved_at: Option<SystemTime> },
     /// `rotten trash empty`: la identidad se leyó en la propia Papelera al
-    /// preparar el plan; debe coincidir entera, `ctime` incluido.
-    Exact,
+    /// preparar el plan; debe coincidir entera, `ctime` incluido, y la
+    /// huella de su contenido también. Sin huella no se borra.
+    Exact { digest: Option<&'a str> },
 }
+
+/// Margen para comparar con `moved_at`, que el journal guarda truncado a
+/// milisegundos.
+const MOVED_AT_SLACK: Duration = Duration::from_millis(1);
 
 /// Una entrada de la Papelera que borrar, venga de `free` o de
 /// `trash empty`. Las dos pasan por el mismo camino de borrado.
@@ -681,7 +691,7 @@ struct TrashDelete<'a> {
     bytes: u64,
     /// La operación y el elemento que la mandaron a la Papelera, si se sabe.
     of: Option<&'a ItemRef>,
-    check: Revalidate,
+    check: Revalidate<'a>,
 }
 
 fn free_items(plan: &FreePlan) -> Vec<TrashDelete<'_>> {
@@ -693,7 +703,9 @@ fn free_items(plan: &FreePlan) -> Vec<TrashDelete<'_>> {
             identity: it.identity,
             bytes: it.bytes,
             of: Some(&it.of),
-            check: Revalidate::AfterMove,
+            check: Revalidate::AfterMove {
+                moved_at: it.moved_at_time(),
+            },
         })
         .collect()
 }
@@ -707,38 +719,112 @@ fn empty_items(plan: &EmptyPlan) -> Vec<TrashDelete<'_>> {
             identity: it.identity,
             bytes: it.bytes,
             of: it.of.as_ref(),
-            check: Revalidate::Exact,
+            check: Revalidate::Exact {
+                digest: it.digest.as_deref(),
+            },
         })
         .collect()
 }
 
-/// La entrada de la Papelera sigue siendo el objeto del plan (según
-/// [`Revalidate`]) y no tiene flags que impidan borrarla. Devuelve la
-/// carpeta abierta sin seguir enlaces y el nombre.
-fn check_trash_entry<'a>(it: &TrashDelete<'a>) -> Result<(OwnedFd, &'a OsStr), SkipCause> {
+/// La entrada está en el primer nivel de una carpeta de la Papelera que se
+/// usa ahora (`roots`), sigue siendo el objeto del plan (según
+/// [`Revalidate`]), no es un punto de montaje y no tiene flags que impidan
+/// borrarla. Devuelve la carpeta abierta sin seguir enlaces y el nombre.
+///
+/// Lo primero es la ruta: aunque el plan venga de un journal manipulado,
+/// nada fuera de la Papelera se borra.
+fn check_trash_entry<'a>(
+    it: &TrashDelete<'a>,
+    roots: &[PathBuf],
+) -> Result<(OwnedFd, &'a OsStr), SkipCause> {
+    let in_root = match (it.path.parent(), it.path.file_name()) {
+        (Some(p), Some(n)) => n != "." && n != ".." && roots.iter().any(|r| r == p),
+        _ => false,
+    };
+    if !in_root {
+        return Err(SkipCause::OutsideTrash);
+    }
     let (parent, name) = open_parent_nofollow(it.path).map_err(open_error)?;
     let st = rustix::fs::statat(parent.as_fd(), name, AtFlags::SYMLINK_NOFOLLOW)
         .map_err(|e| open_error(e.into()))?;
+    // Un volumen montado en la Papelera: `remove_at` vaciaría su contenido.
+    let parent_dev = rustix::fs::fstat(&parent)
+        .map_err(|e| open_error(e.into()))?
+        .st_dev;
+    if parent_dev != st.st_dev {
+        return Err(SkipCause::CrossesDevice);
+    }
     let now = ra_safety::Identity::from_stat(&st);
     let same = match it.check {
-        Revalidate::AfterMove => now.same_after_move(&it.identity),
-        Revalidate::Exact => now == it.identity,
+        Revalidate::AfterMove { .. } => now.same_after_move(&it.identity),
+        Revalidate::Exact { .. } => now == it.identity,
     };
     if !same {
         return Err(SkipCause::IdentityChanged);
     }
     check_flags(st.st_flags).map_err(|flag| SkipCause::Flags { flag })?;
+    check_trash_contents(it, parent.as_fd(), name, now.kind)?;
     Ok((parent, name))
 }
 
+/// I1: lo que hay dentro de la entrada sigue como cuando se revisó, a
+/// cualquier profundidad. Si no se puede recorrer entera, no se borra.
+fn check_trash_contents(
+    it: &TrashDelete<'_>,
+    parent: BorrowedFd<'_>,
+    name: &OsStr,
+    kind: FileKind,
+) -> Result<(), SkipCause> {
+    let contents = || {
+        ra_safety::fingerprint::trash_contents_at(parent, name).map_err(|e| SkipCause::Unreadable {
+            detail: e.to_string(),
+        })
+    };
+    match it.check {
+        Revalidate::Exact { digest } => {
+            let Some(digest) = digest else {
+                return Err(SkipCause::NotVerifiable);
+            };
+            let now = contents()?;
+            if now.crosses_device {
+                return Err(SkipCause::CrossesDevice);
+            }
+            if now.digest != digest {
+                return Err(SkipCause::ContentsChanged);
+            }
+        }
+        // Un fichero suelto ya lo cubre `same_after_move` (tamaño y mtime).
+        Revalidate::AfterMove { .. } if kind != FileKind::Dir => {}
+        Revalidate::AfterMove { moved_at } => {
+            let Some(moved_at) = moved_at else {
+                return Err(SkipCause::NotVerifiable);
+            };
+            let now = contents()?;
+            if now.crosses_device {
+                return Err(SkipCause::CrossesDevice);
+            }
+            if let Some((s, ns)) = now.newest_change {
+                let changed = u64::try_from(s)
+                    .ok()
+                    .map(|s| UNIX_EPOCH + Duration::new(s, ns.clamp(0, 999_999_999) as u32));
+                // Una fecha anterior a 1970 no se puede comparar: se omite.
+                if changed.is_none_or(|c| c > moved_at + MOVED_AT_SLACK) {
+                    return Err(SkipCause::ContentsChanged);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Simulación: las mismas comprobaciones, sin borrar nada.
-fn dry_run_trash(items: &[TrashDelete<'_>]) -> ExecReport {
+fn dry_run_trash(items: &[TrashDelete<'_>], roots: &[PathBuf]) -> ExecReport {
     let mut report = ExecReport {
         dry_run: true,
         ..Default::default()
     };
     for it in items {
-        let outcome = match check_trash_entry(it) {
+        let outcome = match check_trash_entry(it, roots) {
             Ok(_) => Outcome::Would {
                 action: would(Action::Delete),
             },
@@ -757,14 +843,14 @@ fn dry_run_trash(items: &[TrashDelete<'_>]) -> ExecReport {
     report
 }
 
-/// Simulación de `rotten free`.
-pub fn dry_run_free(plan: &FreePlan) -> ExecReport {
-    dry_run_trash(&free_items(plan))
+/// Simulación de `rotten free` con la Papelera `trash` de `home`.
+pub fn dry_run_free(plan: &FreePlan, trash: &TrashBackend, home: &Path) -> ExecReport {
+    dry_run_trash(&free_items(plan), &trash_roots(trash, home))
 }
 
-/// Simulación de `rotten trash empty`.
-pub fn dry_run_empty(plan: &EmptyPlan) -> ExecReport {
-    dry_run_trash(&empty_items(plan))
+/// Simulación de `rotten trash empty` con la Papelera `trash` de `home`.
+pub fn dry_run_empty(plan: &EmptyPlan, trash: &TrashBackend, home: &Path) -> ExecReport {
+    dry_run_trash(&empty_items(plan), &trash_roots(trash, home))
 }
 
 /// Borra para siempre de la Papelera los elementos del plan («Liberar
@@ -873,6 +959,7 @@ fn delete_from_trash_batched(
         op_id: Some(op.clone()),
         ..Default::default()
     };
+    let roots = trash_roots(ctx.trash, ctx.home);
     run_batched(
         &mut j,
         entries,
@@ -891,7 +978,7 @@ fn delete_from_trash_batched(
             of: it.of.cloned(),
         },
         |it| {
-            let outcome = match check_trash_entry(it) {
+            let outcome = match check_trash_entry(it, &roots) {
                 Err(cause) => Outcome::Skipped {
                     message: cause.to_string(),
                     cause,
@@ -1053,28 +1140,35 @@ pub fn recover_incomplete(
             {
                 touched.push(of.op.clone());
             }
-            let (state, result_path, detail) = match stat_nofollow_any(path) {
+            let delete = *action == StepAction::Delete;
+            let (state, result_path, detail) = match what_is_at(path) {
                 // Mover y borrar no conservan el objeto en su ruta: si el
-                // mismo objeto (volumen, inode y tipo) sigue ahí, no se tocó.
-                // Puede haber cambiado (la verificación lo habría omitido),
-                // y una carpeta que se borraba puede haber perdido parte de
-                // su contenido.
-                Ok((id, _)) if id.same_object(identity) => {
-                    skipped += 1;
-                    let detail = (!id.same_after_move(identity)).then(|| {
-                        if *action == StepAction::Delete && identity.kind == FileKind::Dir {
-                            "sigue en su sitio, pero cambió: puede faltar parte de su contenido"
-                        } else {
-                            "sigue en su sitio, pero cambió desde la revisión"
-                        }
-                        .to_owned()
-                    });
-                    ("not_moved", None, detail)
+                // mismo objeto (volumen, inode y tipo) sigue ahí, no se tocó
+                // o, si es una carpeta que se borraba y cambió, se quedó a
+                // medias: falta parte de su contenido y no se sabe cuánto.
+                Ok(Some(id)) if id.same_object(identity) => {
+                    let changed = !id.same_after_move(identity);
+                    if delete && identity.kind == FileKind::Dir && changed {
+                        unknown += 1;
+                        let detail = "borrado interrumpido: contenido parcial";
+                        (PARTIAL, None, Some(detail.to_owned()))
+                    } else {
+                        skipped += 1;
+                        let detail = changed
+                            .then(|| "sigue en su sitio, pero cambió desde la revisión".to_owned());
+                        ("not_moved", None, detail)
+                    }
                 }
-                // Un borrado permanente cuyo original ya no está se hizo.
-                _ if *action == StepAction::Delete => {
+                // Un borrado permanente cuyo original ya no está (en su
+                // carpeta, que sí se pudo abrir) se hizo.
+                Ok(_) if delete => {
                     done += 1;
                     ("deleted", None, None)
+                }
+                // Si no se puede comprobar, no se da por borrado.
+                Err(e) if delete => {
+                    unknown += 1;
+                    ("unknown", None, Some(format!("no se pudo comprobar: {e}")))
                 }
                 _ => {
                     // Un deshacer interrumpido puede haber llegado a su destino
@@ -1137,6 +1231,22 @@ pub fn recover_incomplete(
     let ops: Vec<&str> = touched.iter().map(String::as_str).collect();
     save_manifests(ctx.history, &ops)?;
     Ok(recovered)
+}
+
+/// Estado reconciliado de una carpeta cuyo borrado se cortó a medias.
+const PARTIAL: &str = "partial";
+
+/// Lo que hay en `path`: `None` si no hay nada (ENOENT o ENOTDIR al mirar
+/// dentro de su carpeta, que sí se pudo abrir sin seguir enlaces). Si la
+/// carpeta no se puede abrir (sin permiso, volumen desmontado, enlace en la
+/// ruta) o falla otra cosa, error: no se sabe.
+fn what_is_at(path: &Path) -> io::Result<Option<ra_safety::Identity>> {
+    let (parent, name) = open_parent_nofollow(path)?;
+    match rustix::fs::statat(parent.as_fd(), name, AtFlags::SYMLINK_NOFOLLOW) {
+        Ok(st) => Ok(Some(ra_safety::Identity::from_stat(&st))),
+        Err(rustix::io::Errno::NOENT | rustix::io::Errno::NOTDIR) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Busca en la ruta original (y en sus variantes « (restaurado N)») el
@@ -1315,6 +1425,7 @@ mod batch_tests {
                 exclusions: &self.exclusions,
                 apps: &self.apps,
                 trash: &self.trash,
+                home: &self.home,
                 by: "test",
             }
         }
@@ -1505,7 +1616,7 @@ mod batch_tests {
             let r = execute_batched(&approved, &fx.ctx(), &fx.lock(), 3).expect("ejecutar");
             let op = r.op_id.expect("op");
             let (records, _) = read_journal(&fx.history).expect("journal");
-            let plan = ra_history::prepare_free(&records, std::slice::from_ref(&op), |_| true)
+            let plan = ra_history::prepare_free(&records, std::slice::from_ref(&op), |_| Ok(()))
                 .expect("plan");
             assert_eq!(plan.ready.len(), paths.len());
             // El 2 se modifica dentro de la Papelera y el 3 se sustituye por
@@ -1513,7 +1624,7 @@ mod batch_tests {
             fs::write(&plan.ready[1].path, b"cambiado en la Papelera").expect("write");
             fs::remove_file(&plan.ready[2].path).expect("rm");
             fs::write(&plan.ready[2].path, b"contenido").expect("write");
-            let dry = dry_run_free(&plan);
+            let dry = dry_run_free(&plan, &fx.trash, &fx.home);
             assert_eq!((dry.would, dry.skipped), (3, 2), "lote {batch}");
             take_probes();
             let f = execute_free_batched(&plan, &fx.ctx(), &fx.lock(), batch).expect("liberar");
@@ -1535,6 +1646,118 @@ mod batch_tests {
                 .expect("manifiesto");
             assert!(saved.contains("\"deleted\""), "{saved}");
         }
+    }
+
+    /// B1 (cinturón del ejecutor): aunque un plan de liberar llegue con una
+    /// ruta fuera de la Papelera y la identidad real de ese fichero, no se
+    /// borra; el resto del plan sí.
+    #[test]
+    fn free_never_deletes_outside_the_trash_roots() {
+        let fx = Fx::new();
+        let paths = fx.files(1);
+        let approved = fx.approved(&paths, Action::Trash);
+        let r = execute_batched(&approved, &fx.ctx(), &fx.lock(), 8).expect("ejecutar");
+        let op = r.op_id.expect("op");
+        let (records, _) = read_journal(&fx.history).expect("journal");
+        let mut plan = ra_history::prepare_free(&records, std::slice::from_ref(&op), |_| Ok(()))
+            .expect("plan");
+        let victim = fx.home.join("tesis.docx");
+        fs::write(&victim, b"importante").expect("write");
+        plan.ready[0].path = victim.clone();
+        plan.ready[0].identity = stat_nofollow_any(&victim).expect("lstat").0;
+        let dry = dry_run_free(&plan, &fx.trash, &fx.home);
+        assert!(
+            matches!(
+                &dry.items[0].outcome,
+                Outcome::Skipped {
+                    cause: SkipCause::OutsideTrash,
+                    ..
+                }
+            ),
+            "{dry:?}"
+        );
+        let f = execute_free_batched(&plan, &fx.ctx(), &fx.lock(), 8).expect("liberar");
+        assert_eq!((f.done, f.skipped), (1, 1), "{f:?}");
+        assert!(victim.exists(), "se borró fuera de la Papelera");
+    }
+
+    /// I1: una carpeta se libera solo si nada de dentro cambió después de
+    /// que el journal anotara su llegada a la Papelera; sin esa fecha
+    /// (journal antiguo), no se libera.
+    #[test]
+    fn a_folder_is_freed_only_if_nothing_inside_changed_after_it_was_trashed() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = fs::canonicalize(tmp.path()).expect("canon");
+        let dir = root.join("carpeta");
+        fs::create_dir_all(dir.join("a/b")).expect("mkdir");
+        fs::write(dir.join("a/b/c.txt"), b"c").expect("write");
+        let identity = stat_nofollow_any(&dir).expect("lstat").0;
+        let now = SystemTime::now();
+        let check = |moved_at| {
+            let item = TrashDelete {
+                item_id: 1,
+                path: &dir,
+                identity,
+                bytes: 0,
+                of: None,
+                check: Revalidate::AfterMove { moved_at },
+            };
+            let r = dry_run_trash(&[item], std::slice::from_ref(&root));
+            r.items[0].outcome.clone()
+        };
+        assert!(
+            matches!(
+                check(Some(now + Duration::from_secs(1))),
+                Outcome::Would { .. }
+            ),
+            "sin cambios después"
+        );
+        assert!(matches!(
+            check(Some(now - Duration::from_secs(60))),
+            Outcome::Skipped {
+                cause: SkipCause::ContentsChanged,
+                ..
+            }
+        ));
+        assert!(matches!(
+            check(None),
+            Outcome::Skipped {
+                cause: SkipCause::NotVerifiable,
+                ..
+            }
+        ));
+    }
+
+    /// I3: una entrada de primer nivel que es un punto de montaje no se
+    /// vacía (se usa `/dev`, montado en `/`, y solo se simula).
+    #[test]
+    fn a_mount_point_in_the_trash_is_never_emptied() {
+        let dev = PathBuf::from("/dev");
+        let identity = stat_nofollow_any(&dev).expect("lstat /dev").0;
+        let root_dev = {
+            use std::os::unix::fs::MetadataExt;
+            fs::symlink_metadata("/").expect("lstat /").dev()
+        };
+        assert_ne!(identity.dev, root_dev, "/dev debería ser otro volumen");
+        let item = TrashDelete {
+            item_id: 1,
+            path: &dev,
+            identity,
+            bytes: 0,
+            of: None,
+            check: Revalidate::Exact { digest: None },
+        };
+        let r = dry_run_trash(&[item], &[PathBuf::from("/")]);
+        assert!(
+            matches!(
+                &r.items[0].outcome,
+                Outcome::Skipped {
+                    cause: SkipCause::CrossesDevice,
+                    ..
+                }
+            ),
+            "{r:?}"
+        );
     }
 
     /// T-12: vaciar la Papelera pasa por el mismo camino. Cada `unlink`
@@ -1584,7 +1807,7 @@ mod batch_tests {
             )
             .expect("chmod");
             fs::write(fx.trash_dir.join("nuevo.txt"), b"llega tarde").expect("write");
-            let dry = dry_run_empty(&plan);
+            let dry = dry_run_empty(&plan, &fx.trash, &fx.home);
             assert_eq!((dry.would, dry.skipped), (4, 2), "lote {batch}");
             take_probes();
             let e = execute_empty_batched(&plan, &fx.ctx(), &fx.lock(), batch).expect("vaciar");
@@ -1617,19 +1840,16 @@ mod batch_tests {
         }
     }
 
-    /// Un corte a mitad de liberar: lo que ya no está en la Papelera queda
-    /// borrado (también en la operación original) y lo que sigue, intacto
-    /// y anotado como no tocado.
-    #[test]
-    fn recovery_of_an_interrupted_free() {
-        let fx = Fx::new();
-        let paths = fx.files(2);
-        let approved = fx.approved(&paths, Action::Trash);
+    /// `paths` en la Papelera y una liberación de todo cortada justo
+    /// después de escribir sus intenciones; devuelve la operación original
+    /// y el plan.
+    fn interrupted_free(fx: &Fx, paths: &[PathBuf]) -> (String, FreePlan) {
+        let approved = fx.approved(paths, Action::Trash);
         let r = execute_batched(&approved, &fx.ctx(), &fx.lock(), 8).expect("ejecutar");
         let op = r.op_id.expect("op");
         let (records, _) = read_journal(&fx.history).expect("journal");
-        let plan =
-            ra_history::prepare_free(&records, std::slice::from_ref(&op), |_| true).expect("plan");
+        let plan = ra_history::prepare_free(&records, std::slice::from_ref(&op), |_| Ok(()))
+            .expect("plan");
         let mut j = Journal::open(&fx.history, "op-free", SystemTime::now()).expect("journal");
         j.write(
             Event::OpStarted {
@@ -1665,6 +1885,16 @@ mod batch_tests {
             .expect("intent");
         }
         j.sync().expect("sync");
+        (op, plan)
+    }
+
+    /// Un corte a mitad de liberar: lo que ya no está en la Papelera queda
+    /// borrado (también en la operación original) y lo que sigue, intacto
+    /// y anotado como no tocado.
+    #[test]
+    fn recovery_of_an_interrupted_free() {
+        let fx = Fx::new();
+        let (op, plan) = interrupted_free(&fx, &fx.files(2));
         // Se llegó a borrar el primero; el corte, antes del resto.
         fs::remove_file(&plan.ready[0].path).expect("rm");
         recover_incomplete(&fx.ctx(), &fx.lock()).expect("recover");
@@ -1679,6 +1909,55 @@ mod batch_tests {
         let saved = fs::read_to_string(fx.history.manifests_dir.join(format!("{op}.json")))
             .expect("manifiesto");
         assert!(saved.contains("\"deleted\""), "{saved}");
+    }
+
+    /// I2: una carpeta cuyo borrado se cortó a medias no se da por borrada
+    /// ni por intacta: en las dos operaciones queda en paradero incierto.
+    #[test]
+    fn a_folder_deleted_halfway_is_unknown_in_both_operations() {
+        let fx = Fx::new();
+        let (op, plan) = interrupted_free(&fx, &fx.files(1));
+        let dir = &plan.ready[1].path;
+        assert!(dir.is_dir(), "{dir:?}");
+        // `remove_at` llegó a borrar un hijo de la carpeta.
+        fs::remove_file(dir.join("a.log")).expect("rm");
+        recover_incomplete(&fx.ctx(), &fx.lock()).expect("recover");
+        let partial = |s: &ItemState| matches!(s, ItemState::Unknown { detail: Some(d) } if d.contains("contenido parcial"));
+        let freed = states(&fx, "op-free");
+        assert_eq!(freed[&1], not_moved());
+        assert!(partial(&freed[&2]), "{:?}", freed[&2]);
+        let original = states(&fx, &op);
+        assert_eq!(original[&1], ItemState::Trashed);
+        assert!(partial(&original[&2]), "{:?}", original[&2]);
+        assert!(dir.join("b.log").exists());
+    }
+
+    /// I2 (PoC C del revisor): si la recuperación no puede mirar en la
+    /// Papelera (sin permiso), nada se da por borrado: la liberación queda
+    /// en paradero incierto con el motivo y la operación original sigue en
+    /// la Papelera.
+    #[test]
+    fn recovery_that_cannot_look_in_the_trash_deletes_nothing_on_paper() {
+        let fx = Fx::new();
+        let (op, plan) = interrupted_free(&fx, &fx.files(2));
+        let trash_dir = plan.ready[0].path.parent().expect("Papelera").to_path_buf();
+        fs::set_permissions(&trash_dir, fs::Permissions::from_mode(0o000)).expect("chmod");
+        let r = recover_incomplete(&fx.ctx(), &fx.lock());
+        fs::set_permissions(&trash_dir, fs::Permissions::from_mode(0o755)).expect("chmod");
+        r.expect("recover");
+        let freed = states(&fx, "op-free");
+        for (i, s) in &freed {
+            assert!(
+                matches!(s, ItemState::Unknown { detail: Some(d) } if d.contains("no se pudo comprobar")),
+                "elemento {i}: {s:?}"
+            );
+        }
+        let original = states(&fx, &op);
+        assert!(
+            original.values().all(|s| *s == ItemState::Trashed),
+            "{original:?}"
+        );
+        assert!(plan.ready.iter().all(|it| it.path.exists()));
     }
 
     /// Un lote cortado: todas sus intenciones en el disco y ningún
@@ -1772,17 +2051,11 @@ mod batch_tests {
         let st = states(&fx, "op-borrado");
         assert_eq!(st[&1], ItemState::Deleted);
         assert_eq!(st[&2], not_moved());
-        assert_eq!(st[&3], not_moved());
-        let (records, _) = read_journal(&fx.history).expect("journal");
-        let detail = records.iter().find_map(|r| match &r.event {
-            Event::ItemReconciled {
-                item: 3, detail, ..
-            } => detail.clone(),
-            _ => None,
-        });
+        // I2: ni borrada ni intacta; en paradero incierto, y se dice.
         assert!(
-            detail.is_some_and(|d| d.contains("puede faltar parte de su contenido")),
-            "la carpeta a medio borrar debe decirlo"
+            matches!(&st[&3], ItemState::Unknown { detail: Some(d) } if d.contains("contenido parcial")),
+            "la carpeta a medio borrar debe decirlo: {:?}",
+            st[&3]
         );
     }
 }
