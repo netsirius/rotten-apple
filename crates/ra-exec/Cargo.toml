@@ -19,6 +19,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+ra-catalog.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 

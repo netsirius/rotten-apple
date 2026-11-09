@@ -148,11 +148,19 @@ pub enum JournalError {
 }
 
 /// Escritor del journal de una operación.
+///
+/// Cada registro se anexa con una sola llamada a `write` y sin búfer propio:
+/// si el proceso muere, lo escrito sigue en el fichero. Solo un corte de
+/// corriente puede perder lo que no se ha sincronizado con [`Journal::sync`].
 #[derive(Debug)]
 pub struct Journal {
     file: File,
     path: PathBuf,
     op: String,
+    /// Registros anexados por este escritor.
+    seq: u64,
+    /// Registros que ya han llegado al disco (`seq` del último `sync`).
+    durable_seq: u64,
 }
 
 fn rfc3339(t: SystemTime) -> String {
@@ -175,6 +183,8 @@ impl Journal {
             file,
             path,
             op: op.to_owned(),
+            seq: 0,
+            durable_seq: 0,
         })
     }
 
@@ -186,9 +196,12 @@ impl Journal {
         &self.op
     }
 
-    /// Anexa un evento. Con `durable`, espera a que llegue al disco
-    /// (`fsync`) antes de volver: obligatorio para las intenciones.
-    pub fn write(&mut self, event: Event, durable: bool) -> Result<(), JournalError> {
+    /// Anexa un evento y devuelve su número de orden en este escritor (1, 2…).
+    /// Con `durable`, espera a que llegue al disco ([`Journal::sync`]) antes
+    /// de volver. Una intención tiene que ser durable antes de actuar sobre
+    /// su elemento: se escribe sin `durable` solo si después se sincroniza el
+    /// lote entero y se comprueba con [`Journal::is_durable`].
+    pub fn write(&mut self, event: Event, durable: bool) -> Result<u64, JournalError> {
         let rec = Record {
             schema_version: JOURNAL_SCHEMA_VERSION,
             ts: rfc3339(SystemTime::now()),
@@ -198,10 +211,27 @@ impl Journal {
         let mut line = serde_json::to_vec(&rec)?;
         line.push(b'\n');
         self.file.write_all(&line)?;
+        self.seq += 1;
         if durable {
+            self.sync()?;
+        }
+        Ok(self.seq)
+    }
+
+    /// Lleva al disco todo lo anexado hasta ahora. En macOS, `sync_data` es
+    /// `fcntl(F_FULLFSYNC)`: vacía también la caché del disco.
+    pub fn sync(&mut self) -> Result<(), JournalError> {
+        if self.durable_seq < self.seq {
             self.file.sync_data()?;
+            self.durable_seq = self.seq;
         }
         Ok(())
+    }
+
+    /// Si el registro `seq` (lo que devolvió [`Journal::write`]) ya está en
+    /// el disco.
+    pub fn is_durable(&self, seq: u64) -> bool {
+        seq <= self.durable_seq
     }
 }
 
@@ -323,6 +353,35 @@ mod tests {
         assert!(line.starts_with("{\"schema_version\":1,"));
         assert!(line.contains("\"ev\":\"item_intent\""));
         assert!(line.contains("\"origin\":\"explicit_selection\""));
+    }
+
+    /// Un registro escrito sin `durable` no cuenta como durable hasta el
+    /// siguiente `sync`, que cubre todo lo anexado antes.
+    #[test]
+    fn records_are_durable_only_after_sync() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = HistoryPaths::new(dir.path());
+        let mut j = Journal::open(&paths, "op", SystemTime::now()).expect("open");
+        let fail = |item| Event::ItemFailed {
+            item,
+            error: "x".into(),
+        };
+        let a = j.write(fail(1), false).expect("write");
+        let b = j.write(fail(2), false).expect("write");
+        assert_eq!((a, b), (1, 2));
+        assert!(!j.is_durable(a) && !j.is_durable(b));
+        j.sync().expect("sync");
+        assert!(j.is_durable(a) && j.is_durable(b));
+        let c = j.write(fail(3), false).expect("write");
+        assert!(!j.is_durable(c));
+        let d = j.write(fail(4), true).expect("write");
+        assert!(j.is_durable(c) && j.is_durable(d));
+        // Sin `sync`, lo escrito ya está en el fichero (sobrevive a la muerte
+        // del proceso, no a un corte de corriente).
+        let e = j.write(fail(5), false).expect("write");
+        assert!(!j.is_durable(e));
+        let (recs, _) = read_journal(&paths).expect("read");
+        assert_eq!(recs.len(), 5);
     }
 
     #[test]

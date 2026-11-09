@@ -4,7 +4,13 @@
 //! personal temporal con la Papelera de prueba (`ROTTEN_TRASH_DIR`) y se mata
 //! con `SIGKILL` en un punto aleatorio; después se ejecuta `Core::recover` y
 //! se comprueban las invariantes. Luego se hace lo mismo con
-//! `rotten undo --yes`.
+//! `rotten undo --yes`. Otra prueba hace lo mismo con
+//! `rotten clean --permanent --yes`: lo que no está en su sitio está borrado
+//! y anotado.
+//!
+//! Cada ronda elige al azar el tamaño del lote de `fsync`
+//! (`ROTTEN_FSYNC_BATCH`, de 1 a `ITEMS + 1`), para que los cortes caigan
+//! con varias intenciones pendientes y en los bordes entre lotes (T-08).
 //!
 //! El punto de corte se elige por número de registros del journal: el
 //! proceso se mata cuando el journal tiene `k` registros nuevos, más un
@@ -227,10 +233,18 @@ impl Ending {
 
 /// Lanza `rotten <args>` y lo mata cuando el journal tiene `k` registros
 /// nuevos y han pasado `jitter` más.
-fn run_and_kill(w: &World, bin: &Path, args: &[&str], k: usize, jitter: Duration) -> Ending {
+fn run_and_kill(
+    w: &World,
+    bin: &Path,
+    args: &[&str],
+    batch: usize,
+    k: usize,
+    jitter: Duration,
+) -> Ending {
     let base = journal_lines(&w.state);
     let mut child = Command::new(bin)
         .args(args)
+        .env("ROTTEN_FSYNC_BATCH", batch.to_string())
         .env("ROTTEN_HOME", &w.home)
         .env("ROTTEN_TRASH_DIR", &w.trash)
         .env("ROTTEN_STATE_DIR", &w.state)
@@ -419,14 +433,71 @@ fn check(w: &World, was_open: &[String], ctx: &str) -> usize {
     unknown
 }
 
+/// Invariantes tras cortar un `clean --permanent`: nada en la Papelera, los
+/// señuelos intactos y cada elemento del plan en su sitio o borrado. Lo que
+/// no está en su sitio tiene intención y está anotado como borrado; lo que
+/// sigue en su sitio no está anotado como borrado, y si no tiene intención
+/// está entero.
+fn check_permanent(w: &World, was_open: &[String], ctx: &str) {
+    let paths = HistoryPaths::new(&w.state);
+    let (records, _) = read_journal(&paths).expect("journal");
+    for o in list_ops(&records) {
+        assert!(o.status.is_some(), "{ctx}: {} sigue abierta", o.op_id);
+        if was_open.contains(&o.op_id) {
+            assert_eq!(o.status, Some(OpStatus::Recovered), "{ctx}: {}", o.op_id);
+        }
+    }
+    let trash: Vec<PathBuf> = fs::read_dir(&w.trash)
+        .expect("papelera")
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    assert!(trash.is_empty(), "{ctx}: algo fue a la Papelera: {trash:?}");
+    for (p, i) in &w.decoys {
+        assert_eq!(ino(p), Some(*i), "{ctx}: se ha tocado {p:?}");
+    }
+    let mut states: BTreeMap<PathBuf, ItemState> = BTreeMap::new();
+    for o in list_ops(&records) {
+        let m = manifest_for(&records, &o.op_id).expect("manifiesto");
+        assert_eq!(m.kind, OpKind::Clean, "{ctx}");
+        for mi in m.items {
+            states.insert(mi.original_path, mi.state);
+        }
+    }
+    for (orig, i) in &w.items {
+        let at_orig = ino(orig) == Some(*i);
+        match (at_orig, states.get(orig)) {
+            (false, Some(ItemState::Deleted)) => {}
+            (false, other) => {
+                panic!("{ctx}: {orig:?} ya no está y el journal dice {other:?}")
+            }
+            (true, None) => {
+                // Sin intención: nadie lo ha tocado, tampoco su contenido.
+                if orig.is_dir() {
+                    let n = fs::read_dir(orig).expect("carpeta").count();
+                    assert_eq!(n, 2, "{ctx}: {orig:?} perdió contenido sin intención");
+                }
+            }
+            (true, Some(ItemState::Skipped { .. } | ItemState::Failed { .. })) => {}
+            (true, Some(other)) => {
+                panic!("{ctx}: {orig:?} sigue en su sitio y el journal dice {other:?}")
+            }
+        }
+    }
+}
+
 /// `recover`, invariantes e idempotencia (repetir `recover` no cambia nada).
 fn recover_and_check(w: &World, ctx: &str) -> usize {
+    recover_then(w, ctx, |w, was_open| check(w, was_open, ctx))
+}
+
+fn recover_then(w: &World, ctx: &str, check: impl Fn(&World, &[String]) -> usize) -> usize {
     let mut was_open = open_ops(&w.state);
     let mut recovered = w.core.recover().expect("recover");
     was_open.sort();
     recovered.sort();
     assert_eq!(recovered, was_open, "{ctx}: operaciones recuperadas");
-    let unknown = check(w, &was_open, ctx);
+    let unknown = check(w, &was_open);
     let before = fingerprint(w);
     assert!(
         w.core.recover().expect("recover").is_empty(),
@@ -461,15 +532,16 @@ fn round(bin: &Path, seed: u64, clean: &mut Stats, undo: &mut Stats) {
     let repro = format!("ROTTEN_CRASH_SEED={seed} ROTTEN_CRASH_ROUNDS=1");
 
     // Limpieza: op_started, intención y resultado por elemento, op_finished.
+    let batch = rng.upto(ITEMS as u64) as usize + 1;
     let k = rng.upto(2 * ITEMS as u64 + 2) as usize;
     let jitter = Duration::from_micros(rng.upto(JITTER_MAX_US));
-    let ending = run_and_kill(&w, bin, &["clean", "--yes", "--json"], k, jitter);
+    let ending = run_and_kill(&w, bin, &["clean", "--yes", "--json"], batch, k, jitter);
     if let Ending::Exited(code) = ending {
         assert_eq!(code, Some(0), "clean terminó mal ({repro})");
     }
     clean.note(&ending);
     let ctx = format!(
-        "clean k={k} jitter={jitter:?}, {} ({repro})",
+        "clean lote={batch} k={k} jitter={jitter:?}, {} ({repro})",
         ending.describe()
     );
     clean.unknown += recover_and_check(&w, &ctx);
@@ -491,7 +563,7 @@ fn round(bin: &Path, seed: u64, clean: &mut Stats, undo: &mut Stats) {
     }
     let k = rng.upto(2 * ready as u64 + 2) as usize;
     let jitter = Duration::from_micros(rng.upto(JITTER_MAX_US));
-    let ending = run_and_kill(&w, bin, &["undo", "--yes", "--json"], k, jitter);
+    let ending = run_and_kill(&w, bin, &["undo", "--yes", "--json"], batch, k, jitter);
     if let Ending::Exited(code) = ending {
         assert!(
             code == Some(0) || (partial && code == Some(4)),
@@ -500,7 +572,7 @@ fn round(bin: &Path, seed: u64, clean: &mut Stats, undo: &mut Stats) {
     }
     undo.note(&ending);
     let ctx = format!(
-        "undo k={k} jitter={jitter:?}, {} ({repro})",
+        "undo lote={batch} k={k} jitter={jitter:?}, {} ({repro})",
         ending.describe()
     );
     undo.unknown += recover_and_check(&w, &ctx);
@@ -546,6 +618,52 @@ fn kill9_at_random_points_leaves_everything_recoverable() {
         !strict || unknown == 0,
         "{unknown} elementos en la Papelera con paradero desconocido en el journal \
          (semillas {unknown_seeds:?})"
+    );
+}
+
+/// Seguimiento de 08 §2.2: un `clean --permanent` muerto en un punto
+/// aleatorio deja cada elemento en su sitio o borrado y anotado.
+#[test]
+fn kill9_during_permanent_clean_leaves_everything_deleted_or_recorded() {
+    let bin = rotten_bin();
+    let rounds = env_u64("ROTTEN_CRASH_ROUNDS").unwrap_or(50);
+    let base = env_u64("ROTTEN_CRASH_SEED").unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("reloj")
+            .as_nanos() as u64
+    });
+    eprintln!("arnés kill -9 (--permanent): {rounds} rondas, ROTTEN_CRASH_SEED={base}");
+    let mut stats = Stats::default();
+    let start = Instant::now();
+    for r in 0..rounds {
+        let seed = base.wrapping_add(r.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        let mut rng = Rng(seed);
+        let w = world();
+        let repro = format!("ROTTEN_CRASH_SEED={seed} ROTTEN_CRASH_ROUNDS=1");
+        let batch = rng.upto(ITEMS as u64) as usize + 1;
+        let k = rng.upto(2 * ITEMS as u64 + 2) as usize;
+        let jitter = Duration::from_micros(rng.upto(JITTER_MAX_US));
+        let args = ["clean", "--permanent", "--yes", "--json"];
+        let ending = run_and_kill(&w, &bin, &args, batch, k, jitter);
+        if let Ending::Exited(code) = ending {
+            assert_eq!(code, Some(0), "clean --permanent terminó mal ({repro})");
+        }
+        stats.note(&ending);
+        let ctx = format!(
+            "clean --permanent lote={batch} k={k} jitter={jitter:?}, {} ({repro})",
+            ending.describe()
+        );
+        recover_then(&w, &ctx, |w, was_open| {
+            check_permanent(w, was_open, &ctx);
+            0
+        });
+    }
+    eprintln!(
+        "arnés kill -9 (--permanent): {rounds} rondas en {:.1?}; {} cortes, {} completas",
+        start.elapsed(),
+        stats.killed,
+        stats.exited,
     );
 }
 
