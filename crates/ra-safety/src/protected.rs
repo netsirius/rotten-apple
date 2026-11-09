@@ -6,7 +6,8 @@
 //! - está dentro de una raíz protegida;
 //! - es un **ancestro** de una raíz protegida (mover `~/Library` movería
 //!   también `~/Library/Keychains`);
-//! - es la carpeta personal, la raíz de un volumen o los datos de la propia app;
+//! - es la carpeta personal, la raíz de un volumen o los datos de la propia app
+//!   (su estado y su log técnico, `~/Library/Logs/<bundle-id>/`);
 //! - algún componente es una fototeca (`*.photoslibrary`) o una copia de
 //!   Time Machine (`Backups.backupdb`);
 //! - viene de una selección explícita y está fuera de la carpeta personal
@@ -18,6 +19,16 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::paths::{self, PathError};
+
+/// Bundle ID de la app (provisional, D-08). `ra_core::BUNDLE_ID` debe ser
+/// el mismo (lo comprueba `ra-core/tests/bundle_id.rs`): de él salen la
+/// carpeta de estado y la del log técnico, que se protege aquí.
+pub const BUNDLE_ID: &str = "io.github.netsirius.RottenApple";
+
+/// Carpeta del log técnico del CLI (T-14) para una carpeta personal.
+pub fn app_log_dir(home: &Path) -> PathBuf {
+    home.join("Library/Logs").join(BUNDLE_ID)
+}
 
 /// Quién propone el elemento. Las carpetas de documentos del usuario solo
 /// son accesibles por selección explícita, nunca por reglas de categoría.
@@ -111,6 +122,8 @@ const HOME_USER_FOLDERS: &[&str] = &[
 pub struct ProtectedList {
     home: PathBuf,
     app_state: PathBuf,
+    /// El log técnico (T-14): de la app, como su estado.
+    app_log: PathBuf,
     always: Vec<PathBuf>,
     exceptions: Vec<PathBuf>,
     user_folders: Vec<PathBuf>,
@@ -125,9 +138,12 @@ impl ProtectedList {
         let mut always: Vec<PathBuf> = SYSTEM_ROOTS.iter().map(PathBuf::from).collect();
         always.extend(HOME_ROOTS.iter().map(|r| home.join(r)));
         always.push(app_state.to_path_buf());
+        let app_log = app_log_dir(home);
+        always.push(app_log.clone());
         Self {
             home: home.to_path_buf(),
             app_state: app_state.to_path_buf(),
+            app_log,
             always,
             exceptions: SYSTEM_EXCEPTIONS.iter().map(PathBuf::from).collect(),
             user_folders: HOME_USER_FOLDERS.iter().map(|r| home.join(r)).collect(),
@@ -189,7 +205,7 @@ impl ProtectedList {
         if paths::folded_components(&self.home) == comps {
             return Err(ProtectionReason::Home);
         }
-        if paths::is_within(path, &self.app_state) {
+        if paths::is_within(path, &self.app_state) || paths::is_within(path, &self.app_log) {
             return Err(ProtectionReason::AppState);
         }
 
@@ -366,6 +382,21 @@ mod tests {
         assert!(!allowed(
             "/Users/ana/Library/Application Support/app.test/journal/2026-11.jsonl"
         ));
+    }
+
+    /// El log técnico (T-14) es de la app: ni él, ni lo de dentro, ni por
+    /// selección explícita. Los demás registros de `~/Library/Logs`, sí.
+    #[test]
+    fn the_app_log_is_protected() {
+        let l = list();
+        let log = app_log_dir(Path::new("/Users/ana"));
+        assert!(log.ends_with(BUNDLE_ID));
+        for p in [log.clone(), log.join("rotten.log.1")] {
+            for o in [Origin::Rules, Origin::ExplicitSelection] {
+                assert_eq!(l.check(&p, o), Err(ProtectionReason::AppState), "{p:?}");
+            }
+        }
+        assert!(allowed("/Users/ana/Library/Logs/old-app"));
     }
 
     #[test]

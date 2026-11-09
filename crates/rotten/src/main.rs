@@ -37,7 +37,7 @@ use ra_core::{
 };
 use serde_json::{Value, json};
 
-use args::{Cli, Cmd, ExcludeCmd};
+use args::{Cli, Cmd, ConfigCmd, ExcludeCmd};
 use i18n::{I18n, Lang, tr};
 use style::Style;
 
@@ -118,7 +118,7 @@ impl Ui {
     /// Error común: en JSON, un código estable y el mensaje en inglés (no
     /// dependen del idioma); para personas, `human` en su idioma.
     fn fail(&self, command: &str, exit: Exit, code: &str, message: &str, human: &str) -> Exit {
-        techlog::error(command, code, exit as u8, message);
+        techlog::error(command, code, exit as u8);
         if self.json {
             self.emit(
                 command,
@@ -226,7 +226,13 @@ fn main() -> ExitCode {
         Cmd::Update { .. } => "update",
         Cmd::Completion { .. } => "completion",
     };
-    techlog::start(command);
+    let config_key = match &cli.cmd {
+        Cmd::Config {
+            action: ConfigCmd::Get { key } | ConfigCmd::Set { key, .. },
+        } => Some(key.as_str()),
+        _ => None,
+    };
+    techlog::start(command, config_key);
     let exit = run(ui, cli, command);
     techlog::finish(command, exit as u8, started);
     exit.into()

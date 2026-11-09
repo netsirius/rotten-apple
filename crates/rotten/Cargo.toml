@@ -16,6 +16,8 @@ clap.workspace = true
 clap_complete.workspace = true
 fluent-bundle.workspace = true
 jiff.workspace = true
+# `O_NOFOLLOW` y `O_NONBLOCK` al abrir el log técnico (T-14).
+libc.workspace = true
 unic-langid.workspace = true
 ra-core.workspace = true
 serde_json.workspace = true
