@@ -54,7 +54,7 @@ Qué cumple ya el código de PR #2 y qué falta. «Hecho» quiere decir implemen
 |---|---|---|---|
 | RF-SEG-01 Previsualización obligatoria | Hecho | `ra-plan` (hash BLAKE3, aprobación ligada al hash, caduca a los 30 min); CLI: sin `--yes` y sin TTY → `2` | — |
 | RF-SEG-02 Papelera por defecto | Hecho | `ra-exec/trash.rs` (`NSFileManager trashItemAtURL`; `ROTTEN_TRASH_DIR` en pruebas) | Comportamiento en volúmenes sin Papelera (SMB) sin probar → T-29 |
-| RF-SEG-03 Borrado permanente solo explícito | Parcial | `clean --permanent` exige `--yes` | `free` y `trash empty` → T-11, T-12 |
+| RF-SEG-03 Borrado permanente solo explícito | Hecho (2026-11-09) | `clean --permanent`, `free` y `trash empty` exigen `--yes` sin terminal y confirman con «No» por defecto | — |
 | RF-SEG-04 Rutas protegidas | Hecho | `ra-safety/protected.rs`; propiedad `never_touches_anything_outside_the_plan` | — |
 | RF-SEG-05 Fail-closed | Hecho | Configuración corrupta → `5`; raíces limitadas a `ALLOWED_PREFIXES`; selección explícita (T-10): ruta protegida, ancestro, fuera de `~`, carpeta raíz del usuario o ruta que no se puede resolver → `5` | — |
 | RF-SEG-06 Resolución de rutas segura | Hecho | `O_NOFOLLOW_ANY`, operaciones relativas a descriptor | Fuzzing: v1 (06 §4) → T-109 |
@@ -63,7 +63,7 @@ Qué cumple ya el código de PR #2 y qué falta. «Hecho» quiere decir implemen
 | RF-SEG-09 Nunca preseleccionar documentos | Parcial | Catálogo y selección explícita, con la propiedad «preseleccionados ∩ documentos = ∅» (`ra-core/tests/selection.rs`, T-10) | La misma propiedad en cada tarea de módulo |
 | RF-SEG-10 Sin descargas de iCloud | Parcial | `check_flags` rechaza `SF_DATALESS` antes de actuar | Política de proceso `setiopolicy_np` → T-06 |
 | RF-SEG-11 Log de operaciones | Parcial | Journal JSONL | Log técnico local rotado → T-14 |
-| RF-SEG-12 Tamaños honestos | Parcial | `st_blocks × 512`; enlaces duros una vez dentro de cada elemento | `PRIVATESIZE`, deduplicación entre elementos, «liberado» medido → T-05, T-11 |
+| RF-SEG-12 Tamaños honestos | Hecho (2026-11-09) | `PRIVATESIZE`, clones y enlaces duros contados una vez y solo si están enteros en la selección; «liberado» medido con `statfs` en `free` y `trash empty` | Totales del plan sin deduplicar (§2.3) |
 | RF-SEG-13 Mínimo privilegio | Hecho | Sin elevación; como root, aborta salvo `--allow-root` | — |
 | RF-SEG-14 Automatizaciones (CLI) | Hecho | `--yes` obligatorio sin TTY | Programación: v1 → T-103 |
 | RF-SEG-15 Errores parciales | Hecho | Sigue con el resto; código `4` | — |
@@ -83,14 +83,14 @@ Qué cumple ya el código de PR #2 y qué falta. «Hecho» quiere decir implemen
 | RF-LIM-01, 03, 05 a 07, 12 | Hecho para CAT-01, CAT-03, CAT-08 y CAT-10 | Safari en contenedor y CAT-02 esperan a V-03; lista permitida de CAT-01 espera a V-18 |
 | RF-LIM-04 Explicación por categoría | Parcial (título y explicación breve por regla, en es/en) | Qué pasa si se borra, si se regenera y por qué ese riesgo → T-03 |
 | RF-LIM-02 Selección granular | Parcial (`--category`, exclusiones) | Selección por elemento → T-10; por subgrupo en la GUI → T-34 |
-| RF-LIM-08 Informe final | Parcial (movidos, omitidos, errores) | «Liberado» medido → T-11 |
+| RF-LIM-08 Informe final | Hecho (2026-11-09) | Movidos, omitidos, errores y, tras `free`, estimado frente a liberado |
 | RF-PAN-01 Estado del volumen | Pendiente | → T-05 |
 | RF-PAN-02 Escaneo de las raíces del catálogo | Hecho en el CLI | Rendimiento → T-30 |
 | RF-PAN-03 Resultados por categoría | Parcial (nombre, elementos y tamaño; sin riesgo ni explicación por categoría; sin *streaming*) | Riesgo y explicación → T-17; *streaming* → T-32 |
 | RF-PAN-04 Dos cifras deduplicadas | Parcial | Deduplicación por inode entre elementos → T-05 |
 | RF-PAN-05 «Bloqueada · requiere permiso» | Parcial (`doctor` informa FDA) | Por módulo y por categoría → T-17 |
 | RF-PAN-06 Cancelar | Pendiente | → T-32 |
-| RF-PAN-07 Papelera | Pendiente | → T-12 |
+| RF-PAN-07 Papelera | Hecho en el CLI (2026-11-09) | `rotten trash`: tamaño por volumen, por operación y el resto |
 | RF-CLI-01, 03, 05, 06, 08 | Hecho | — |
 | RF-CLI-04 JSON versionado | Parcial (`schema_version` en cada documento) | Esquema publicado y validado en CI → T-01 |
 | RF-CLI-07 `doctor` | Hecho (sin FDA → `3`) | Preflight por módulo → T-17 |
@@ -116,8 +116,8 @@ Qué cumple ya el código de PR #2 y qué falta. «Hecho» quiere decir implemen
 | Comando | Estado | Tarea |
 |---|---|---|
 | `scan`, `clean`, `history`, `undo`, `doctor`, `exclude`, `--version`, `--help`, `help <cmd>` | Hecho | — |
-| `free <op-id>` | Pendiente | T-11 |
-| `trash empty` | Pendiente | T-12 |
+| `free <op-id>` | Hecho (2026-11-09) | T-11 |
+| `trash`, `trash empty` | Hecho (2026-11-09) | T-12 |
 | `config get\|set\|path` | Pendiente | T-13 |
 | `completion zsh\|bash\|fish` | Pendiente | T-14 |
 | `update` | Pendiente | T-15 |
@@ -305,6 +305,10 @@ Medida de RNF-06 (`release`, 10 000 elementos, Papelera de prueba, política `ut
 | Política de E/S al arrancar | Si `iopolicy::apply()` falla, no arranca ningún comando, ni `doctor` | Que `doctor` arranque y lo explique. En H-6, con el núcleo dentro de la app, la política debe tener ámbito de hilo en los *workers* para no despriorizar la interfaz |
 | Contadores de clones y enlaces | `cloned_entries` y `hardlinked_entries` se cuentan por elemento: un mismo inode en dos elementos cuenta dos veces (documentado en `scan.v2`) | Deduplicar si molesta en la interfaz |
 | Valor atípico en la medida | Una pasada de 123 s justo después de crear 10 000 ficheros, sin reproducirse; probablemente Spotlight indexando | Vigilar en T-30 |
+| `statfs` redondeado (T-11, T-12) | En el sandbox, `df -k` da «usado» y «disponible» en múltiplos exactos de 400 000 KiB. Si macOS también redondea, el aviso «se liberó menos» saltaría sin motivo en borrados de entre unos 200 MB y unos 8 GB. Volver a medir no lo arregla | Comprobar con `df -k ~` fuera del sandbox. Si macOS redondea: tolerancia con la granularidad observada o medir con `ATTR_VOL_SPACEFREE` |
+| `.DS_Store` en subcarpetas (T-11) | `free` cuenta las fechas de las subcarpetas para detectar cambios dentro, así que abrir una subcarpeta en Finder (que crea un `.DS_Store`) hace que `free` la omita. `trash empty` lo ignora. Es el lado seguro, pero se notará | Ignorar también el `ctime` que deja `.DS_Store` en su carpeta padre si se puede distinguir; si no, explicarlo en el motivo de la omisión |
+| Relojes en volúmenes de red (T-11) | `free` compara las fechas de los ficheros con la hora en que se movió la carpeta; en un volumen de red con otro reloj puede omitir de más o, en el peor caso, de menos | Medir en T-29; si hace falta, guardar en `ItemDone` una huella de los hijos |
+| Arnés `kill -9` aleatorio para una carpeta a medio borrar | El caso solo sale al azar en `crash.rs` (falló en 150 rondas y no en 50); lo cubre siempre la prueba unitaria `a_folder_deleted_halfway…` | La nocturna con 1 000 rondas lo ejercita |
 | Papelera de un volumen externo sin permiso (T-12) | `trash_roots` incluye `/Volumes/X/.Trashes/<uid>` aunque dé `PermissionDenied`, así que vaciar `~/.Trash` sale con `3` por un volumen ajeno. Es *fail-closed* | Decir en el mensaje qué volumen lo impide, u ofrecer vaciar solo las Papeleras legibles |
 | Espacio medido en un mismo contenedor APFS (T-11, T-12) | `measured_bytes` agrupa por `st_dev`; dos Papeleras en volúmenes del mismo contenedor comparten el espacio libre y se cuenta dos veces | Deduplicar por disco físico (`f_mntfromname` sin el sufijo `sN`) |
 | `OpKind` nuevos en el journal (T-11, T-12) | `free` y `trash_empty` se añadieron con `schema_version` 1 del journal. Un binario anterior no los entiende: `doctor` los da por ilegibles y cree que los elementos siguen en la Papelera. No se pierde nada (`undo` dice `not_in_trash`) | Antes de la primera versión publicada: `#[serde(other)]` en `OpKind` o subir la versión del journal con migración |
@@ -399,8 +403,8 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 | T-08 | `fsync` por lotes sin perder la escritura anticipada | H-0 | M | T-07 | Hecho (2026-11-09) |
 | T-09 | CI nocturna, `cargo-audit`, `forbid(unsafe_code)` y cobertura | H-0 | S | T-07 | Hecho (2026-11-09) |
 | T-10 | Planes por selección explícita y `rotten trash put` | H-0 | M | — | Hecho (2026-11-08) |
-| T-11 | `rotten free <op-id>` («Liberar ahora») | H-1 | M | T-01 | Pendiente |
-| T-12 | `rotten trash` y `rotten trash empty` | H-1 | M | T-11 | Pendiente |
+| T-11 | `rotten free <op-id>` («Liberar ahora») | H-1 | M | T-01 | Hecho (2026-11-09) |
+| T-12 | `rotten trash` y `rotten trash empty` | H-1 | M | T-11 | Hecho (2026-11-09); la prueba con la Papelera real (`#[ignore]`) está sin ejecutar |
 | T-13 | `rotten config` y enlace en `~/.config/rotten/` | H-1 | S | — | Pendiente |
 | T-14 | `completion`, `--debug`, `--no-color` y log técnico | H-1 | S | — | Pendiente |
 | T-15 | `rotten update` | H-1 | S | — | Pendiente |
