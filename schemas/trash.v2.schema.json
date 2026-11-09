@@ -78,7 +78,7 @@
     },
     "trash_volume": {
       "type": "object",
-      "required": ["path", "readable", "total", "by_operation", "others"],
+      "required": ["path", "readable", "total", "by_operation", "others", "partial"],
       "additionalProperties": false,
       "properties": {
         "path": { "$ref": "#/$defs/path" },
@@ -104,6 +104,10 @@
         "others": {
           "description": "Lo demás; null si no se puede leer.",
           "anyOf": [{ "$ref": "#/$defs/totals" }, { "type": "null" }]
+        },
+        "partial": {
+          "description": "Alguna entrada no se pudo recorrer entera: los bytes se quedan cortos y esa entrada no se vaciará.",
+          "type": "boolean"
         }
       }
     },
@@ -149,13 +153,17 @@
     },
     "empty_item": {
       "type": "object",
-      "required": ["item_id", "path", "identity", "bytes"],
+      "required": ["item_id", "path", "identity", "bytes", "digest"],
       "additionalProperties": false,
       "properties": {
         "item_id": { "type": "integer", "minimum": 1 },
         "path": { "$ref": "#/$defs/path" },
         "identity": { "$ref": "#/$defs/identity" },
         "bytes": { "$ref": "#/$defs/count" },
+        "digest": {
+          "description": "Huella de lo que tenía dentro al revisarla (entra en plan_hash); si cambia a cualquier profundidad, se omite con contents_changed. null si no se pudo recorrer: entonces se omite con unreadable.",
+          "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+        },
         "of": {
           "description": "Operación y elemento de Rotten Apple que la mandaron a la Papelera, si consta en el journal; su operación pasa a irreversible.",
           "type": "object",
@@ -468,7 +476,7 @@
               "enum": [
                 "missing", "symlink_in_path", "identity_changed", "contents_changed", "flags",
                 "crosses_device", "protected", "excluded", "app", "unreadable", "conflict_exists",
-                "in_use", "outside_trash"
+                "in_use", "outside_trash", "not_verifiable"
               ]
             },
             "message": { "type": "string" },

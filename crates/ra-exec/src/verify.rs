@@ -49,6 +49,11 @@ pub enum SkipCause {
     /// carpeta de la Papelera que se usa ahora.
     #[error("it is not in the Trash in use")]
     OutsideTrash,
+    /// Al borrar de la Papelera: no hay con qué comprobar que su contenido
+    /// siga como al revisarlo (no se pudo recorrer al revisarlo, o el
+    /// journal no dice cuándo llegó a la Papelera).
+    #[error("its contents cannot be checked against the review")]
+    NotVerifiable,
 }
 
 /// Detalle de [`SkipCause::InUse`] (RF-SEG-08).
@@ -80,6 +85,7 @@ impl SkipCause {
             SkipCause::ConflictExists => "conflict_exists",
             SkipCause::InUse { .. } => "in_use",
             SkipCause::OutsideTrash => "outside_trash",
+            SkipCause::NotVerifiable => "not_verifiable",
         }
     }
 }

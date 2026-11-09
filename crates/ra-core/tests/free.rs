@@ -54,6 +54,9 @@ enum Owner {
 enum Change {
     None,
     Modify,
+    /// I1: dos niveles dentro, mismo tamaño; la carpeta de primer nivel no
+    /// cambia (ni su `mtime`).
+    ModifyDeep,
     Replace,
     Remove,
 }
@@ -79,6 +82,7 @@ fn item() -> impl Strategy<Value = Item> {
         prop_oneof![
             3 => Just(Change::None),
             1 => Just(Change::Modify),
+            1 => Just(Change::ModifyDeep),
             1 => Just(Change::Replace),
             1 => Just(Change::Remove),
         ],
@@ -339,6 +343,8 @@ proptest! {
 
         // Cambios dentro de la Papelera entre la revisión y la ejecución.
         let a_items: Vec<&Item> = items.iter().filter(|it| it.owner == Owner::A).collect();
+        // Que un cambio quede después de `moved_at` (milisegundos).
+        std::thread::sleep(std::time::Duration::from_millis(3));
         let mut expect_gone = BTreeSet::new();
         for (it, f) in a_items.iter().zip(&preview.plan.ready) {
             prop_assert_eq!(&f.original_path, &in_a[f.of.item as usize - 1]);
@@ -352,6 +358,11 @@ proptest! {
                     } else {
                         fs::write(&f.path, vec![b'y'; it.size + 1]).expect("write");
                     }
+                }
+                Change::ModifyDeep => {
+                    let target = if it.dir { f.path.join("sub/b.txt") } else { f.path.clone() };
+                    let len = fs::symlink_metadata(&target).expect("lstat").len() as usize;
+                    fs::write(&target, vec![b'z'; len]).expect("write");
                 }
                 Change::Replace => {
                     remove(&f.path);

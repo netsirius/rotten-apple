@@ -182,6 +182,114 @@ fn changed_entries_are_skipped_and_tampered_plans_refused() {
     assert_eq!(fx.names(), ["a.log", "ajeno.txt"]);
 }
 
+/// I1: un cambio dos o más niveles dentro de una carpeta de la Papelera
+/// (que no toca la carpeta de primer nivel) también la deja fuera; un
+/// `.DS_Store` de Finder dentro, no.
+#[test]
+fn deep_changes_inside_a_folder_are_skipped() {
+    let fx = fx();
+    let deep = fx.trash.join("proyecto/a/b");
+    fs::create_dir_all(&deep).expect("mkdir");
+    fs::write(deep.join("foto.jpg"), b"original").expect("write");
+    fs::create_dir_all(fx.trash.join("otra/x")).expect("mkdir");
+    fs::write(fx.trash.join("otra/x/y.txt"), b"y").expect("write");
+    let preview = fx.core.prepare_empty().expect("plan");
+    assert_eq!(preview.dry_run.would, 2);
+    assert!(preview.plan.items.iter().all(|i| i.digest.is_some()));
+    let hash = preview.plan.plan_hash.clone();
+
+    let top = fs::symlink_metadata(fx.trash.join("proyecto")).expect("lstat");
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    fs::write(deep.join("foto.jpg"), b"cambiada").expect("write");
+    fs::write(fx.trash.join("otra/x/.DS_Store"), b"finder").expect("write");
+    let after = fs::symlink_metadata(fx.trash.join("proyecto")).expect("lstat");
+    assert_eq!(
+        (top.mtime(), top.mtime_nsec(), top.ctime(), top.ctime_nsec()),
+        (
+            after.mtime(),
+            after.mtime_nsec(),
+            after.ctime(),
+            after.ctime_nsec()
+        ),
+        "el cambio no debe tocar la carpeta de primer nivel"
+    );
+
+    let r = fx
+        .core
+        .empty_trash(&preview.plan, &hash, "test")
+        .expect("vaciar");
+    assert_eq!((r.report.done, r.report.skipped), (1, 1));
+    let skipped = r
+        .report
+        .items
+        .iter()
+        .find(|i| matches!(i.outcome, Outcome::Skipped { .. }))
+        .expect("omitido");
+    assert!(skipped.path.ends_with("proyecto"));
+    assert!(
+        matches!(
+            &skipped.outcome,
+            Outcome::Skipped {
+                cause: ra_core::SkipCause::ContentsChanged,
+                ..
+            }
+        ),
+        "{:?}",
+        skipped.outcome
+    );
+    assert_eq!(fx.names(), ["proyecto"]);
+    assert_eq!(fs::read(deep.join("foto.jpg")).expect("read"), b"cambiada");
+}
+
+/// M3: una carpeta de la Papelera que no se puede recorrer entera queda
+/// sin huella: `rotten trash` dice que su tamaño se queda corto y
+/// `trash empty` no la borra.
+#[test]
+fn a_folder_that_cannot_be_walked_is_never_emptied() {
+    let fx = fx();
+    let locked = fx.trash.join("bloqueada/secreto");
+    fs::create_dir_all(&locked).expect("mkdir");
+    fs::write(locked.join("x.txt"), vec![b'x'; 9000]).expect("write");
+    fx.decoy("ajeno.txt");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("chmod");
+
+    let view = fx.core.trash_view().expect("vista");
+    let preview = fx.core.prepare_empty().expect("plan");
+    let hash = preview.plan.plan_hash.clone();
+    let r = fx.core.empty_trash(&preview.plan, &hash, "test");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).expect("chmod");
+    let r = r.expect("vaciar");
+
+    assert!(view.volumes[0].partial);
+    let item = |p: &[ra_core::EmptyItem]| {
+        p.iter()
+            .find(|i| i.path.ends_with("bloqueada"))
+            .expect("bloqueada")
+            .clone()
+    };
+    assert_eq!(item(&preview.plan.items).digest, None);
+    let dry = preview
+        .dry_run
+        .items
+        .iter()
+        .find(|i| i.path.ends_with("bloqueada"))
+        .expect("simulación");
+    assert!(
+        matches!(
+            dry.outcome,
+            Outcome::Skipped {
+                cause: ra_core::SkipCause::NotVerifiable,
+                ..
+            }
+        ),
+        "{:?}",
+        dry.outcome
+    );
+    assert_eq!((r.report.done, r.report.skipped), (1, 1));
+    assert!(locked.join("x.txt").exists());
+    assert_eq!(fx.names(), ["bloqueada"]);
+}
+
 /// Sin poder leer la Papelera, `trash empty` no prepara nada ni borra nada
 /// (3), y `trash` dice que no puede leerla y muestra solo lo del journal.
 #[test]

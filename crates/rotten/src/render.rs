@@ -130,6 +130,7 @@ pub fn skip_cause(i: &I18n, c: &SkipCause, home: &Path) -> String {
             detail: InUseDetail::Unknown { detail },
         } => tr!(i, "skip-in-use-unknown", detail = detail.as_str()),
         SkipCause::OutsideTrash => tr!(i, "skip-outside-trash"),
+        SkipCause::NotVerifiable => tr!(i, "skip-not-verifiable"),
     }
 }
 

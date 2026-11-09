@@ -44,6 +44,9 @@ pub struct TrashVolume {
     pub by_operation: Vec<OpInTrash>,
     /// Lo demás (`None` si no se puede leer).
     pub others: Option<FreeTotals>,
+    /// Alguna entrada no se pudo recorrer entera: los bytes se quedan
+    /// cortos y esa entrada no se vaciará.
+    pub partial: bool,
 }
 
 /// `rotten trash`.
@@ -120,6 +123,7 @@ impl Core {
                 Ok(entries) => {
                     let (mut total, mut others) = (FreeTotals::default(), FreeTotals::default());
                     let mut mine = Vec::new();
+                    let partial = entries.iter().any(|e| e.partial);
                     for e in &entries {
                         total.items += 1;
                         total.bytes += e.bytes;
@@ -137,6 +141,7 @@ impl Core {
                         total: Some(total),
                         by_operation: by_operation(&known, mine),
                         others: Some(others),
+                        partial,
                     }
                 }
                 Err(_) => {
@@ -151,6 +156,7 @@ impl Core {
                         readable: false,
                         total: None,
                         others: None,
+                        partial: false,
                     }
                 }
             };

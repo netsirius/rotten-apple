@@ -121,6 +121,7 @@ trash-others = Other: { $count ->
     [one] { $count } item
    *[other] { $count } items
 } ({ $size })
+trash-partial = ! Something inside could not be read completely: the real size is larger and it will not be emptied
 to-empty = To empty it (cannot be undone): rotten trash empty
 
 ## trash empty
@@ -276,6 +277,7 @@ skip-identity-changed = it changed since the review
 skip-contents-changed = its contents changed since the review
 skip-conflict-exists = something already exists at the original path
 skip-outside-trash = it is not in the Trash in use
+skip-not-verifiable = what it contains cannot be checked against the review
 skip-in-use = in use by { $process } (pid { $pid })
 skip-in-use-unknown = cannot tell whether it is in use: { $detail }
 skip-overlaps = it is inside { $path }, which is already in the plan

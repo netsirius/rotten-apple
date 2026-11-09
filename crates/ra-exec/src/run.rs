@@ -9,7 +9,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ra_history::{
     Event, FreeItem, FreePlan, HistoryPaths, ItemRef, Journal, JournalError, OpKind, OpMode,
@@ -664,15 +664,23 @@ fn execute_undo_batched(
 
 /// Cómo se revalida una entrada de la Papelera justo antes de borrarla.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Revalidate {
+enum Revalidate<'a> {
     /// `rotten free`: la identidad se anotó antes de moverla a la
     /// Papelera; mismo volumen, inode, tipo, tamaño y `mtime`
-    /// (`same_after_move`: mover cambia `ctime`).
-    AfterMove,
+    /// (`same_after_move`: mover cambia `ctime`). De una carpeta, además,
+    /// nada de lo que tiene dentro, a ninguna profundidad, puede haber
+    /// cambiado después de `moved_at` (cuando se anotó que llegó a la
+    /// Papelera); sin esa fecha no se borra.
+    AfterMove { moved_at: Option<SystemTime> },
     /// `rotten trash empty`: la identidad se leyó en la propia Papelera al
-    /// preparar el plan; debe coincidir entera, `ctime` incluido.
-    Exact,
+    /// preparar el plan; debe coincidir entera, `ctime` incluido, y la
+    /// huella de su contenido también. Sin huella no se borra.
+    Exact { digest: Option<&'a str> },
 }
+
+/// Margen para comparar con `moved_at`, que el journal guarda truncado a
+/// milisegundos.
+const MOVED_AT_SLACK: Duration = Duration::from_millis(1);
 
 /// Una entrada de la Papelera que borrar, venga de `free` o de
 /// `trash empty`. Las dos pasan por el mismo camino de borrado.
@@ -683,7 +691,7 @@ struct TrashDelete<'a> {
     bytes: u64,
     /// La operación y el elemento que la mandaron a la Papelera, si se sabe.
     of: Option<&'a ItemRef>,
-    check: Revalidate,
+    check: Revalidate<'a>,
 }
 
 fn free_items(plan: &FreePlan) -> Vec<TrashDelete<'_>> {
@@ -695,7 +703,9 @@ fn free_items(plan: &FreePlan) -> Vec<TrashDelete<'_>> {
             identity: it.identity,
             bytes: it.bytes,
             of: Some(&it.of),
-            check: Revalidate::AfterMove,
+            check: Revalidate::AfterMove {
+                moved_at: it.moved_at_time(),
+            },
         })
         .collect()
 }
@@ -709,7 +719,9 @@ fn empty_items(plan: &EmptyPlan) -> Vec<TrashDelete<'_>> {
             identity: it.identity,
             bytes: it.bytes,
             of: it.of.as_ref(),
-            check: Revalidate::Exact,
+            check: Revalidate::Exact {
+                digest: it.digest.as_deref(),
+            },
         })
         .collect()
 }
@@ -744,14 +756,65 @@ fn check_trash_entry<'a>(
     }
     let now = ra_safety::Identity::from_stat(&st);
     let same = match it.check {
-        Revalidate::AfterMove => now.same_after_move(&it.identity),
-        Revalidate::Exact => now == it.identity,
+        Revalidate::AfterMove { .. } => now.same_after_move(&it.identity),
+        Revalidate::Exact { .. } => now == it.identity,
     };
     if !same {
         return Err(SkipCause::IdentityChanged);
     }
     check_flags(st.st_flags).map_err(|flag| SkipCause::Flags { flag })?;
+    check_trash_contents(it, parent.as_fd(), name, now.kind)?;
     Ok((parent, name))
+}
+
+/// I1: lo que hay dentro de la entrada sigue como cuando se revisó, a
+/// cualquier profundidad. Si no se puede recorrer entera, no se borra.
+fn check_trash_contents(
+    it: &TrashDelete<'_>,
+    parent: BorrowedFd<'_>,
+    name: &OsStr,
+    kind: FileKind,
+) -> Result<(), SkipCause> {
+    let contents = || {
+        ra_safety::fingerprint::trash_contents_at(parent, name).map_err(|e| SkipCause::Unreadable {
+            detail: e.to_string(),
+        })
+    };
+    match it.check {
+        Revalidate::Exact { digest } => {
+            let Some(digest) = digest else {
+                return Err(SkipCause::NotVerifiable);
+            };
+            let now = contents()?;
+            if now.crosses_device {
+                return Err(SkipCause::CrossesDevice);
+            }
+            if now.digest != digest {
+                return Err(SkipCause::ContentsChanged);
+            }
+        }
+        // Un fichero suelto ya lo cubre `same_after_move` (tamaño y mtime).
+        Revalidate::AfterMove { .. } if kind != FileKind::Dir => {}
+        Revalidate::AfterMove { moved_at } => {
+            let Some(moved_at) = moved_at else {
+                return Err(SkipCause::NotVerifiable);
+            };
+            let now = contents()?;
+            if now.crosses_device {
+                return Err(SkipCause::CrossesDevice);
+            }
+            if let Some((s, ns)) = now.newest_change {
+                let changed = u64::try_from(s)
+                    .ok()
+                    .map(|s| UNIX_EPOCH + Duration::new(s, ns.clamp(0, 999_999_999) as u32));
+                // Una fecha anterior a 1970 no se puede comparar: se omite.
+                if changed.is_none_or(|c| c > moved_at + MOVED_AT_SLACK) {
+                    return Err(SkipCause::ContentsChanged);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Simulación: las mismas comprobaciones, sin borrar nada.
@@ -1595,6 +1658,53 @@ mod batch_tests {
         assert!(victim.exists(), "se borró fuera de la Papelera");
     }
 
+    /// I1: una carpeta se libera solo si nada de dentro cambió después de
+    /// que el journal anotara su llegada a la Papelera; sin esa fecha
+    /// (journal antiguo), no se libera.
+    #[test]
+    fn a_folder_is_freed_only_if_nothing_inside_changed_after_it_was_trashed() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = fs::canonicalize(tmp.path()).expect("canon");
+        let dir = root.join("carpeta");
+        fs::create_dir_all(dir.join("a/b")).expect("mkdir");
+        fs::write(dir.join("a/b/c.txt"), b"c").expect("write");
+        let identity = stat_nofollow_any(&dir).expect("lstat").0;
+        let now = SystemTime::now();
+        let check = |moved_at| {
+            let item = TrashDelete {
+                item_id: 1,
+                path: &dir,
+                identity,
+                bytes: 0,
+                of: None,
+                check: Revalidate::AfterMove { moved_at },
+            };
+            let r = dry_run_trash(&[item], std::slice::from_ref(&root));
+            r.items[0].outcome.clone()
+        };
+        assert!(
+            matches!(
+                check(Some(now + Duration::from_secs(1))),
+                Outcome::Would { .. }
+            ),
+            "sin cambios después"
+        );
+        assert!(matches!(
+            check(Some(now - Duration::from_secs(60))),
+            Outcome::Skipped {
+                cause: SkipCause::ContentsChanged,
+                ..
+            }
+        ));
+        assert!(matches!(
+            check(None),
+            Outcome::Skipped {
+                cause: SkipCause::NotVerifiable,
+                ..
+            }
+        ));
+    }
+
     /// I3: una entrada de primer nivel que es un punto de montaje no se
     /// vacía (se usa `/dev`, montado en `/`, y solo se simula).
     #[test]
@@ -1612,7 +1722,7 @@ mod batch_tests {
             identity,
             bytes: 0,
             of: None,
-            check: Revalidate::Exact,
+            check: Revalidate::Exact { digest: None },
         };
         let r = dry_run_trash(&[item], &[PathBuf::from("/")]);
         assert!(

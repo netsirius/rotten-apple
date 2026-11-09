@@ -121,6 +121,7 @@ trash-others = Otros: { $count ->
     [one] { $count } elemento
    *[other] { $count } elementos
 } ({ $size })
+trash-partial = ! Algo dentro no se pudo leer entero: el tamaño real es mayor y eso no se vaciará
 to-empty = Para vaciarla (no se puede deshacer): rotten trash empty
 
 ## trash empty
@@ -276,6 +277,7 @@ skip-identity-changed = ha cambiado desde la revisión
 skip-contents-changed = su contenido ha cambiado desde la revisión
 skip-conflict-exists = ya hay algo en la ruta original
 skip-outside-trash = no está en la Papelera que se usa
+skip-not-verifiable = no se puede comprobar que lo que tiene dentro siga como al revisarlo
 skip-in-use = lo usa { $process } (pid { $pid })
 skip-in-use-unknown = no se puede saber si está en uso: { $detail }
 skip-overlaps = está dentro de { $path }, que ya está en el plan

@@ -249,6 +249,7 @@ pub const VOLATILE: &[&str] = &[
     "undo_of",
     "digest",
     "newest_mtime",
+    "moved_at",
     "dev",
     "ino",
     "mtime",

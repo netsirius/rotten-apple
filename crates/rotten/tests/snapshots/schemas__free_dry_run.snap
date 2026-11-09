@@ -23,6 +23,7 @@ expression: "redact(fx, &doc)"
           "size": "[size]"
         },
         "item_id": 1,
+        "moved_at": "[moved_at]",
         "of": {
           "item": 1,
           "op": "[op]"
@@ -44,6 +45,7 @@ expression: "redact(fx, &doc)"
           "size": "[size]"
         },
         "item_id": 2,
+        "moved_at": "[moved_at]",
         "of": {
           "item": 2,
           "op": "[op]"
@@ -65,6 +67,7 @@ expression: "redact(fx, &doc)"
           "size": "[size]"
         },
         "item_id": 3,
+        "moved_at": "[moved_at]",
         "of": {
           "item": 3,
           "op": "[op]"

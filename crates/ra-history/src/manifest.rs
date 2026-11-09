@@ -56,6 +56,11 @@ pub struct ManifestItem {
     /// journals anteriores a T-10 y en las restauraciones.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+    /// Cuándo quedó en la Papelera, según el journal (RFC 3339, ms): el
+    /// `ts` del `item_done` que lo movió o, si se reconcilió tras un corte,
+    /// el de su intención (antes del movimiento: del lado seguro).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved_at: Option<String>,
     #[serde(flatten)]
     pub state: ItemState,
 }
@@ -302,6 +307,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                         bytes: *bytes,
                         parent_mode: *parent_mode,
                         origin: *origin,
+                        moved_at: Some(r.ts.clone()),
                         state: ItemState::Pending,
                     },
                 );
@@ -313,6 +319,7 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                     i.state = match i.action {
                         StepAction::Trash => {
                             i.trashed_path = result_path.clone();
+                            i.moved_at = Some(r.ts.clone());
                             ItemState::Trashed
                         }
                         StepAction::Delete => ItemState::Deleted,
@@ -618,6 +625,18 @@ pub struct FreeItem {
     pub bytes: u64,
     /// Papelera que usó la operación: `system` o `dir:<ruta>`.
     pub trash: String,
+    /// Cuándo quedó en la Papelera ([`ManifestItem::moved_at`]). Si es una
+    /// carpeta, nada de dentro puede haber cambiado después.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved_at: Option<String>,
+}
+
+impl FreeItem {
+    /// [`FreeItem::moved_at`] como instante; `None` si falta o no se
+    /// entiende (quien lo use debe omitir el elemento si es una carpeta).
+    pub fn moved_at_time(&self) -> Option<std::time::SystemTime> {
+        humantime::parse_rfc3339(self.moved_at.as_deref()?).ok()
+    }
 }
 
 /// Elemento de una operación pedida que no se puede liberar.
@@ -767,6 +786,7 @@ pub fn prepare_free(
                         identity: i.identity,
                         bytes: i.bytes,
                         trash: m.trash.clone(),
+                        moved_at: i.moved_at.clone(),
                     };
                     match in_trash(&item) {
                         Ok(()) => {

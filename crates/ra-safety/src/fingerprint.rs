@@ -274,10 +274,169 @@ impl Acc {
     }
 }
 
+/// Metadatos de Finder: los crea al abrir una carpeta y guardan los datos de
+/// «Devolver» de la Papelera. No cuentan como cambio del contenido.
+pub const FINDER_METADATA: &[u8] = b".DS_Store";
+
+/// Lo que hay dentro de una entrada de la Papelera (T-11/T-12): para saber,
+/// justo antes de borrarla, si cambió algo a cualquier profundidad.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashContents {
+    /// `blake3:<hex>` de la estructura de los descendientes (sin la raíz ni
+    /// los `.DS_Store`): ruta relativa, tipo e inode de cada uno y, de lo
+    /// que no es carpeta, tamaño, `mtime` y `ctime`. Las fechas de las
+    /// carpetas no entran (Finder las cambia al crear su `.DS_Store`); un
+    /// hijo añadido, quitado o movido sí cambia la huella.
+    pub digest: String,
+    /// Bytes asignados (`st_blocks × 512`), cada inode una vez, raíz y
+    /// `.DS_Store` incluidos (lo que cuenta `du`).
+    pub bytes_allocated: u64,
+    /// El cambio más reciente, `max(mtime, ctime)` en (s, ns), de los
+    /// descendientes (sin la raíz ni los `.DS_Store`), carpetas incluidas:
+    /// mover algo dentro cambia el `ctime` de lo movido.
+    pub newest_change: Option<(i64, i64)>,
+    /// Hay un punto de montaje dentro (no se desciende a él).
+    pub crosses_device: bool,
+}
+
+/// [`TrashContents`] de la entrada `name` de la carpeta `parent`, sin
+/// seguir enlaces ni cruzar volúmenes. Cualquier fallo al recorrer es un
+/// error: quien lo use debe omitir la entrada.
+pub fn trash_contents_at(parent: BorrowedFd<'_>, name: &OsStr) -> io::Result<TrashContents> {
+    let st = rustix::fs::statat(parent, name, AtFlags::SYMLINK_NOFOLLOW)?;
+    let root = Identity::from_stat(&st);
+    let mut w = ContentsWalk {
+        hasher: blake3::Hasher::new(),
+        seen: HashSet::from([(root.dev, root.ino)]),
+        root_dev: root.dev,
+        out: TrashContents {
+            digest: String::new(),
+            bytes_allocated: st.st_blocks as u64 * 512,
+            newest_change: None,
+            crosses_device: false,
+        },
+    };
+    if root.kind == FileKind::Dir {
+        let dir = open_dir_at(parent, name)?;
+        w.walk(dir.as_fd(), &mut Vec::new())?;
+    }
+    w.out.digest = format!("blake3:{}", w.hasher.finalize().to_hex());
+    Ok(w.out)
+}
+
+struct ContentsWalk {
+    hasher: blake3::Hasher,
+    seen: HashSet<(u64, u64)>,
+    root_dev: u64,
+    out: TrashContents,
+}
+
+impl ContentsWalk {
+    fn walk(&mut self, dir: BorrowedFd<'_>, rel: &mut Vec<u8>) -> io::Result<()> {
+        let mut names: Vec<Vec<u8>> = Vec::new();
+        for entry in Dir::read_from(dir)? {
+            let entry = entry?;
+            let name = entry.file_name().to_bytes();
+            if name != b"." && name != b".." {
+                names.push(name.to_vec());
+            }
+        }
+        names.sort();
+        for name in names {
+            let cname = CString::new(name.clone())
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "NUL en nombre"))?;
+            let st = rustix::fs::statat(dir, cname.as_c_str(), AtFlags::SYMLINK_NOFOLLOW)?;
+            let id = Identity::from_stat(&st);
+            if self.seen.insert((id.dev, id.ino)) {
+                self.out.bytes_allocated += st.st_blocks as u64 * 512;
+            }
+            if name == FINDER_METADATA && id.kind != FileKind::Dir {
+                continue;
+            }
+            let len = rel.len();
+            if !rel.is_empty() {
+                rel.push(b'/');
+            }
+            rel.extend_from_slice(&name);
+            let h = &mut self.hasher;
+            h.update(&(rel.len() as u64).to_le_bytes());
+            h.update(rel);
+            h.update(&[id.kind as u8]);
+            h.update(&id.ino.to_le_bytes());
+            if id.kind != FileKind::Dir {
+                h.update(&id.size.to_le_bytes());
+                for v in [id.mtime, id.mtime_nsec, id.ctime, id.ctime_nsec] {
+                    h.update(&v.to_le_bytes());
+                }
+            }
+            let changed = (id.mtime, id.mtime_nsec).max((id.ctime, id.ctime_nsec));
+            self.out.newest_change =
+                Some(self.out.newest_change.map_or(changed, |c| c.max(changed)));
+            if id.kind == FileKind::Dir {
+                if id.dev != self.root_dev {
+                    self.out.crosses_device = true;
+                } else {
+                    let sub = open_dir_at(dir, cname.as_c_str())?;
+                    self.walk(sub.as_fd(), rel)?;
+                }
+            }
+            rel.truncate(len);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    /// I1: la huella de una entrada de la Papelera cambia con cualquier
+    /// hijo añadido, quitado o modificado a cualquier profundidad, pero no
+    /// con un `.DS_Store` ni con las fechas de las carpetas; y el cambio más
+    /// reciente de los descendientes avanza al tocar algo dentro.
+    #[test]
+    fn trash_contents_see_deep_changes_but_not_finder_metadata() {
+        let t = tree();
+        let base = canon(t.path());
+        let p = base.join("cache");
+        let contents = || {
+            let (fd, name) = open_parent_nofollow(&p).expect("padre");
+            trash_contents_at(fd.as_fd(), name).expect("contenido")
+        };
+        let a = contents();
+        assert!(a.bytes_allocated >= 5000, "{a:?}");
+        assert!(!a.crosses_device);
+        assert_eq!(a, contents());
+
+        // Finder: un .DS_Store en una subcarpeta (cambia sus fechas).
+        fs::write(p.join("a/.DS_Store"), b"finder").expect("write");
+        let b = contents();
+        assert_eq!(a.digest, b.digest);
+
+        // Algo nuevo dos niveles dentro.
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(p.join("a/b/foto.jpg"), b"importante").expect("write");
+        let c = contents();
+        assert_ne!(b.digest, c.digest);
+        assert!(c.newest_change > a.newest_change);
+
+        // Quitarlo devuelve la estructura, pero la carpeta b es más reciente.
+        fs::remove_file(p.join("a/b/foto.jpg")).expect("rm");
+        let d = contents();
+        assert_eq!(b.digest, d.digest);
+        assert!(d.newest_change > a.newest_change);
+
+        // Modificar un fichero profundo.
+        fs::write(p.join("a/b/deep.bin"), vec![1u8; 5000]).expect("write");
+        assert_ne!(contents().digest, d.digest);
+
+        // Un fichero suelto no tiene descendientes.
+        let top = p.join("top.txt");
+        let (fd, name) = open_parent_nofollow(&top).expect("padre");
+        let f = trash_contents_at(fd.as_fd(), name).expect("fichero");
+        assert_eq!(f.newest_change, None);
+    }
 
     fn tree() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");

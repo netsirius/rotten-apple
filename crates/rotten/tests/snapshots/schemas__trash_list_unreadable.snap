@@ -17,6 +17,7 @@ expression: "redact(&fx, &list.1)"
         }
       ],
       "others": null,
+      "partial": false,
       "path": "[TRASH]",
       "readable": false,
       "total": null

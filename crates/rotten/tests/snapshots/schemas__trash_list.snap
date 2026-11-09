@@ -20,6 +20,7 @@ expression: "redact(fx, &doc)"
         "bytes": 4096,
         "items": 1
       },
+      "partial": false,
       "path": "[TRASH]",
       "readable": true,
       "total": {

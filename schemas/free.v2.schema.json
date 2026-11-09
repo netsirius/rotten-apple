@@ -92,7 +92,11 @@
         "original_path": { "$ref": "#/$defs/path" },
         "identity": { "description": "La anotada al mandarlo a la Papelera; se revalida con same_after_move.", "$ref": "#/$defs/identity" },
         "bytes": { "description": "Tamaño estimado (bloques asignados) anotado en el journal.", "$ref": "#/$defs/count" },
-        "trash": { "description": "Papelera de la operación: system o dir:<ruta>.", "type": "string", "minLength": 1 }
+        "trash": { "description": "Papelera de la operación: system o dir:<ruta>.", "type": "string", "minLength": 1 },
+        "moved_at": {
+          "description": "Cuándo anotó el journal que llegó a la Papelera (RFC 3339, ms). Si es una carpeta y algo de dentro cambió después, se omite con contents_changed; sin esta fecha (journal antiguo), con unreadable.",
+          "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+        }
       }
     },
     "not_freeable": {
@@ -208,7 +212,7 @@
           "required": ["reason", "message"],
           "properties": {
             "outcome": { "const": "skipped" },
-            "reason": { "enum": ["missing", "symlink_in_path", "identity_changed", "contents_changed", "crosses_device", "outside_trash", "flags", "unreadable"] },
+            "reason": { "enum": ["missing", "symlink_in_path", "identity_changed", "contents_changed", "crosses_device", "outside_trash", "not_verifiable", "flags", "unreadable"] },
             "message": { "type": "string" },
             "flag": { "$ref": "#/$defs/flag_violation" },
             "detail": { "type": "string" }
