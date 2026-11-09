@@ -39,14 +39,19 @@ fn describe(p: &Path) -> Option<(String, Option<PathBuf>, Option<Vec<u8>>)> {
 /// Tipo, destino si es un enlace y contenido si es un fichero.
 type Entry = (String, Option<PathBuf>, Option<Vec<u8>>);
 
-/// Todo lo que hay bajo `base` (sin seguir enlaces), con su contenido.
+/// Todo lo que hay bajo `base` (sin seguir enlaces), con su contenido. Se
+/// salta el log técnico (T-14), que crece en cada ejecución.
 fn tree(base: &Path) -> Vec<(PathBuf, Option<Entry>)> {
+    let log = base.join(common::LOG_DIR);
     let mut out = Vec::new();
     let mut stack = vec![base.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(rd) = fs::read_dir(&dir) else { continue };
         for e in rd.flatten() {
             let p = e.path();
+            if p.starts_with(&log) {
+                continue;
+            }
             if e.file_type().is_ok_and(|t| t.is_dir()) {
                 stack.push(p.clone());
             }

@@ -26,10 +26,10 @@ pub struct Cli {
     /// Menos texto.
     #[arg(long, global = true)]
     pub quiet: bool,
-    /// Sin colores (la salida actual no usa colores).
+    /// Sin colores (también con `NO_COLOR` no vacía).
     #[arg(long, global = true)]
     pub no_color: bool,
-    /// Más detalle en los errores.
+    /// Log técnico detallado, también por stderr (nunca por stdout).
     #[arg(long, global = true)]
     pub debug: bool,
     /// Idioma de la salida para personas (es o en).
@@ -110,6 +110,12 @@ pub enum Cmd {
         #[command(subcommand)]
         action: ConfigCmd,
     },
+    /// Script de autocompletado para zsh, bash o fish.
+    Completion {
+        /// zsh, bash o fish.
+        #[arg(value_enum)]
+        shell: CompletionShell,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -126,6 +132,14 @@ pub enum ConfigCmd {
     },
     /// Dónde está la configuración y su enlace en ~/.config/rotten/.
     Path,
+}
+
+/// Shells de `rotten completion` (07 §2).
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum CompletionShell {
+    Zsh,
+    Bash,
+    Fish,
 }
 
 #[derive(Debug, Subcommand)]
@@ -181,6 +195,14 @@ pub fn lang_flag(args: &[String]) -> Option<String> {
         }
     }
     None
+}
+
+/// `--no-color` antes de analizar los argumentos: la ayuda y los errores
+/// de clap tampoco llevan colores.
+pub fn no_color_flag(args: &[String]) -> bool {
+    args.iter()
+        .take_while(|a| a.as_str() != "--")
+        .any(|a| a == "--no-color")
 }
 
 /// La definición de [`Cli`] con la ayuda en el idioma de `i18n`: título de
@@ -247,8 +269,10 @@ fn localize(mut cmd: Command, i18n: &I18n, path: &str) -> Command {
     }
     if name == "help" {
         // Sus subcomandos solo existen para analizar `help <comando>`: no
-        // tienen ayuda propia.
-        return cmd;
+        // tienen ayuda propia, pero el autocompletado (T-14) muestra su
+        // título, que es el del comando que nombran.
+        let base = path.strip_suffix("help").unwrap_or_default();
+        return localize_help_targets(cmd, i18n, base.trim_end_matches('-'));
     }
     let subs: Vec<String> = cmd
         .get_subcommands()
@@ -261,6 +285,31 @@ fn localize(mut cmd: Command, i18n: &I18n, path: &str) -> Command {
             format!("{path}-{sub}")
         };
         cmd = cmd.mut_subcommand(&sub, |s| localize(s, i18n, &sub_path));
+    }
+    cmd
+}
+
+/// Los subcomandos de `help`, con el título del comando que nombran
+/// (`base` es la ruta del comando padre de `help`).
+fn localize_help_targets(mut cmd: Command, i18n: &I18n, base: &str) -> Command {
+    let subs: Vec<String> = cmd
+        .get_subcommands()
+        .map(|s| s.get_name().to_owned())
+        .collect();
+    for sub in subs {
+        let path = if base.is_empty() {
+            sub.clone()
+        } else {
+            format!("{base}-{sub}")
+        };
+        let key = if sub == "help" {
+            "cli-cmd-help".to_owned()
+        } else {
+            format!("cli-cmd-{path}")
+        };
+        cmd = cmd.mut_subcommand(&sub, |s| {
+            localize_help_targets(s.about(i18n.tr(&key, None)), i18n, &path)
+        });
     }
     cmd
 }

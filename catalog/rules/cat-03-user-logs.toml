@@ -3,6 +3,10 @@
 # Antigüedad mínima de 7 días para no tocar ficheros que se están escribiendo.
 # `DiagnosticReports` va en una regla aparte para tratar cada informe por
 # separado: un informe nuevo no bloquea a los antiguos.
+#
+# El log técnico de Rotten Apple (`~/Library/Logs/<bundle-id>/`, T-14) no se
+# propone nunca: es de la app, como su estado. Si cambia el bundle ID (D-08),
+# hay que cambiarlo aquí también (lo comprueba `rotten/tests/techlog.rs`).
 
 [[rule]]
 id = "user-logs"
@@ -14,7 +18,7 @@ preselect = true
 action = "trash"
 roots = ["~/Library/Logs"]
 include = ["*"]
-exclude = ["DiagnosticReports"]
+exclude = ["DiagnosticReports", "io.github.netsirius.RottenApple"]
 max_depth = 1
 min_age_days = 7
 title = { es = "Registro de app", en = "App log" }

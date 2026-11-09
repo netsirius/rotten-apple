@@ -7,6 +7,10 @@
 //! Salida: JSON con `--json` o si stdout no es una terminal; si no, texto
 //! en el idioma del usuario (`i18n`). `ROTTEN_HUMAN=1` fuerza el texto
 //! aunque stdout no sea una terminal (`rotten scan | less`, pruebas).
+//!
+//! Colores: solo en una terminal, sin `--json`, `--no-color` ni `NO_COLOR`
+//! (`style`). Log técnico local y rotado en `~/Library/Logs/<bundle-id>/`
+//! (`techlog`); `--debug` lo detalla y lo copia a stderr.
 
 #![forbid(unsafe_code)]
 
@@ -14,12 +18,15 @@ mod args;
 mod cmd;
 mod i18n;
 mod render;
+mod style;
+mod techlog;
 
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Instant;
 
 use clap::FromArgMatches;
 use fluent_bundle::FluentArgs;
@@ -32,6 +39,7 @@ use serde_json::{Value, json};
 
 use args::{Cli, Cmd, ExcludeCmd};
 use i18n::{I18n, Lang, tr};
+use style::Style;
 
 pub const SCHEMA_VERSION: u32 = 2;
 
@@ -64,6 +72,9 @@ struct Ui {
     i18n: I18n,
     /// Carpeta personal, para abreviar rutas con `~` (vacía hasta saberla).
     home: PathBuf,
+    /// Colores en stdout y en stderr (`style::enabled`).
+    color_out: bool,
+    color_err: bool,
 }
 
 impl Ui {
@@ -90,6 +101,11 @@ impl Ui {
         self.say(format!("{}{}", "  ".repeat(level), line.as_ref()));
     }
 
+    /// `text` con color si stdout lo admite.
+    fn paint(&self, style: Style, text: impl AsRef<str>) -> String {
+        style::paint(self.color_out, style, text.as_ref())
+    }
+
     fn emit(&self, command: &str, body: Value) {
         let mut doc = json!({ "schema_version": SCHEMA_VERSION, "command": command });
         if let (Value::Object(d), Value::Object(b)) = (&mut doc, body) {
@@ -102,13 +118,15 @@ impl Ui {
     /// Error común: en JSON, un código estable y el mensaje en inglés (no
     /// dependen del idioma); para personas, `human` en su idioma.
     fn fail(&self, command: &str, exit: Exit, code: &str, message: &str, human: &str) -> Exit {
+        techlog::error(command, code, exit as u8, message);
         if self.json {
             self.emit(
                 command,
                 json!({ "error": { "code": code, "exit_code": exit as u8, "message": message } }),
             );
         } else {
-            eprintln!("{}", tr!(self, "error-line", message = human));
+            let line = tr!(self, "error-line", message = human);
+            eprintln!("{}", style::paint(self.color_err, Style::Red, &line));
         }
         exit
     }
@@ -164,19 +182,36 @@ fn main() -> ExitCode {
         .collect();
     let lang = Lang::detect(args::lang_flag(&lossy).as_deref());
     let i18n = I18n::new(lang);
-    let matches = args::localized(&i18n).get_matches_from(argv);
+    let no_color_env = style::no_color_env();
+    let mut definition = args::localized(&i18n);
+    if args::no_color_flag(&lossy) || no_color_env.as_deref().is_some_and(|v| !v.is_empty()) {
+        definition = definition.color(clap::ColorChoice::Never);
+    }
+    let matches = definition.get_matches_from(argv);
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
+    // Antes que nada más: no necesita la carpeta personal ni el núcleo, y
+    // su salida es el script aunque vaya a una tubería.
+    if let Cmd::Completion { shell } = cli.cmd {
+        return cmd::completion::run(shell, &i18n).into();
+    }
+
+    let started = Instant::now();
+    techlog::init(cli.debug);
     let piped = !io::stdout().is_terminal();
     let force_human = std::env::var_os(HUMAN_ENV).is_some_and(|v| v == "1");
     let json = cli.json || (piped && !force_human);
-    let mut ui = Ui {
+    let colors =
+        |terminal: bool| style::enabled(terminal, json, cli.no_color, no_color_env.as_deref());
+    let ui = Ui {
         json,
         interactive: !json && io::stdin().is_terminal(),
         yes: cli.yes,
         quiet: cli.quiet,
         i18n,
         home: PathBuf::new(),
+        color_out: colors(!piped),
+        color_err: colors(io::stderr().is_terminal()),
     };
     let command = match &cli.cmd {
         Cmd::Scan { .. } => "scan",
@@ -189,12 +224,17 @@ fn main() -> ExitCode {
         Cmd::Trash { .. } => "trash",
         Cmd::Config { .. } => "config",
         Cmd::Update { .. } => "update",
+        Cmd::Completion { .. } => "completion",
     };
+    techlog::start(command);
+    let exit = run(ui, cli, command);
+    techlog::finish(command, exit as u8, started);
+    exit.into()
+}
 
+fn run(mut ui: Ui, cli: Cli, command: &str) -> Exit {
     if ra_core::running_as_root() && !cli.allow_root {
-        return ui
-            .fail_with(command, Exit::Safety, "running_as_root", "running-as-root")
-            .into();
+        return ui.fail_with(command, Exit::Safety, "running_as_root", "running-as-root");
     }
 
     let env = match Env::from_env() {
@@ -205,22 +245,21 @@ fn main() -> ExitCode {
                 EnvError::BadPath { .. } => "invalid_env_path",
             };
             let human = render::env_error(&ui.i18n, &e);
-            return ui
-                .fail(command, Exit::Error, code, &e.to_string(), &human)
-                .into();
+            return ui.fail(command, Exit::Error, code, &e.to_string(), &human);
         }
     };
     ui.home = env.home.clone();
+    techlog::set_home(&env.home);
+    techlog::env(&env, ui.i18n.lang().code(), ui.json);
     // `update` no usa el estado de la app (T-15).
     if let Cmd::Update { dry_run } = cli.cmd {
-        return cmd::update::run(&ui, dry_run).into();
+        return cmd::update::run(&ui, dry_run);
     }
     let core = match Core::new(env) {
         Ok(c) => c,
-        Err(e) => return ui.core_error(command, &e).into(),
+        Err(e) => return ui.core_error(command, &e),
     };
-
-    let exit = match cli.cmd {
+    match cli.cmd {
         Cmd::Scan { categories } => scan(&ui, &core, categories),
         Cmd::Clean {
             dry_run,
@@ -239,9 +278,10 @@ fn main() -> ExitCode {
         Cmd::Exclude { action } => exclude(&ui, &core, action),
         Cmd::Trash { action } => cmd::trash::run(&ui, &core, action),
         Cmd::Config { action } => cmd::config::run(&ui, &core, action),
+        // Ya despachados: `completion` en `main` y `update` antes del núcleo.
+        Cmd::Completion { .. } => Exit::Ok,
         Cmd::Update { .. } => unreachable!("se despacha antes de abrir el núcleo"),
-    };
-    exit.into()
+    }
 }
 
 fn opt_categories(c: Vec<String>) -> Option<Vec<String>> {
@@ -280,11 +320,14 @@ fn scan(ui: &Ui, core: &Core, categories: Vec<String>) -> Exit {
         ScanStatus::Partial => "partial",
         ScanStatus::Unavailable => "unavailable",
     };
-    ui.say(tr!(
-        ui,
-        "scan-header",
-        version = report.catalog_version.as_str(),
-        status = status
+    ui.say(ui.paint(
+        Style::Bold,
+        tr!(
+            ui,
+            "scan-header",
+            version = report.catalog_version.as_str(),
+            status = status
+        ),
     ));
     // Estado del volumen (RF-PAN-01): «disponible» es la cifra de Finder.
     if let Some(v) = &report.volume {
@@ -341,11 +384,14 @@ fn scan(ui: &Ui, core: &Core, categories: Vec<String>) -> Exit {
             reason = reason
         ));
     }
-    ui.say(tr!(
-        ui,
-        "scan-summary",
-        reclaimable = ui.size(pre_bytes),
-        count = pre_items
+    ui.say(ui.paint(
+        Style::Green,
+        tr!(
+            ui,
+            "scan-summary",
+            reclaimable = ui.size(pre_bytes),
+            count = pre_items
+        ),
     ));
     Exit::Ok
 }
@@ -365,13 +411,16 @@ fn print_plan(ui: &Ui, core: &Core, plan: &Plan, preview: &ExecReport) {
         Action::Trash => "trash",
         Action::Delete => "delete",
     };
-    ui.say(tr!(
-        ui,
-        "plan-header",
-        hash = hash,
-        count = plan.totals().items,
-        size = ui.size(plan.totals().bytes_allocated),
-        action = action
+    ui.say(ui.paint(
+        Style::Bold,
+        tr!(
+            ui,
+            "plan-header",
+            hash = hash,
+            count = plan.totals().items,
+            size = ui.size(plan.totals().bytes_allocated),
+            action = action
+        ),
     ));
     for (item, r) in plan.items().iter().zip(&preview.items) {
         let id = item.item_id.to_string();
@@ -466,11 +515,14 @@ fn print_problems(ui: &Ui, report: &ExecReport) {
         if let Some(problem) = render::problem(&ui.i18n, &r.outcome, &ui.home) {
             ui.say_in(
                 1,
-                tr!(
-                    ui,
-                    "item-problem",
-                    path = ui.path(&r.path),
-                    problem = problem
+                ui.paint(
+                    Style::Yellow,
+                    tr!(
+                        ui,
+                        "item-problem",
+                        path = ui.path(&r.path),
+                        problem = problem
+                    ),
                 ),
             );
         }
@@ -557,6 +609,7 @@ fn clean(
         Ok(r) => r,
         Err(e) => return ui.core_error("clean", &e),
     };
+    techlog::report("clean", &report);
     if ui.json {
         ui.emit(
             "clean",
@@ -567,7 +620,10 @@ fn clean(
         let size = ui.size(report.bytes_done);
         match action {
             Action::Trash => {
-                ui.say(tr!(ui, "moved-to-trash", count = report.done, size = size));
+                ui.say(ui.paint(
+                    Style::Green,
+                    tr!(ui, "moved-to-trash", count = report.done, size = size),
+                ));
                 ui.say(tr!(ui, "not-freed-yet"));
             }
             Action::Delete => ui.say(tr!(
@@ -715,6 +771,7 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
         Ok(r) => r,
         Err(e) => return ui.core_error("undo", &e),
     };
+    techlog::report("undo", &report);
     if ui.json {
         ui.emit(
             "undo",
@@ -737,7 +794,7 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
                 }
             }
         }
-        ui.say(tr!(ui, "undo-done", count = report.done));
+        ui.say(ui.paint(Style::Green, tr!(ui, "undo-done", count = report.done)));
     }
     if partial_upfront {
         Exit::Partial

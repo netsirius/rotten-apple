@@ -146,6 +146,7 @@ pub fn run(ui: &Ui, core: &Core, ops: &[String], dry_run: bool) -> Exit {
         Ok(r) => r,
         Err(e) => return ui.core_error(COMMAND, &e),
     };
+    crate::techlog::report(COMMAND, &result.report);
     if ui.json {
         ui.emit(
             COMMAND,

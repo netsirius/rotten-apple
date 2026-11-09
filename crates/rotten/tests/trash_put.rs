@@ -55,6 +55,7 @@ fn fixture() -> Fx {
     materialize(&home, &entries, &[], SystemTime::now()).expect("materializar");
     let state = home.join("Library/Application Support/io.github.netsirius.RottenApple");
     fs::create_dir_all(&state).expect("mkdir");
+    fs::create_dir_all(home.join(common::LOG_DIR)).expect("mkdir");
     Fx {
         _tmp: tmp,
         home,
@@ -105,7 +106,7 @@ fn snapshot(base: &Path, skip: &Path) -> BTreeMap<PathBuf, (u64, bool, u64, i64,
         let Ok(rd) = fs::read_dir(&d) else { continue };
         for entry in rd.flatten() {
             let p = entry.path();
-            if p.starts_with(skip) {
+            if p.starts_with(skip) || p.ends_with(common::LOG_DIR) {
                 continue;
             }
             let m = fs::symlink_metadata(&p).expect("lstat");
