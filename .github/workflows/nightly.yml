@@ -45,8 +45,10 @@ jobs:
   crash:
     name: arnés kill -9 (1 000 rondas)
     runs-on: macos-26
-    # 50 rondas tardan ~16 s en un M-series: 1 000, unos 6 min.
-    timeout-minutes: 30
+    # ROTTEN_CRASH_ROUNDS se aplica a cada prueba del arnés (2 000 rondas en
+    # total): ~5,5 min por 1 000 en un M-series, y un runner virtualizado
+    # puede ir de 3 a 5 veces más lento.
+    timeout-minutes: 60
     env:
       ROTTEN_CRASH_ROUNDS: "1000"
     steps:
@@ -73,8 +75,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Instalar cargo-audit
-        run: cargo install cargo-audit --locked
+      # Binario precompilado y fijado, en vez de compilarlo cada noche.
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-audit
       - name: cargo audit
         run: cargo audit
 

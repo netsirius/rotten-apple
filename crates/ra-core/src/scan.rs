@@ -13,7 +13,9 @@
 //! El estado del volumen (RF-PAN-01) va aparte, en [`VolumeState`].
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::Path;
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 
 use ra_catalog::{Catalog, Requirement, RootState, ScanResult};
 use ra_safety::{ConfigState, Exclusions, Origin, ProtectedList, TreeFingerprint};
@@ -109,12 +111,25 @@ pub(crate) fn add_volume(report: &mut ScanReport, home: &Path) {
 }
 
 /// Suma bytes una vez por inode entre elementos y cada familia de clones
-/// completos una vez, solo si todos sus miembros están dentro.
+/// completos una vez, solo si todos sus miembros están dentro. Un fichero
+/// con enlaces duros solo es liberable si todos sus enlaces están dentro.
 #[derive(Default)]
 struct Tally {
     seen: HashSet<(u64, u64)>,
     /// Por `(dev, clone_id)`.
     families: HashMap<(u64, u64), Family>,
+    /// Por `(dev, ino)`.
+    hard: HashMap<(u64, u64), HardLinks>,
+}
+
+struct HardLinks {
+    /// Categoría del primer enlace visto: ahí se suma.
+    cat: String,
+    nlink: u32,
+    /// Rutas absolutas de los enlaces vistos. Por ruta y no por número, para
+    /// no contar dos veces el mismo enlace si dos elementos se solapan.
+    links: HashSet<PathBuf>,
+    private: u64,
 }
 
 struct Family {
@@ -127,12 +142,39 @@ struct Family {
 }
 
 impl Tally {
-    /// `(asignado, liberable)` que aporta el elemento sin repetir inodes.
-    fn add(&mut self, cat: &str, fp: &TreeFingerprint) -> (u64, u64) {
+    /// `(asignado, liberable)` que aporta el elemento `path` sin repetir
+    /// inodes. Lo liberable de los ficheros con enlaces duros queda aparte
+    /// hasta saber si están todos sus enlaces ([`Self::finish`]).
+    fn add(&mut self, cat: &str, path: &Path, fp: &TreeFingerprint) -> (u64, u64) {
         let (mut allocated, mut private) = (fp.bytes_allocated, fp.size.bytes_private);
         for s in &fp.size.shared {
-            if !self.seen.insert((s.dev, s.ino)) {
+            let first = self.seen.insert((s.dev, s.ino));
+            if !first {
                 allocated = allocated.saturating_sub(s.allocated);
+            }
+            if s.nlink > 1 {
+                // Si además es un clon completo, no se suma su familia: sin
+                // todos los enlaces no se libera nada (estimación prudente).
+                private = private.saturating_sub(s.private);
+                let h = self
+                    .hard
+                    .entry((s.dev, s.ino))
+                    .or_insert_with(|| HardLinks {
+                        cat: cat.to_owned(),
+                        nlink: s.nlink,
+                        links: HashSet::new(),
+                        private: s.private,
+                    });
+                for rel in &s.links {
+                    h.links.insert(if rel.is_empty() {
+                        path.to_path_buf()
+                    } else {
+                        path.join(OsStr::from_bytes(rel))
+                    });
+                }
+                continue;
+            }
+            if !first {
                 private = private.saturating_sub(s.private);
                 continue;
             }
@@ -155,12 +197,21 @@ impl Tally {
         (allocated, private)
     }
 
-    /// `(categoría, bytes)` de cada familia de clones completa.
-    fn complete_families(self) -> impl Iterator<Item = (String, u64)> {
-        self.families
+    /// `(categoría, bytes)` que se liberan solo con el grupo completo: cada
+    /// familia de clones con todos sus miembros y cada fichero con enlaces
+    /// duros con todos sus enlaces dentro.
+    fn finish(self) -> impl Iterator<Item = (String, u64)> {
+        let clones = self
+            .families
             .into_values()
             .filter(|f| f.seen >= f.members)
-            .map(|f| (f.cat, f.allocated.saturating_sub(f.private)))
+            .map(|f| (f.cat, f.allocated.saturating_sub(f.private)));
+        let hard = self
+            .hard
+            .into_values()
+            .filter(|h| h.links.len() >= h.nlink as usize)
+            .map(|h| (h.cat, h.private));
+        clones.chain(hard)
     }
 }
 
@@ -249,32 +300,49 @@ pub(crate) fn summarize(
         let Some(fp) = &c.fingerprint else {
             continue;
         };
-        let (allocated, private) = all.add(&c.cat, fp);
+        let (allocated, private) = all.add(&c.cat, &c.path, fp);
         sum.bytes_allocated += allocated;
         sum.reclaimable_bytes += private;
         sum.cloned_entries += fp.size.cloned_entries;
         sum.hardlinked_entries += fp.size.hardlinked_entries;
         if c.preselected {
-            let (allocated, private) = pre.add(&c.cat, fp);
+            let (allocated, private) = pre.add(&c.cat, &c.path, fp);
             sum.preselected_bytes += allocated;
             sum.preselected_reclaimable_bytes += private;
         }
     }
-    for (cat, bytes) in all.complete_families() {
+    for (cat, bytes) in all.finish() {
         if let Some(sum) = cats.get_mut(&cat) {
             sum.reclaimable_bytes += bytes;
         }
     }
-    for (cat, bytes) in pre.complete_families() {
+    for (cat, bytes) in pre.finish() {
         if let Some(sum) = cats.get_mut(&cat) {
             sum.preselected_reclaimable_bytes += bytes;
         }
     }
-    for sum in cats.values_mut().filter(|s| s.cloned_entries > 0) {
-        sum.notes.push(format!(
-            "{} ficheros comparten bloques con clones APFS: borrarlos libera menos de lo que ocupan",
-            sum.cloned_entries
-        ));
+    for sum in cats.values_mut() {
+        if sum.cloned_entries > 0 {
+            sum.notes.push(format!(
+                "{} ficheros pueden compartir bloques con clones APFS: solo cuenta como liberable lo que no comparten con copias fuera de la selección",
+                sum.cloned_entries
+            ));
+        }
+        if sum.hardlinked_entries > 0 {
+            sum.notes.push(format!(
+                "{} ficheros tienen enlaces duros: solo cuentan como liberables si todos sus enlaces están en la selección",
+                sum.hardlinked_entries
+            ));
+        }
+        if sum.cloned_entries == 0
+            && sum.hardlinked_entries == 0
+            && sum.reclaimable_bytes < sum.bytes_allocated
+        {
+            sum.notes.push(
+                "se liberaría menos de lo que ocupan: parte de los bloques los retienen instantáneas locales de APFS"
+                    .into(),
+            );
+        }
     }
 
     let categories: Vec<CategorySummary> = cats.into_values().collect();

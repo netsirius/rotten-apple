@@ -197,14 +197,18 @@ pub const FSYNC_BATCH_VAR: &str = "ROTTEN_FSYNC_BATCH";
 /// pocos resultados que haya que deducir al recuperar.
 const RESULTS_SYNC_EVERY: Duration = Duration::from_millis(250);
 
-/// Tamaño del lote: [`FSYNC_BATCH_VAR`] si es un entero ≥ 1 o, si no,
-/// [`DEFAULT_FSYNC_BATCH`].
+/// Tope de [`FSYNC_BATCH_VAR`]: tras un corte, `recover` busca en la
+/// Papelera cada intención pendiente; un lote enorme las dejaría todas.
+pub const MAX_FSYNC_BATCH: usize = 4096;
+
+/// Tamaño del lote: [`FSYNC_BATCH_VAR`] si es un entero ≥ 1 (como mucho
+/// [`MAX_FSYNC_BATCH`]) o, si no, [`DEFAULT_FSYNC_BATCH`].
 pub fn fsync_batch() -> usize {
     std::env::var(FSYNC_BATCH_VAR)
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
         .filter(|&n| n >= 1)
-        .unwrap_or(DEFAULT_FSYNC_BATCH)
+        .map_or(DEFAULT_FSYNC_BATCH, |n| n.min(MAX_FSYNC_BATCH))
 }
 
 /// Gancho de prueba: orden en que ocurren las intenciones, los `fsync` de

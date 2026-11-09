@@ -153,6 +153,39 @@ fn a_hard_link_in_two_items_counts_once() {
     assert!(!clone_note(c));
 }
 
+/// Un enlace duro fuera de la selección retiene el fichero: borrar el log
+/// no libera nada aunque ocupe 1 MB (revisión de la tanda 2a).
+#[test]
+fn a_hard_link_outside_the_selection_frees_nothing() {
+    let w = World::new();
+    w.write("Library/Logs/a.log", MB);
+    w.hard_link("Library/Logs/a.log", "Documents/a-copia.log");
+    let r = w.scan_logs();
+    let c = logs(&r);
+    assert_eq!(c.items, 1, "{c:?}");
+    assert_eq!(c.bytes_allocated, w.allocated("Library/Logs/a.log"));
+    assert_eq!(c.reclaimable_bytes, 0, "{c:?}");
+    assert_eq!(c.preselected_reclaimable_bytes, 0, "{c:?}");
+    assert_eq!(c.hardlinked_entries, 1);
+    assert!(hard_link_note(c), "{:?}", c.notes);
+}
+
+/// Los dos enlaces dentro del mismo elemento: se libera el fichero entero.
+#[test]
+fn hard_links_inside_one_item_are_reclaimable() {
+    let w = World::new();
+    w.write("Library/Logs/x/data.bin", MB);
+    w.hard_link("Library/Logs/x/data.bin", "Library/Logs/x/otro.bin");
+    let r = w.scan_logs();
+    let c = logs(&r);
+    assert_eq!(c.items, 1, "{c:?}");
+    assert_eq!(c.reclaimable_bytes, c.bytes_allocated, "{c:?}");
+}
+
+fn hard_link_note(c: &CategorySummary) -> bool {
+    c.notes.iter().any(|n| n.contains("enlaces duros"))
+}
+
 #[test]
 fn plain_files_report_no_clones_and_the_volume() {
     let w = World::new();

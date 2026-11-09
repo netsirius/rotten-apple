@@ -66,12 +66,12 @@
         "preselected_items": { "$ref": "#/$defs/count" },
         "preselected_bytes": { "description": "Como bytes_allocated, solo de los preseleccionados.", "$ref": "#/$defs/count" },
         "reclaimable_bytes": {
-          "description": "Lo que se liberaría al borrar (ATTR_CMNEXT_PRIVATESIZE): no cuenta lo atrapado en clones APFS o instantáneas; una familia de clones completos cuenta una vez si está entera en la selección.",
+          "description": "Lo que se liberaría al borrar (ATTR_CMNEXT_PRIVATESIZE): no cuenta lo atrapado en clones APFS o instantáneas; una familia de clones completos cuenta una vez si está entera en la selección, y un fichero con enlaces duros solo si todos sus enlaces lo están.",
           "$ref": "#/$defs/count"
         },
         "preselected_reclaimable_bytes": { "description": "Como reclaimable_bytes, solo de los preseleccionados.", "$ref": "#/$defs/count" },
-        "cloned_entries": { "description": "Ficheros que pueden compartir bloques con un clon APFS (con aviso en notes).", "$ref": "#/$defs/count" },
-        "hardlinked_entries": { "description": "Ficheros con más de un enlace duro.", "$ref": "#/$defs/count" },
+        "cloned_entries": { "description": "Ficheros que pueden compartir bloques con un clon APFS (con aviso en notes). Se cuentan por elemento: un mismo inode en dos elementos cuenta dos veces.", "$ref": "#/$defs/count" },
+        "hardlinked_entries": { "description": "Ficheros con más de un enlace duro (con aviso en notes). Se cuentan por elemento: un mismo inode en dos elementos cuenta dos veces.", "$ref": "#/$defs/count" },
         "skipped_items": { "$ref": "#/$defs/count" },
         "requires": { "type": "array", "items": { "enum": ["fda"] } },
         "notes": { "type": "array", "items": { "type": "string" } }

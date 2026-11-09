@@ -108,6 +108,9 @@ pub fn file_attrs_at(dir: BorrowedFd<'_>, name: &CStr) -> io::Result<FileAttrs> 
     // SAFETY: el búfer se creó a ceros y todos sus campos son enteros, así
     // que cualquier patrón de bits es un valor válido.
     let buf = unsafe { buf.assume_init() };
+    // La disposición del búfer es fija (`FSOPT_PACK_INVAL_ATTRS`): si un SDK
+    // futuro la cambiara, aquí se vería.
+    debug_assert_eq!(buf.length as usize, std::mem::size_of::<AttrBuf>());
     let returned = buf.returned.forkattr;
     let has = |bit: libc::attrgroup_t| returned & bit != 0;
     // Copias locales: los campos de una estructura `packed` no se pueden
@@ -324,6 +327,35 @@ mod tests {
         assert!(
             v.available_important.is_none_or(|a| a <= v.capacity),
             "{v:?}"
+        );
+    }
+
+    /// Criterio de T-05: «libre» coincide con `diskutil info /` (± 1 %).
+    /// Se ignora por defecto porque `diskutil` necesita DiskArbitration, que
+    /// no está en el sandbox ni en todos los runners:
+    /// `cargo test -p ra-platform -- --ignored free_matches_diskutil`.
+    /// «Disponible» frente a Finder queda en la lista manual de T-29.
+    #[test]
+    #[ignore = "necesita diskutil (DiskArbitration)"]
+    fn free_matches_diskutil() {
+        let out = std::process::Command::new("diskutil")
+            .args(["info", "-plist", "/"])
+            .output()
+            .expect("diskutil");
+        assert!(out.status.success(), "diskutil: {out:?}");
+        let info: plist::Dictionary = plist::from_bytes(&out.stdout).expect("plist");
+        let diskutil_free = info
+            .get("FreeSpace")
+            .or_else(|| info.get("APFSContainerFree"))
+            .and_then(plist::Value::as_unsigned_integer)
+            .expect("FreeSpace en diskutil");
+        let v = volume_space(Path::new("/")).expect("statfs");
+        let diff = v.free.abs_diff(diskutil_free) as f64;
+        assert!(
+            diff <= diskutil_free as f64 * 0.01,
+            "statfs {} frente a diskutil {}",
+            v.free,
+            diskutil_free
         );
     }
 }

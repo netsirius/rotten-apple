@@ -17,7 +17,7 @@
 //! compartir (enlaces duros y clones completos) para que `scan` los cuente
 //! una sola vez entre elementos (RF-SEG-12, RNF-ARQ-28).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString, OsStr};
 use std::io;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -70,10 +70,16 @@ pub struct SizeDetail {
 }
 
 /// Inode que `scan` cuenta una sola vez entre elementos.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedInode {
     pub dev: u64,
     pub ino: u64,
+    /// `st_nlink` de un fichero con enlaces duros; 1 en los demás.
+    pub nlink: u32,
+    /// Rutas, relativas al elemento, de los enlaces de este inode dentro de
+    /// él (vacía si el elemento es el propio fichero). `scan` solo cuenta
+    /// lo liberable cuando todos los enlaces están en la selección.
+    pub links: Vec<Vec<u8>>,
     /// Lo que aportó a [`TreeFingerprint::bytes_allocated`].
     pub allocated: u64,
     /// Lo que aportó a [`SizeDetail::bytes_private`].
@@ -129,6 +135,7 @@ pub fn fingerprint_at(parent: BorrowedFd<'_>, name: &OsStr) -> io::Result<TreeFi
     let mut acc = Acc {
         hasher: blake3::Hasher::new(),
         seen: HashSet::new(),
+        hard: HashMap::new(),
         root_dev: root.dev,
         out: TreeFingerprint {
             entries: 0,
@@ -173,6 +180,8 @@ fn open_dir_at(parent: BorrowedFd<'_>, name: impl rustix::path::Arg) -> io::Resu
 struct Acc {
     hasher: blake3::Hasher,
     seen: HashSet<(u64, u64)>,
+    /// Índice en `out.size.shared` de cada inode con enlaces duros.
+    hard: HashMap<(u64, u64), usize>,
     root_dev: u64,
     out: TreeFingerprint,
 }
@@ -199,14 +208,22 @@ impl Acc {
                 _ => None,
             };
             if hardlinked || clone.is_some() {
+                if hardlinked {
+                    self.hard.insert((id.dev, id.ino), size.shared.len());
+                }
                 size.shared.push(SharedInode {
                     dev: id.dev,
                     ino: id.ino,
+                    nlink: if hardlinked { st.st_nlink as u32 } else { 1 },
+                    links: vec![rel.to_vec()],
                     allocated,
                     private,
                     clone,
                 });
             }
+        } else if let Some(&i) = self.hard.get(&(id.dev, id.ino)) {
+            // Otro enlace del mismo inode dentro del elemento.
+            self.out.size.shared[i].links.push(rel.to_vec());
         }
         let h = &mut self.hasher;
         h.update(&(rel.len() as u64).to_le_bytes());
