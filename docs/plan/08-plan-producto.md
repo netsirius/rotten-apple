@@ -278,12 +278,33 @@ La primera tanda (T-01, T-02, T-04, T-07 y T-10) pasó una revisión crítica. S
 | Papelera del sistema sin Acceso total al disco | Tras un corte, `recover` busca por inode en `~/.Trash`, pero sin FDA no puede listarla: el elemento queda `unknown` con un aviso explícito | Comprobar en VM o a mano (`ls ~/.Trash` desde un Terminal sin FDA) y ampliar la prueba ignorada `system_trash_roundtrip` con un `recover` real (T-28) |
 | Ficheros abiertos por pasada | La lista de procesos con ficheros abiertos se toma una vez por operación (unos 35 ms), no antes de cada elemento. En `--permanent` lo cubre `AT_NODELETEBUSY`; en la Papelera, mover un fichero abierto no rompe el proceso | Decisión de coste aceptada. Si hiciera falta, refrescar cada N elementos. Spotlight (`mdworker`) puede provocar `4` esporádicos |
 | Enlace a una ruta protegida con la Papelera del sistema | Con `dir:` se mueve solo el enlace; con `trashItemAtURL:` falta comprobar que no resuelve el enlace | Prueba ignorada sobre un enlace con la Papelera real (T-28) |
-| Arnés con `--permanent` | El arnés cubre `clean --yes` y `undo --yes`, no un corte a mitad de un borrado permanente | Variante con `--permanent` en T-08 o T-09 |
-| Nocturna del arnés | `crash.rs` lanza el binario de `target/`, que puede estar desactualizado si se ejecuta solo | En T-09: `cargo build -p rotten` antes de `ROTTEN_CRASH_ROUNDS=1000` |
-| Incoherencias del JSON | `clean.plan` y `undo.plan` con formas distintas; `preview`/`report`; `doctor.running_apps_probe` como `Result`; `exit_code` en dos sitios; `"kind"` duplicado en `Block::App` (se pierde `"app"`); `SkipCause::code()` = `app_running` frente a `app` en el JSON; errores del núcleo en español con `LANG=en_US`; `doctor.trash` con dos datos en una cadena; categoría `selection` fuera del patrón `CAT-NN`; `history` muestra `kind: "clean"` para `trash put` | T-03 (con subida de `schema_version` donde cambie la forma) |
+| Arnés con `--permanent` | El arnés cubre `clean --yes` y `undo --yes`, no un corte a mitad de un borrado permanente | Cerrado en T-08 (`kill9_during_permanent_clean_leaves_everything_deleted_or_recorded`) |
+| Nocturna del arnés | `crash.rs` lanza el binario de `target/`, que puede estar desactualizado si se ejecuta solo | Cerrado en T-09: la nocturna compila `rotten` antes del arnés |
+| Incoherencias del JSON | `clean.plan` y `undo.plan` con formas distintas; `preview`/`report`; `doctor.running_apps_probe` como `Result`; `exit_code` en dos sitios; `"kind"` duplicado en `Block::App` (se pierde `"app"`); `SkipCause::code()` = `app_running` frente a `app` en el JSON; errores del núcleo en español con `LANG=en_US`; `doctor.trash` con dos datos en una cadena; categoría `selection` fuera del patrón `CAT-NN`; `history` muestra `kind: "clean"` para `trash put` | Cerrado en T-03 (esquemas v2), salvo `selection`, que se queda fuera de `CAT-NN` a propósito: así no se puede excluir con `exclude add cat:` ni se confunde con el catálogo |
 | Origen «módulo» | El plan admite `rules` y `explicit_selection`; falta el origen de módulo (instaladores, desinstalador, dev) | T-20 y siguientes |
 | Enlaces duros en las reglas | Una caché que es enlace duro a un documento entra en el plan con todas las categorías y `--include-review` (el plan por defecto no la trae). Con Papelera o `--permanent` solo se va ese nombre y el documento sigue en su sitio, pero no se libera espacio y la propiedad RF-SEG-09 por identidad la detecta | Decidir la política para `nlink > 1` (omitir, o «Revisar» sin preseleccionar) y añadir el caso al generador de la propiedad (T-05 o una tarea propia) |
 | Papelera ilegible tras recuperar | Si `recover` no pudo leer la Papelera, el elemento queda `unknown` con el motivo y `doctor` avisa, pero no se vuelve a reconciliar al conceder después el Acceso total al disco | Reintentar la reconciliación de esos elementos en `doctor` o en `undo` cuando la Papelera ya se pueda leer |
+
+### 2.3 Seguimiento de la segunda tanda (2026-11-09)
+
+La parte 2a (T-03, T-05, T-06, T-08 y T-09) pasó una revisión crítica. Sin bloqueantes. Ya corregido tras la revisión:
+- `scan` contaba como liberable un fichero con un enlace duro fuera de la selección; ahora solo cuenta si todos sus enlaces están dentro.
+- Avisos de clones, enlaces duros e instantáneas en `notes`.
+- Prueba ignorada de «libre» frente a `diskutil`.
+- Control del `atime` no concluyente en vez de fallo.
+- Tope de `ROTTEN_FSYNC_BATCH` (4 096).
+- Nocturna con más margen y `cargo-audit` precompilado.
+- CI que rechaza `allow(unsafe_code)` fuera de `ra-platform`.
+
+Medida de RNF-06 (`release`, 10 000 elementos, Papelera de prueba, política `utility`): `clean --yes` 8–12 s y `undo --yes` unos 2 s; en `debug`, unos 33 s. Cualquier prueba de rendimiento en CI tiene que compilar en `release`. Lo que queda abierto:
+
+| Tema | Qué pasa | Cómo se cierra |
+|---|---|---|
+| Totales del plan con enlaces duros | `Plan::build` suma `bytes_allocated` por elemento sin deduplicar, así que la confirmación de `clean` y `op_started.bytes` pueden superar lo que mostró `scan` para la misma selección | Reutilizar el recuento de `scan` (moverlo a `ra-safety`) en los totales del plan |
+| `assert!` de durabilidad | `run.rs` comprueba con `assert!` que la intención es durable antes de actuar; si fallara, la operación queda abierta (recuperable), pero el CLI muere con traza | Devolver `ExecError` en su lugar |
+| Política de E/S al arrancar | Si `iopolicy::apply()` falla, no arranca ningún comando, ni `doctor` | Que `doctor` arranque y lo explique. En H-6, con el núcleo dentro de la app, la política debe tener ámbito de hilo en los *workers* para no despriorizar la interfaz |
+| Contadores de clones y enlaces | `cloned_entries` y `hardlinked_entries` se cuentan por elemento: un mismo inode en dos elementos cuenta dos veces (documentado en `scan.v2`) | Deduplicar si molesta en la interfaz |
+| Valor atípico en la medida | Una pasada de 123 s justo después de crear 10 000 ficheros, sin reproducirse; probablemente Spotlight indexando | Vigilar en T-30 |
 
 ---
 
@@ -367,13 +388,13 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 |---|---|---|---|---|---|
 | T-01 | Esquemas JSON y validación en CI | H-0 | M | — | Hecho (2026-11-08) |
 | T-02 | Prueba de paridad de comandos | H-0 | S | T-01 | Hecho (2026-11-08) |
-| T-03 | Cadenas externalizadas y pseudo-localización del CLI | H-0 | M | T-01 | Pendiente |
+| T-03 | Cadenas externalizadas y pseudo-localización del CLI | H-0 | M | T-01 | Hecho (2026-11-09) |
 | T-04 | Ficheros abiertos y `AT_NODELETEBUSY` | H-0 | M | — | Hecho (2026-11-08) |
-| T-05 | Tamaños honestos y estado del volumen | H-0 | M | — | Pendiente |
-| T-06 | Política de E/S y de ficheros sin descargar | H-0 | S | — | Pendiente |
+| T-05 | Tamaños honestos y estado del volumen | H-0 | M | — | Hecho (2026-11-09); falta comparar a mano «disponible» con Finder (T-29) |
+| T-06 | Política de E/S y de ficheros sin descargar | H-0 | S | — | Hecho (2026-11-09) |
 | T-07 | Arnés de cierre abrupto (`kill -9`) | H-0 | M | — | Hecho (2026-11-08) |
-| T-08 | `fsync` por lotes sin perder la escritura anticipada | H-0 | M | T-07 | Pendiente |
-| T-09 | CI nocturna, `cargo-audit`, `forbid(unsafe_code)` y cobertura | H-0 | S | T-07 | Pendiente |
+| T-08 | `fsync` por lotes sin perder la escritura anticipada | H-0 | M | T-07 | Hecho (2026-11-09) |
+| T-09 | CI nocturna, `cargo-audit`, `forbid(unsafe_code)` y cobertura | H-0 | S | T-07 | Hecho (2026-11-09) |
 | T-10 | Planes por selección explícita y `rotten trash put` | H-0 | M | — | Hecho (2026-11-08) |
 | T-11 | `rotten free <op-id>` («Liberar ahora») | H-1 | M | T-01 | Pendiente |
 | T-12 | `rotten trash` y `rotten trash empty` | H-1 | M | T-11 | Pendiente |
@@ -779,6 +800,9 @@ Corte de D-03: proyectos en raíces sin TCC; `node_modules`, `target/`, `.venv` 
 - **Aceptación:**
   - Por PR: macOS 27 sin FDA con escaneo, limpieza y deshacer.
   - En la nocturna: toda la matriz.
+  - Lista manual (RF-PAN-01, RF-SEG-12):
+    - «disponible» de `scan` coincide con Finder (Cmd+I) y «libre» con `diskutil info /`, ± 1 % (`cargo test -p ra-platform -- --ignored free_matches_diskutil`);
+    - en un volumen externo exFAT o HFS+, `reclaimable_bytes == bytes_allocated`.
 - **Bloqueado por:** el hardware de §2.
 
 #### T-30 · *Benchmarks* en hardware de referencia
