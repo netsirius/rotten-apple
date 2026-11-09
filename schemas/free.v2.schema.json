@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/free.v2.schema.json",
+  "title": "rotten free --json (schema_version 2)",
+  "description": "rotten free <op-id…> (T-11, CU-08): borra para siempre de la Papelera solo los elementos que mandaron allí esas operaciones. Plan sacado del journal con su simulación (--dry-run) o con el informe de ejecución y el espacio liberado (estimado frente a medido con statfs). O el documento de error común. Los $defs de identidad y del informe son copia de undo.v2.",
+  "oneOf": [
+    { "$ref": "#/$defs/dry_run" },
+    { "$ref": "#/$defs/executed" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "int": { "type": "integer" },
+    "path": { "type": "string", "minLength": 1 },
+    "op_id": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+    "file_kind": { "enum": ["file", "dir", "symlink", "other"] },
+    "flag_violation": { "enum": ["immutable", "append_only", "restricted", "no_unlink", "firmlink", "dataless"] },
+
+    "dry_run": {
+      "type": "object",
+      "required": ["schema_version", "command", "dry_run", "plan", "report"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "free" },
+        "dry_run": { "const": true },
+        "plan": { "$ref": "#/$defs/free_plan" },
+        "report": {
+          "description": "Simulación: «would» con would_delete, o «skipped» si el elemento ya no es el anotado.",
+          "$ref": "#/$defs/exec_report"
+        }
+      }
+    },
+    "executed": {
+      "type": "object",
+      "required": ["schema_version", "command", "dry_run", "plan", "report", "space"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "free" },
+        "dry_run": { "const": false },
+        "plan": { "$ref": "#/$defs/free_plan" },
+        "report": { "$ref": "#/$defs/exec_report" },
+        "space": { "$ref": "#/$defs/space" }
+      }
+    },
+
+    "free_plan": {
+      "description": "Plan de liberación: sale solo del journal. Su hash se vuelve a comprobar al ejecutar.",
+      "type": "object",
+      "required": ["ops", "ready", "not_freeable", "totals", "plan_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "ops": {
+          "description": "Operaciones pedidas, sin repetir y en el orden dado.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/op_id" }
+        },
+        "ready": { "type": "array", "items": { "$ref": "#/$defs/free_item" } },
+        "not_freeable": { "type": "array", "items": { "$ref": "#/$defs/not_freeable" } },
+        "totals": {
+          "type": "object",
+          "required": ["items", "bytes"],
+          "additionalProperties": false,
+          "properties": {
+            "items": { "$ref": "#/$defs/count" },
+            "bytes": { "$ref": "#/$defs/count" }
+          }
+        },
+        "plan_hash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "free_item": {
+      "type": "object",
+      "required": ["item_id", "of", "path", "original_path", "identity", "bytes", "trash"],
+      "additionalProperties": false,
+      "properties": {
+        "item_id": { "description": "Número en esta liberación (el del informe).", "type": "integer", "minimum": 1 },
+        "of": {
+          "description": "Operación y elemento que lo mandaron a la Papelera.",
+          "type": "object",
+          "required": ["op", "item"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "$ref": "#/$defs/op_id" },
+            "item": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "path": { "description": "Dónde está en la Papelera, según el journal.", "$ref": "#/$defs/path" },
+        "original_path": { "$ref": "#/$defs/path" },
+        "identity": { "description": "La anotada al mandarlo a la Papelera; se revalida con same_after_move.", "$ref": "#/$defs/identity" },
+        "bytes": { "description": "Tamaño estimado (bloques asignados) anotado en el journal.", "$ref": "#/$defs/count" },
+        "trash": { "description": "Papelera de la operación: system o dir:<ruta>.", "type": "string", "minLength": 1 }
+      }
+    },
+    "not_freeable": {
+      "description": "Elemento de una operación pedida que no se puede liberar. «reason» es un código estable; el texto lo pone el CLI.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["op_id", "item_id", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "op_id": { "$ref": "#/$defs/op_id" },
+            "item_id": { "type": "integer", "minimum": 1 },
+            "reason": { "enum": ["not_in_trash", "deleted", "already_restored"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op_id", "item_id", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "op_id": { "$ref": "#/$defs/op_id" },
+            "item_id": { "type": "integer", "minimum": 1 },
+            "reason": { "const": "unknown_whereabouts" },
+            "detail": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "space": {
+      "description": "RF-SEG-12 (e): lo estimado (suma de lo anotado de lo borrado) frente a lo medido con statfs antes y después, por volumen. Los enlaces duros, los clones APFS y las instantáneas hacen que se libere menos.",
+      "type": "object",
+      "required": ["estimated_bytes", "measured_bytes", "volumes"],
+      "additionalProperties": false,
+      "properties": {
+        "estimated_bytes": { "$ref": "#/$defs/count" },
+        "measured_bytes": {
+          "description": "Suma de freed_bytes; null si algún volumen no se pudo medir. Puede ser negativo si otra cosa escribió en el disco a la vez.",
+          "type": ["integer", "null"]
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "free_before", "free_after", "freed_bytes"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "$ref": "#/$defs/path" },
+              "free_before": { "$ref": "#/$defs/count" },
+              "free_after": { "$ref": "#/$defs/count" },
+              "freed_bytes": { "$ref": "#/$defs/int" }
+            }
+          }
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "required": ["dev", "ino", "kind", "size", "mtime", "mtime_nsec", "ctime", "ctime_nsec"],
+      "additionalProperties": false,
+      "properties": {
+        "dev": { "$ref": "#/$defs/count" },
+        "ino": { "$ref": "#/$defs/count" },
+        "kind": { "$ref": "#/$defs/file_kind" },
+        "size": { "$ref": "#/$defs/count" },
+        "mtime": { "$ref": "#/$defs/int" },
+        "mtime_nsec": { "$ref": "#/$defs/int" },
+        "ctime": { "$ref": "#/$defs/int" },
+        "ctime_nsec": { "$ref": "#/$defs/int" }
+      }
+    },
+
+    "exec_report": {
+      "type": "object",
+      "required": ["dry_run", "items", "done", "would", "skipped", "failed", "bytes_done"],
+      "additionalProperties": false,
+      "properties": {
+        "op_id": { "$ref": "#/$defs/op_id" },
+        "dry_run": { "type": "boolean" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item_report" } },
+        "done": { "$ref": "#/$defs/count" },
+        "would": { "$ref": "#/$defs/count" },
+        "skipped": { "$ref": "#/$defs/count" },
+        "failed": { "$ref": "#/$defs/count" },
+        "bytes_done": { "$ref": "#/$defs/count" }
+      }
+    },
+    "item_report": {
+      "type": "object",
+      "required": ["item_id", "path", "bytes", "outcome"],
+      "properties": {
+        "item_id": { "type": "integer", "minimum": 1 },
+        "path": { "$ref": "#/$defs/path" },
+        "bytes": { "$ref": "#/$defs/count" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "outcome": { "const": "done" },
+            "post_check": { "type": "string" }
+          }
+        },
+        {
+          "required": ["action"],
+          "properties": {
+            "outcome": { "const": "would" },
+            "action": { "const": "would_delete" }
+          }
+        },
+        {
+          "required": ["reason", "message"],
+          "properties": {
+            "outcome": { "const": "skipped" },
+            "reason": { "enum": ["missing", "symlink_in_path", "identity_changed", "flags", "unreadable"] },
+            "message": { "type": "string" },
+            "flag": { "$ref": "#/$defs/flag_violation" },
+            "detail": { "type": "string" }
+          }
+        },
+        {
+          "required": ["error"],
+          "properties": {
+            "outcome": { "const": "failed" },
+            "error": { "type": "string" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "error": {
+      "type": "object",
+      "required": ["schema_version", "command", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "free" },
+        "error": {
+          "type": "object",
+          "required": ["code", "exit_code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "description": "Código estable del error (no depende del idioma): unknown_operation, not_freeable, trash_unreadable (exit_code 3), plan_changed, needs_yes, locked…",
+              "type": "string",
+              "pattern": "^[a-z][a-z_]*$"
+            },
+            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
+            "message": { "description": "Mensaje en inglés, igual en cualquier idioma.", "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

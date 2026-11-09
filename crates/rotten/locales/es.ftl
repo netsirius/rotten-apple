@@ -30,6 +30,7 @@ dry-run-nothing-moved = Simulación: no se ha movido nada.
 item-problem = ! { $path } — { $problem }
 not-freed-yet = Aún no se ha liberado espacio: eso ocurre al vaciar la Papelera.
 to-undo = Para deshacer: rotten undo { $op }
+to-free = Para liberar ya el espacio (no se puede deshacer): rotten free { $op }
 moved-to-trash = Movido a la Papelera: { $count ->
     [one] { $count } elemento
    *[other] { $count } elementos
@@ -105,12 +106,69 @@ deleted-permanently = Borrado permanentemente: { $count ->
 
 trash-nothing = Nada que mover a la Papelera.
 
+## trash
+
+trash-volume = { $path }: { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size })
+trash-volume-unreadable = ! { $path }: no se puede leer sin Acceso total al disco (ejecuta `rotten doctor`); solo se muestra lo que Rotten Apple anotó en su historial
+trash-by-op = Rotten Apple, { $op }: { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size }) · para liberarlo: rotten free { $op }
+trash-others = Otros: { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size })
+to-empty = Para vaciarla (no se puede deshacer): rotten trash empty
+
+## trash empty
+
+empty-header = Vaciar la Papelera: { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size }) se borrarán para siempre
+empty-item = [{ $id }] { $path }  { $size }
+empty-item-op = [{ $id }] { $path }  { $size }  (de { $op })
+empty-item-would-skip = [{ $id }] { $path }  { $size }  (se omitiría: { $reason })
+confirm-empty = ¿Vaciar la Papelera y borrar para siempre { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size })? No se puede deshacer.
+empty-nothing = La Papelera ya está vacía.
+
+## free
+
+free-header = Liberar { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size }): se borrarán para siempre de la Papelera
+free-item = [{ $id }] { $path }  (era { $original })  { $size }
+free-item-would-skip = [{ $id }] { $path }  { $size }  (se omitiría: { $reason })
+free-not-freeable = { $op } [{ $item }] no se puede liberar — { $reason }
+confirm-free = ¿Borrar para siempre { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size }) de la Papelera? No se puede deshacer.
+free-nothing = Nada que liberar.
+freed = Borrado para siempre: { $count ->
+    [one] { $count } elemento
+   *[other] { $count } elementos
+} ({ $size }).
+# $measured: lo que ha aumentado el espacio libre del volumen (statfs).
+freed-space = Espacio liberado: { $measured } medido · { $estimated } estimado
+freed-space-unmeasured = Espacio liberado: { $estimated } estimado (no se pudo medir)
+freed-space-less = ! Se ha liberado bastante menos de lo estimado: enlaces duros, clones APFS o instantáneas pueden retener los bloques
+
 ## history
 
 history-empty = Aún no hay operaciones.
 history-op = { $op }  { $date }  { $kind ->
     [clean] limpieza
     [trash_put] a la Papelera
+    [free] liberar
+    [trash_empty] vaciar la Papelera
    *[undo] deshacer { $of }
 }  { $count ->
     [one] { $count } elemento
@@ -275,6 +333,10 @@ error-nothing-to-undo = no hay ninguna operación que deshacer
 error-unknown-operation = la operación { $op } no existe
 error-not-undoable = la operación { $op } no se puede deshacer
 error-unknown-item = la operación { $op } no tiene el elemento { $item }
+error-no-operations = indica al menos una operación
+error-not-freeable = la operación { $op } no mandó nada a la Papelera
+error-trash-unreadable = no se puede leer la Papelera ({ $path }): concede Acceso total al disco a tu terminal y ejecuta `rotten doctor`. No se borra nada.
+error-empty-unreadable = no se puede leer la Papelera ({ $path }): concede Acceso total al disco a tu terminal y ejecuta `rotten doctor`. No se borra nada. Para liberar solo lo que mandó Rotten Apple: rotten free <operación>.
 error-no-home = no se sabe cuál es la carpeta personal: define HOME
 error-env-path = { $var }: { $path }: { $detail }
 
@@ -308,6 +370,9 @@ cli-cmd-undo = Devuelve a su sitio lo que una operación mandó a la Papelera
 cli-cmd-undo-arg-op_id = Operación (por defecto, la última que se puede deshacer)
 cli-cmd-undo-arg-items = Solo estos elementos (ids separados por comas)
 cli-cmd-undo-arg-dry_run = Muestra qué se restauraría sin mover nada
+cli-cmd-free = Borra para siempre de la Papelera lo que mandaron allí estas operaciones (no se puede deshacer)
+cli-cmd-free-arg-op_ids = Operaciones cuyos elementos liberar
+cli-cmd-free-arg-dry_run = Muestra el plan exacto sin borrar nada
 cli-cmd-doctor = Permisos, plataforma, configuración e integridad del journal
 cli-cmd-exclude = Exclusiones: lo que nunca se toca
 cli-cmd-exclude-add = Añade una exclusión: ruta, patrón glob, rule:<id>, cat:<CAT-xx> o bundle:<id>
@@ -317,13 +382,16 @@ cli-cmd-exclude-list = Lista las exclusiones
 cli-cmd-exclude-remove = Quita una exclusión
 cli-cmd-exclude-remove-arg-value = La exclusión que quitar
 cli-cmd-exclude-remove-arg-dry_run = Muestra el cambio sin guardarlo
-cli-cmd-trash = Papelera
+cli-cmd-trash = Papelera: sin subcomando, lo que hay por volumen y lo que mandó Rotten Apple
+cli-cmd-trash-empty = Vacía la Papelera entera, tras revisarla (no se puede deshacer)
+cli-cmd-trash-empty-arg-dry_run = Muestra el plan exacto sin borrar nada
 cli-cmd-trash-put = Mueve a la Papelera las rutas indicadas, tras revisarlas; se puede deshacer
 cli-cmd-trash-put-arg-paths = Ficheros o carpetas que mover a la Papelera
 cli-cmd-trash-put-arg-dry_run = Muestra el plan exacto sin cambiar nada
 cli-value-categories = ID
 cli-value-items = IDS
 cli-value-op_id = OPERACIÓN
+cli-value-op_ids = OPERACIÓN
 cli-value-paths = RUTA
 cli-value-value = EXCLUSIÓN
 cli-value-lang = IDIOMA

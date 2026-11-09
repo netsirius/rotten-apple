@@ -10,7 +10,7 @@ use ra_safety::{Identity, Origin};
 use serde::{Deserialize, Serialize};
 
 use crate::HistoryPaths;
-use crate::journal::{Event, OpKind, OpMode, OpStatus, Record, StepAction};
+use crate::journal::{Event, ItemRef, OpKind, OpMode, OpStatus, Record, StepAction};
 
 pub const MANIFEST_SCHEMA_VERSION: u32 = 1;
 
@@ -98,8 +98,8 @@ pub enum UndoState {
     NotApplicable,
 }
 
-/// Qué fue cada operación del historial. El journal solo distingue
-/// limpieza y deshacer (`OpKind`); un `trash put` se reconoce por el origen
+/// Qué fue cada operación del historial. El journal distingue limpieza,
+/// deshacer y liberar (`OpKind`); un `trash put` se reconoce por el origen
 /// de sus elementos (selección explícita).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -110,6 +110,10 @@ pub enum HistoryKind {
     TrashPut,
     /// Deshacer de otra operación.
     Undo,
+    /// «Liberar ahora» (`rotten free`): borrado permanente de la Papelera.
+    Free,
+    /// Vaciar la Papelera (`rotten trash empty`).
+    TrashEmpty,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,7 +160,7 @@ impl Manifest {
     }
 
     pub fn undo_state(&self) -> UndoState {
-        if self.kind == OpKind::Undo {
+        if self.kind != OpKind::Clean {
             return UndoState::NotApplicable;
         }
         if self.mode == OpMode::Permanent {
@@ -172,7 +176,9 @@ impl Manifest {
         for i in &self.items {
             match &i.state {
                 ItemState::Trashed if Self::item_restorable(i) => restorable += 1,
-                ItemState::Trashed | ItemState::Unknown { .. } => gone += 1,
+                // Borrado de la Papelera después (`rotten free`): ya no
+                // se puede restaurar.
+                ItemState::Trashed | ItemState::Unknown { .. } | ItemState::Deleted => gone += 1,
                 ItemState::Restored { .. } => restored += 1,
                 _ => {}
             }
@@ -205,6 +211,8 @@ impl Manifest {
         }
         let kind = match self.kind {
             OpKind::Undo => HistoryKind::Undo,
+            OpKind::Free => HistoryKind::Free,
+            OpKind::TrashEmpty => HistoryKind::TrashEmpty,
             OpKind::Clean
                 if self
                     .items
@@ -377,7 +385,32 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
                 _ => None,
             })
             .collect();
-        for r in records.iter().filter(|r| undo_ops.contains(&r.op.as_str())) {
+        // Liberaciones posteriores (`rotten free`): cada intención dice qué
+        // elemento de esta operación borra de la Papelera.
+        let freed_by: BTreeMap<(&str, u32), u32> = records
+            .iter()
+            .filter_map(|r| match &r.event {
+                Event::ItemIntent {
+                    item, of: Some(of), ..
+                } if of.op == op => Some(((r.op.as_str(), *item), of.item)),
+                _ => None,
+            })
+            .collect();
+        for r in records.iter() {
+            let freed = match &r.event {
+                Event::ItemDone { item, .. } => freed_by.get(&(r.op.as_str(), *item)),
+                Event::ItemReconciled { item, state, .. } if state == "deleted" => {
+                    freed_by.get(&(r.op.as_str(), *item))
+                }
+                _ => None,
+            };
+            if let Some(i) = freed.and_then(|of| items.get_mut(of)) {
+                i.state = ItemState::Deleted;
+                continue;
+            }
+            if !undo_ops.contains(&r.op.as_str()) {
+                continue;
+            }
             let restored = match &r.event {
                 Event::ItemDone {
                     item,
@@ -561,6 +594,203 @@ pub fn prepare_undo(
     Ok(plan)
 }
 
+/// Un elemento que `rotten free` borraría de la Papelera.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreeItem {
+    /// Número del elemento en la operación de liberar (1, 2…).
+    pub item_id: u32,
+    /// La operación y el elemento que lo mandaron a la Papelera.
+    pub of: ItemRef,
+    /// Dónde está en la Papelera, según el journal.
+    pub path: PathBuf,
+    pub original_path: PathBuf,
+    /// La identidad anotada al mandarlo a la Papelera: se revalida con
+    /// `same_after_move` justo antes de borrarlo.
+    pub identity: Identity,
+    /// Tamaño estimado (asignado) anotado en el journal.
+    pub bytes: u64,
+    /// Papelera que usó la operación: `system` o `dir:<ruta>`.
+    pub trash: String,
+}
+
+/// Elemento de una operación pedida que no se puede liberar.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotFreeable {
+    pub op_id: String,
+    pub item_id: u32,
+    #[serde(flatten)]
+    pub reason: NotRecoverableReason,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreeTotals {
+    pub items: u64,
+    pub bytes: u64,
+}
+
+/// Plan de `rotten free`: sale solo del journal. Su hash cubre las
+/// operaciones, los elementos listos y los que no se pueden liberar; al
+/// ejecutar se vuelve a preparar desde el journal y se compara.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreePlan {
+    pub ops: Vec<String>,
+    pub ready: Vec<FreeItem>,
+    pub not_freeable: Vec<NotFreeable>,
+    pub totals: FreeTotals,
+    pub plan_hash: String,
+}
+
+impl FreePlan {
+    /// Hash BLAKE3 del plan sin el campo `plan_hash`.
+    pub fn compute_hash(&self) -> String {
+        let body = (&self.ops, &self.ready, &self.not_freeable, &self.totals);
+        let text = serde_json::to_string(&body).unwrap_or_default();
+        format!("blake3:{}", blake3::hash(text.as_bytes()).to_hex())
+    }
+}
+
+/// Elemento que, según el journal, una operación dejó en la Papelera y
+/// sigue allí (estado `Trashed`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashedItem {
+    pub of: ItemRef,
+    /// Dónde quedó en la Papelera.
+    pub path: PathBuf,
+    pub original_path: PathBuf,
+    pub identity: Identity,
+    /// Tamaño anotado en el journal.
+    pub bytes: u64,
+    /// Papelera que usó la operación: `system` o `dir:<ruta>`.
+    pub trash: String,
+}
+
+/// Todo lo que el journal da por movido a la Papelera y aún allí, de todas
+/// las operaciones que mandaron cosas a la Papelera, en orden del journal.
+pub fn trashed_items(records: &[Record]) -> Vec<TrashedItem> {
+    let mut ops: Vec<&str> = Vec::new();
+    for r in records {
+        if let Event::OpStarted {
+            kind: OpKind::Clean,
+            mode: OpMode::Trash,
+            ..
+        } = &r.event
+            && !ops.contains(&r.op.as_str())
+        {
+            ops.push(&r.op);
+        }
+    }
+    let mut out = Vec::new();
+    for op in ops {
+        let Some(m) = manifest_for(records, op) else {
+            continue;
+        };
+        for i in m.items {
+            if let (ItemState::Trashed, Some(path)) = (&i.state, i.trashed_path) {
+                out.push(TrashedItem {
+                    of: ItemRef {
+                        op: op.to_owned(),
+                        item: i.item_id,
+                    },
+                    path,
+                    original_path: i.original_path,
+                    identity: i.identity,
+                    bytes: i.bytes,
+                    trash: m.trash.clone(),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Por qué no se puede preparar una liberación.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum FreeError {
+    #[error("give at least one operation")]
+    NoOperations,
+    #[error("operation {op} does not exist")]
+    UnknownOperation { op: String },
+    /// Solo se liberan operaciones que mandaron cosas a la Papelera.
+    #[error("operation {op} did not move anything to the Trash")]
+    NotFreeable { op: String },
+}
+
+/// Prepara la liberación de `ops`: cada elemento que el journal da por
+/// movido a la Papelera y cuya ruta acepta `in_trash` (que está en el primer
+/// nivel de la Papelera que anotó la operación). Nunca entra nada que no
+/// esté registrado para esas operaciones.
+pub fn prepare_free(
+    records: &[Record],
+    ops: &[String],
+    in_trash: impl Fn(&FreeItem) -> bool,
+) -> Result<FreePlan, FreeError> {
+    let mut unique: Vec<String> = Vec::new();
+    for op in ops {
+        if !unique.contains(op) {
+            unique.push(op.clone());
+        }
+    }
+    if unique.is_empty() {
+        return Err(FreeError::NoOperations);
+    }
+    let mut plan = FreePlan {
+        ops: unique.clone(),
+        ready: vec![],
+        not_freeable: vec![],
+        totals: FreeTotals::default(),
+        plan_hash: String::new(),
+    };
+    for op in &unique {
+        let m = manifest_for(records, op)
+            .ok_or_else(|| FreeError::UnknownOperation { op: op.clone() })?;
+        if m.kind != OpKind::Clean || m.mode != OpMode::Trash {
+            return Err(FreeError::NotFreeable { op: op.clone() });
+        }
+        for i in &m.items {
+            let reason = match (&i.state, &i.trashed_path) {
+                (ItemState::Trashed, Some(path)) => {
+                    let item = FreeItem {
+                        item_id: plan.ready.len() as u32 + 1,
+                        of: ItemRef {
+                            op: op.clone(),
+                            item: i.item_id,
+                        },
+                        path: path.clone(),
+                        original_path: i.original_path.clone(),
+                        identity: i.identity,
+                        bytes: i.bytes,
+                        trash: m.trash.clone(),
+                    };
+                    if in_trash(&item) {
+                        plan.totals.items += 1;
+                        plan.totals.bytes += item.bytes;
+                        plan.ready.push(item);
+                        continue;
+                    }
+                    NotRecoverableReason::NotInTrash
+                }
+                (ItemState::Trashed, None) => NotRecoverableReason::NotInTrash,
+                (ItemState::Deleted, _) => NotRecoverableReason::Deleted,
+                (ItemState::Restored { .. }, _) => NotRecoverableReason::AlreadyRestored,
+                (ItemState::Unknown { detail }, _) => NotRecoverableReason::UnknownWhereabouts {
+                    detail: detail.clone(),
+                },
+                // No llegó a la Papelera: no hay nada que liberar ni que contar.
+                (ItemState::Pending | ItemState::Skipped { .. } | ItemState::Failed { .. }, _) => {
+                    continue;
+                }
+            };
+            plan.not_freeable.push(NotFreeable {
+                op_id: op.clone(),
+                item_id: i.item_id,
+                reason,
+            });
+        }
+    }
+    plan.plan_hash = plan.compute_hash();
+    Ok(plan)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -584,6 +814,7 @@ mod tests {
                 bytes: 1,
                 parent_mode: None,
                 origin: None,
+                of: None,
             },
             true,
         )
@@ -701,5 +932,185 @@ mod tests {
     #[test]
     fn unknown_ops_and_items_are_errors() {
         assert!(prepare_undo(&[], "nada", None).is_err());
+        assert_eq!(
+            prepare_free(&[], &["nada".into()], |_| true),
+            Err(FreeError::UnknownOperation { op: "nada".into() })
+        );
+        assert_eq!(
+            prepare_free(&[], &[], |_| true),
+            Err(FreeError::NoOperations)
+        );
+    }
+
+    fn start(j: &mut Journal, kind: OpKind, mode: OpMode, items: u64) {
+        j.write(
+            Event::OpStarted {
+                kind,
+                mode,
+                plan_hash: None,
+                undo_of: None,
+                items,
+                bytes: items,
+                by: "test".into(),
+                trash: "dir:/t".into(),
+            },
+            true,
+        )
+        .expect("start");
+    }
+
+    /// T-11: una liberación marca como borrados los elementos de la
+    /// operación original, que pasa a «irreversible» (o a «restaurada en
+    /// parte» si antes se restauró algo), y `prepare_free` solo trae lo que
+    /// sigue anotado en la Papelera.
+    #[test]
+    fn free_projection_marks_source_items_deleted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = fs::canonicalize(dir.path()).expect("canon");
+        let paths = HistoryPaths::new(&base.join("state"));
+        let trash = base.join("trash");
+        fs::create_dir_all(&trash).expect("mkdir");
+        let files: Vec<_> = ["a.log", "b.log", "c.log"]
+            .iter()
+            .map(|n| {
+                let p = base.join(n);
+                fs::write(&p, n.as_bytes()).expect("write");
+                p
+            })
+            .collect();
+
+        let mut j = Journal::open(&paths, "op-clean", SystemTime::now()).expect("open");
+        start(&mut j, OpKind::Clean, OpMode::Trash, 3);
+        for (n, p) in files.iter().enumerate() {
+            let n = n as u32 + 1;
+            intent(&mut j, n, p);
+            let to = trash.join(p.file_name().expect("nombre"));
+            fs::rename(p, &to).expect("rename");
+            j.write(
+                Event::ItemDone {
+                    item: n,
+                    result_path: Some(to),
+                    post_check: None,
+                },
+                true,
+            )
+            .expect("done");
+        }
+        // El elemento 3 se restaura.
+        let mut u = Journal::open(&paths, "op-undo", SystemTime::now()).expect("open");
+        u.write(
+            Event::OpStarted {
+                kind: OpKind::Undo,
+                mode: OpMode::Restore,
+                plan_hash: None,
+                undo_of: Some("op-clean".into()),
+                items: 1,
+                bytes: 1,
+                by: "test".into(),
+                trash: "dir:/t".into(),
+            },
+            true,
+        )
+        .expect("start");
+        u.write(
+            Event::ItemDone {
+                item: 3,
+                result_path: Some(files[2].clone()),
+                post_check: None,
+            },
+            true,
+        )
+        .expect("done");
+
+        let (recs, _) = crate::read_journal(&paths).expect("read");
+        // Solo lo que acepta el filtro (la Papelera de la operación) entra.
+        let plan = prepare_free(&recs, &["op-clean".into(), "op-clean".into()], |i| {
+            i.item_id == 1 || i.of.item == 2
+        })
+        .expect("plan");
+        assert_eq!(plan.ops, vec!["op-clean"]);
+        assert_eq!(plan.ready.len(), 2);
+        assert_eq!(plan.ready[1].item_id, 2);
+        assert_eq!(plan.ready[1].of.item, 2);
+        assert_eq!(plan.totals.items, 2);
+        assert_eq!(plan.plan_hash, plan.compute_hash());
+        assert_eq!(
+            plan.not_freeable,
+            vec![NotFreeable {
+                op_id: "op-clean".into(),
+                item_id: 3,
+                reason: NotRecoverableReason::AlreadyRestored
+            }]
+        );
+        // Un deshacer no se libera.
+        assert_eq!(
+            prepare_free(&recs, &["op-undo".into()], |_| true),
+            Err(FreeError::NotFreeable {
+                op: "op-undo".into()
+            })
+        );
+
+        // Liberar 1 (hecho) y 2 (reconciliado como borrado tras un corte).
+        let mut f = Journal::open(&paths, "op-free", SystemTime::now()).expect("open");
+        start(&mut f, OpKind::Free, OpMode::Permanent, 2);
+        for it in &plan.ready {
+            f.write(
+                Event::ItemIntent {
+                    item: it.item_id,
+                    action: StepAction::Delete,
+                    path: it.path.clone(),
+                    identity: it.identity,
+                    target: None,
+                    category: None,
+                    regenerable: false,
+                    bytes: it.bytes,
+                    parent_mode: None,
+                    origin: None,
+                    of: Some(it.of.clone()),
+                },
+                true,
+            )
+            .expect("intent");
+            fs::remove_file(&it.path).expect("rm");
+        }
+        f.write(
+            Event::ItemDone {
+                item: 1,
+                result_path: None,
+                post_check: None,
+            },
+            true,
+        )
+        .expect("done");
+        f.write(
+            Event::ItemReconciled {
+                item: 2,
+                state: "deleted".into(),
+                result_path: None,
+                detail: None,
+            },
+            true,
+        )
+        .expect("reconciled");
+        let (recs, _) = crate::read_journal(&paths).expect("read");
+        let m = manifest_for(&recs, "op-clean").expect("manifest");
+        assert_eq!(m.items[0].state, ItemState::Deleted);
+        assert_eq!(m.items[1].state, ItemState::Deleted);
+        assert!(matches!(m.items[2].state, ItemState::Restored { .. }));
+        let ops = list_ops(&recs);
+        let by_id = |id: &str| ops.iter().find(|o| o.op_id == id).expect("op").clone();
+        assert_eq!(by_id("op-clean").undo_state, UndoState::PartlyRestored);
+        assert_eq!(by_id("op-free").kind, HistoryKind::Free);
+        assert_eq!(by_id("op-free").undo_state, UndoState::NotApplicable);
+        // Ya no queda nada que liberar ni que deshacer.
+        let again = prepare_free(&recs, &["op-clean".into()], |_| true).expect("plan");
+        assert!(again.ready.is_empty());
+        assert_eq!(again.not_freeable.len(), 3);
+        assert!(
+            prepare_undo(&recs, "op-clean", None)
+                .expect("undo")
+                .ready
+                .is_empty()
+        );
     }
 }

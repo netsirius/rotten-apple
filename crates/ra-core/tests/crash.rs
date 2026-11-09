@@ -708,6 +708,7 @@ fn recovered_trash_item_keeps_its_location() {
             bytes: item.bytes_allocated,
             parent_mode: None,
             origin: Some(item.origin),
+            of: None,
         },
         true,
     )

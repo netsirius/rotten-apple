@@ -78,6 +78,15 @@ pub enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Borra para siempre de la Papelera lo que mandaron allí estas operaciones.
+    Free {
+        /// Operaciones cuyos elementos liberar.
+        #[arg(required = true, value_name = "OP")]
+        op_ids: Vec<String>,
+        /// Muestra el plan exacto sin borrar nada.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Permisos, plataforma, configuración e integridad del journal.
     Doctor,
     /// Exclusiones: lo que nunca se toca.
@@ -85,10 +94,10 @@ pub enum Cmd {
         #[command(subcommand)]
         action: ExcludeCmd,
     },
-    /// Papelera.
+    /// Papelera: sin subcomando, lo que hay por volumen y lo que mandó Rotten Apple.
     Trash {
         #[command(subcommand)]
-        action: TrashCmd,
+        action: Option<TrashCmd>,
     },
 }
 
@@ -100,6 +109,12 @@ pub enum TrashCmd {
         #[arg(required = true, value_name = "PATH")]
         paths: Vec<PathBuf>,
         /// Muestra el plan exacto sin cambiar nada.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Vacía la Papelera entera, tras revisarla (no se puede deshacer).
+    Empty {
+        /// Muestra el plan exacto sin borrar nada.
         #[arg(long)]
         dry_run: bool,
     },

@@ -183,6 +183,7 @@ fn main() -> ExitCode {
         Cmd::Clean { .. } => "clean",
         Cmd::History => "history",
         Cmd::Undo { .. } => "undo",
+        Cmd::Free { .. } => "free",
         Cmd::Doctor => "doctor",
         Cmd::Exclude { .. } => "exclude",
         Cmd::Trash { .. } => "trash",
@@ -227,6 +228,7 @@ fn main() -> ExitCode {
             items,
             dry_run,
         } => undo(&ui, &core, op_id, items, dry_run),
+        Cmd::Free { op_ids, dry_run } => cmd::free::run(&ui, &core, &op_ids, dry_run),
         Cmd::Doctor => doctor(&ui, &core),
         Cmd::Exclude { action } => exclude(&ui, &core, action),
         Cmd::Trash { action } => cmd::trash::run(&ui, &core, action),
@@ -569,8 +571,11 @@ fn clean(
         }
         if let Some(op) = &report.op_id
             && action == Action::Trash
+            && report.done > 0
         {
             ui.say(tr!(ui, "to-undo", op = op.as_str()));
+            // «Liberar ahora» (CU-08): solo los elementos de esta operación.
+            ui.say(tr!(ui, "to-free", op = op.as_str()));
         }
     }
     exec_exit(&report)
@@ -604,6 +609,8 @@ fn history(ui: &Ui, core: &Core) -> Exit {
             HistoryKind::Clean => "clean",
             HistoryKind::TrashPut => "trash_put",
             HistoryKind::Undo => "undo",
+            HistoryKind::Free => "free",
+            HistoryKind::TrashEmpty => "trash_empty",
         };
         ui.say(tr!(
             ui,

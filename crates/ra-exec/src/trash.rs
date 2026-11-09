@@ -142,6 +142,29 @@ pub(crate) fn find_trashed(
     }
 }
 
+/// `true` si `path` está en el primer nivel de una de las Papeleras donde
+/// pudo dejarlo la operación que anotó `trash` (`system` o `dir:<ruta>`), y
+/// tiene nombre. Es lo único que `rotten free` acepta borrar: una ruta del
+/// journal que apunte a otro sitio no se toca aunque la identidad coincida.
+pub fn in_trash_top_level(
+    trash: &str,
+    path: &Path,
+    original: &Path,
+    dev: u64,
+    home: &Path,
+) -> bool {
+    let uid = rustix::process::getuid().as_raw();
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+        return false;
+    };
+    if name == ".." || name == "." {
+        return false;
+    }
+    trash_dirs(trash, original, dev, home, uid, dev_of)
+        .iter()
+        .any(|d| d == parent)
+}
+
 /// La Papelera existe pero no se puede leer (`EPERM` o `EACCES`).
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct NoPermission;
@@ -348,6 +371,27 @@ mod tests {
             trash_dirs("system", item, 1, home, 501, devs),
             vec![PathBuf::from("/.Trashes/501")]
         );
+    }
+
+    /// `rotten free` solo acepta rutas del primer nivel de la Papelera que
+    /// anotó la operación.
+    #[test]
+    fn only_top_level_of_the_recorded_trash() {
+        let home = Path::new("/Users/ana");
+        let t = Path::new("/tmp/t");
+        let ok = |p: &str| in_trash_top_level("dir:/tmp/t", Path::new(p), t, 1, home);
+        assert!(ok("/tmp/t/a.log"));
+        assert!(!ok("/tmp/t/sub/a.log"));
+        assert!(!ok("/tmp/t"));
+        assert!(!ok("/tmp/otra/a.log"));
+        assert!(!ok("/Users/ana/Documents/tesis.docx"));
+        assert!(!in_trash_top_level(
+            "desconocida",
+            Path::new("/tmp/t/a.log"),
+            t,
+            1,
+            home
+        ));
     }
 
     #[test]

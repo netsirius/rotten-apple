@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(&fx, &unreadable.1)"
+---
+{
+  "command": "free",
+  "error": {
+    "code": "trash_unreadable",
+    "exit_code": 3,
+    "message": "cannot read the Trash ([TRASH]): grant Full Disk Access to your terminal and run `rotten doctor`. Nothing is deleted."
+  },
+  "schema_version": 2
+}
