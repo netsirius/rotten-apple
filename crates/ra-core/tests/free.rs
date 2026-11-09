@@ -22,7 +22,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use proptest::prelude::*;
-use ra_core::{Core, Env, Outcome, TrashBackend};
+use ra_core::{Core, CoreError, Env, ErrorClass, Outcome, PlanError, TrashBackend};
 
 /// `PROPTEST_CASES` sube los casos en la tanda nocturna (RNF-08).
 fn cases() -> u32 {
@@ -147,6 +147,49 @@ fn trash_put(core: &Core, paths: &[PathBuf]) -> String {
         .expect("trash put");
     assert_eq!(r.done as usize, paths.len());
     r.op_id.expect("op")
+}
+
+/// Si el journal cambia entre la revisión y la ejecución, el plan ya no es
+/// el revisado: no se borra nada y el error es de seguridad (5).
+#[test]
+fn a_plan_whose_journal_changed_is_refused() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = fs::canonicalize(tmp.path()).expect("canon");
+    let (home, trash, state) = (root.join("home"), root.join("trash"), root.join("state"));
+    for d in [&home, &trash, &state] {
+        fs::create_dir_all(d).expect("mkdir");
+    }
+    let core = Core::with_apps(
+        Env::new(home.clone(), state, TrashBackend::Dir(trash.clone())),
+        Box::new(BTreeSet::<String>::new()),
+    )
+    .expect("core");
+    let files: Vec<PathBuf> = ["a.log", "b.log"]
+        .iter()
+        .map(|n| {
+            let p = home.join(n);
+            make(&p, false, 100);
+            p
+        })
+        .collect();
+    let op = trash_put(&core, &files[..1]);
+    let first = core.prepare_free(std::slice::from_ref(&op)).expect("plan");
+    let second = core.prepare_free(std::slice::from_ref(&op)).expect("plan");
+    core.free(&second.plan, &second.plan.plan_hash, "test")
+        .expect("liberar");
+    // Algo más en la Papelera, que no debe tocarse.
+    trash_put(&core, &files[1..]);
+    let before = snapshot(&trash);
+    let err = core
+        .free(&first.plan, &first.plan.plan_hash, "test")
+        .expect_err("plan cambiado");
+    assert!(
+        matches!(err, CoreError::Plan(PlanError::HashMismatch { .. })),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), ErrorClass::Safety);
+    assert_eq!(err.code(), "plan_changed");
+    assert_eq!(before, snapshot(&trash));
 }
 
 proptest! {
