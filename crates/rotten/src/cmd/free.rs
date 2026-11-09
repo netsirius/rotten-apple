@@ -17,13 +17,6 @@ use crate::{Exit, Ui, exec_exit, print_problems, render};
 
 const COMMAND: &str = "free";
 
-/// M-5: tolerancia entre lo estimado y lo medido, máx(5 %, 200 MB).
-fn far_below(estimated: u64, measured: i64) -> bool {
-    let measured = u64::try_from(measured).unwrap_or(0);
-    let tolerance = (estimated / 20).max(200_000_000);
-    estimated.saturating_sub(measured) > tolerance
-}
-
 fn print_plan(ui: &Ui, p: &FreePreview) {
     ui.say(tr!(
         ui,
@@ -79,7 +72,7 @@ pub(crate) fn print_space(ui: &Ui, s: &SpaceReport) {
                 measured = ui.size(u64::try_from(m).unwrap_or(0)),
                 estimated = estimated
             ));
-            if far_below(s.estimated_bytes, m) {
+            if ra_core::far_below(s.estimated_bytes, m) {
                 ui.say(tr!(ui, "freed-space-less"));
             }
         }
@@ -165,20 +158,5 @@ pub fn run(ui: &Ui, core: &Core, ops: &[String], dry_run: bool) -> Exit {
         Exit::Partial
     } else {
         exec_exit(&result.report)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn m5_tolerance() {
-        assert!(!far_below(1_000, 0));
-        assert!(!far_below(1_000_000_000, 960_000_000));
-        assert!(far_below(1_000_000_000, 700_000_000));
-        assert!(far_below(5_000_000_000, 4_000_000_000));
-        assert!(!far_below(5_000_000_000, 4_800_000_000));
-        assert!(far_below(300_000_000, -1));
     }
 }

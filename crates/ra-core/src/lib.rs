@@ -23,7 +23,7 @@ pub use doctor::{AppsProbe, DoctorReport, FdaState, TrashInfo};
 pub use empty::{EmptyPreview, OpInTrash, TrashView, TrashVolume};
 pub use env::{BUNDLE_ID, Env, EnvError};
 pub use error::{CoreError, ErrorClass};
-pub use free::{FreePreview, FreeResult, SpaceReport, VolumeDelta};
+pub use free::{FreePreview, FreeResult, SpaceReport, VolumeDelta, far_below};
 pub use ra_catalog::{Block, Catalog, Localized, Risk};
 pub use ra_exec::{
     EmptyItem, EmptyPlan, ExecReport, InUseDetail, ItemReport, Outcome, SkipCause, TrashBackend,

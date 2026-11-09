@@ -5,20 +5,23 @@
 //!   en la Papelera y cuya ruta está en el primer nivel de la Papelera que
 //!   anotó. Nada que no esté registrado para esas operaciones puede entrar.
 //! - Justo antes de borrar cada elemento se revalida su identidad con
-//!   `same_after_move` contra la anotada: lo modificado o sustituido dentro
-//!   de la Papelera se omite.
+//!   `same_after_move` contra la anotada y, si es una carpeta, que nada de
+//!   dentro cambiara después de llegar a la Papelera: lo modificado o
+//!   sustituido dentro de la Papelera se omite.
 //! - Al ejecutar, el plan se vuelve a preparar desde el journal (con el
 //!   cerrojo tomado) y su hash debe ser el revisado.
 //! - Se mide el espacio libre de cada volumen con `statfs` antes y después
 //!   (RF-SEG-12 e, M-5) y se informa de lo estimado frente a lo medido. Los
 //!   enlaces duros (`nlink > 1`), los clones APFS y las instantáneas hacen
 //!   que se libere menos de lo estimado; su política está sin decidir
-//!   (08 §2.2) y la diferencia queda a la vista.
+//!   (08 §2.2) y la diferencia queda a la vista. Si lo medido se queda
+//!   corto, se vuelve a medir durante un segundo como mucho.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use ra_exec::{ExecContext, ExecReport};
 use ra_history::{FreePlan, NotRecoverableReason, Record};
@@ -46,6 +49,20 @@ pub struct VolumeDelta {
     /// en el disco a la vez.
     pub freed_bytes: i64,
 }
+
+/// M-5: lo medido se queda muy por debajo de lo estimado, fuera de la
+/// tolerancia máx(5 %, 200 MB). Medir de más no es un problema (otra cosa
+/// liberó espacio a la vez).
+pub fn far_below(estimated: u64, measured: i64) -> bool {
+    let measured = u64::try_from(measured).unwrap_or(0);
+    let tolerance = (estimated / 20).max(200_000_000);
+    estimated.saturating_sub(measured) > tolerance
+}
+
+/// Cuánto se espera, como mucho, a que `statfs` refleje lo borrado (APFS
+/// libera los bloques de forma diferida).
+const SETTLE: Duration = Duration::from_secs(1);
+const SETTLE_STEP: Duration = Duration::from_millis(100);
 
 /// Lo estimado frente a lo liberado de verdad (RF-SEG-12 e).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -78,6 +95,17 @@ pub(crate) fn volume_dirs<'a>(
     out
 }
 
+/// Lo liberado en todos los volúmenes; `None` si alguno no se pudo medir.
+fn freed_total(
+    before: &BTreeMap<u64, Option<u64>>,
+    after: &BTreeMap<u64, Option<u64>>,
+) -> Option<i64> {
+    before.iter().try_fold(0i64, |acc, (dev, b)| {
+        let (b, a) = ((*b)?, after.get(dev).copied().flatten()?);
+        Some(acc + (i64::try_from(a).unwrap_or(i64::MAX) - i64::try_from(b).unwrap_or(i64::MAX)))
+    })
+}
+
 fn free_space(dirs: &BTreeMap<u64, PathBuf>) -> BTreeMap<u64, Option<u64>> {
     dirs.iter()
         .map(|(dev, p)| {
@@ -95,9 +123,28 @@ pub(crate) fn measured(
     dirs: BTreeMap<u64, PathBuf>,
     exec: impl FnOnce() -> Result<ExecReport, CoreError>,
 ) -> Result<FreeResult, CoreError> {
-    let before = free_space(&dirs);
+    measured_with(dirs, exec, free_space, SETTLE)
+}
+
+/// [`measured`] con la lectura de `statfs` y la espera inyectables.
+fn measured_with(
+    dirs: BTreeMap<u64, PathBuf>,
+    exec: impl FnOnce() -> Result<ExecReport, CoreError>,
+    mut sample: impl FnMut(&BTreeMap<u64, PathBuf>) -> BTreeMap<u64, Option<u64>>,
+    settle: Duration,
+) -> Result<FreeResult, CoreError> {
+    let before = sample(&dirs);
     let report = exec()?;
-    let after = free_space(&dirs);
+    let mut after = sample(&dirs);
+    // I4: si lo medido se queda corto, se vuelve a medir durante `settle`
+    // como mucho; APFS puede tardar en devolver los bloques.
+    let started = Instant::now();
+    while freed_total(&before, &after).is_some_and(|m| far_below(report.bytes_done, m))
+        && started.elapsed() < settle
+    {
+        std::thread::sleep(SETTLE_STEP);
+        after = sample(&dirs);
+    }
     let mut measured = Some(0i64);
     let mut deltas = Vec::new();
     for (dev, path) in dirs {
@@ -252,5 +299,53 @@ impl Core {
         };
         ra_exec::recover_incomplete(&ctx.exec(self, by), &ctx.lock)?;
         Ok(ctx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn m5_tolerance() {
+        assert!(!far_below(1_000, 0));
+        assert!(!far_below(1_000_000_000, 960_000_000));
+        assert!(far_below(1_000_000_000, 700_000_000));
+        assert!(far_below(5_000_000_000, 4_000_000_000));
+        assert!(!far_below(5_000_000_000, 4_800_000_000));
+        assert!(far_below(300_000_000, -1));
+        assert!(!far_below(1_000, 409_600_000));
+    }
+
+    /// I4: si `statfs` tarda en reflejar lo borrado, se vuelve a medir
+    /// hasta que lo hace (o se acaba la espera).
+    #[test]
+    fn a_lagging_statfs_is_sampled_again() {
+        const GB: u64 = 1_000_000_000;
+        let dirs = BTreeMap::from([(1u64, PathBuf::from("/x"))]);
+        let report = || {
+            Ok(ExecReport {
+                bytes_done: 2 * GB,
+                ..Default::default()
+            })
+        };
+        // Antes, 10 GB libres; después, nada las dos primeras lecturas y
+        // luego los 2 GB.
+        let lagging = || {
+            let mut calls = 0;
+            move |_: &BTreeMap<u64, PathBuf>| {
+                calls += 1;
+                let free = match calls {
+                    1..=3 => 10 * GB,
+                    _ => 12 * GB,
+                };
+                BTreeMap::from([(1u64, Some(free))])
+            }
+        };
+        let r = measured_with(dirs.clone(), report, lagging(), SETTLE).expect("medir");
+        assert_eq!(r.space.measured_bytes, Some(2 * GB as i64));
+        // Sin espera se queda con la primera lectura.
+        let r = measured_with(dirs, report, lagging(), Duration::ZERO).expect("medir");
+        assert_eq!(r.space.measured_bytes, Some(0));
     }
 }

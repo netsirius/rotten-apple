@@ -368,8 +368,28 @@ fn a_journal_path_outside_the_trash_is_never_deleted() {
     }
 }
 
-/// M-5: lo liberado medido con `statfs` coincide con lo estimado ±
-/// máx(5 %, 200 MB). Con un fichero de 32 MiB.
+/// Máximo común divisor.
+fn gcd(a: u64, b: u64) -> u64 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+/// A qué paso redondea `statfs` el espacio libre, a juzgar por `v`: la
+/// mayor potencia 2^a·5^b que lo divide. Con bloques de 4 KiB sale del
+/// orden de KiB; con un espacio libre redondeado a cientos de MB, de
+/// cientos de MB.
+fn roundness(v: u64) -> u64 {
+    gcd(v, (1u64 << 30) * 5u64.pow(12))
+}
+
+/// M-5: lo liberado medido con `statfs` no se queda por debajo de lo
+/// estimado más allá de máx(5 %, 200 MB), que es lo que el producto
+/// comprueba. Con un fichero de 32 MiB.
+///
+/// Si el volumen resuelve el tamaño (el espacio libre no viene redondeado
+/// a pasos mayores que lo borrado), además: lo medido es al menos la mitad
+/// de lo estimado y no lo supera en más de la tolerancia. Hay entornos que
+/// redondean `statfs` a cientos de MB; ahí esas dos no pueden distinguir
+/// nada y se omiten (se dice en la salida de la prueba).
 #[test]
 fn measured_space_matches_the_estimate_within_m5() {
     let fx = fixture();
@@ -387,8 +407,26 @@ fn measured_space_matches_the_estimate_within_m5() {
         .expect("medido con statfs");
     let tolerance = (estimated / 20).max(200_000_000);
     assert!(
-        (estimated - measured).abs() <= tolerance,
-        "estimado {estimated}, medido {measured}"
+        measured >= estimated - tolerance,
+        "estimado {estimated}, medido {measured}: {doc:#}"
+    );
+    let volumes = doc["space"]["volumes"].as_array().expect("volúmenes");
+    let step = volumes.iter().fold(0, |g, v| {
+        let before = v["free_before"].as_u64().expect("antes");
+        let after = v["free_after"].as_u64().expect("después");
+        g.max(roundness(before).min(roundness(after)))
+    });
+    if step > (estimated as u64) / 4 {
+        eprintln!("statfs redondea a pasos de {step} B: M-5 solo se comprueba por abajo");
+        return;
+    }
+    assert!(
+        measured >= estimated / 2,
+        "estimado {estimated}, medido {measured}: {doc:#}"
+    );
+    assert!(
+        measured <= estimated + tolerance,
+        "estimado {estimated}, medido {measured}: {doc:#}"
     );
 }
 
