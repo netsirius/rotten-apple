@@ -34,30 +34,12 @@ impl Language {
     }
 }
 
-/// `[journal]` en `config.toml`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct JournalSettings {
-    /// Días que se guardan las operaciones del journal (RF-HIS-08).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retention_days: Option<u32>,
-}
-
-impl JournalSettings {
-    pub fn is_unset(&self) -> bool {
-        self.retention_days.is_none()
-    }
-}
-
-/// Retención del journal por defecto (RF-HIS-08) y límites admitidos.
-pub const DEFAULT_RETENTION_DAYS: u32 = 180;
-pub const MIN_RETENTION_DAYS: u32 = 1;
-pub const MAX_RETENTION_DAYS: u32 = 3650;
-
 /// Todas las claves, en el orden en que se documentan.
+///
+/// `journal.retention_days` (RF-HIS-08) no se expone hasta que algo la use
+/// (T-105); si está en el fichero, se tolera como clave desconocida.
 pub const KEYS: &[&str] = &[
     "language",
-    "journal.retention_days",
     "exclusions.paths",
     "exclusions.globs",
     "exclusions.rules",
@@ -70,7 +52,6 @@ pub const KEYS: &[&str] = &[
 #[serde(untagged)]
 pub enum SettingValue {
     Text(String),
-    Integer(u64),
     List(Vec<String>),
 }
 
@@ -78,7 +59,6 @@ impl fmt::Display for SettingValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SettingValue::Text(s) => f.write_str(s),
-            SettingValue::Integer(n) => write!(f, "{n}"),
             SettingValue::List(l) => f.write_str(&l.join(", ")),
         }
     }
@@ -88,14 +68,12 @@ impl fmt::Display for SettingValue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expected {
     OneOf(&'static [&'static str]),
-    Range { min: u64, max: u64 },
 }
 
 impl fmt::Display for Expected {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Expected::OneOf(v) => write!(f, "one of: {}", v.join(", ")),
-            Expected::Range { min, max } => write!(f, "a whole number from {min} to {max}"),
         }
     }
 }
@@ -112,15 +90,6 @@ pub enum SettingError {
         value: String,
         expected: Expected,
     },
-}
-
-const RETENTION: Expected = Expected::Range {
-    min: MIN_RETENTION_DAYS as u64,
-    max: MAX_RETENTION_DAYS as u64,
-};
-
-fn retention_ok(days: u64) -> bool {
-    (u64::from(MIN_RETENTION_DAYS)..=u64::from(MAX_RETENTION_DAYS)).contains(&days)
 }
 
 impl Config {
@@ -143,11 +112,6 @@ impl Config {
             "language" => Ok(SettingValue::Text(
                 self.language.unwrap_or(Language::System).name().to_owned(),
             )),
-            "journal.retention_days" => Ok(SettingValue::Integer(u64::from(
-                self.journal
-                    .retention_days
-                    .unwrap_or(DEFAULT_RETENTION_DAYS),
-            ))),
             _ => self
                 .exclusion_list(key)
                 .map(|l| SettingValue::List(l.clone()))
@@ -159,30 +123,21 @@ impl Config {
 
     /// Cambia `key` a `raw`, ya validado. Devuelve el valor tal como queda.
     pub fn set(&mut self, key: &str, raw: &str) -> Result<SettingValue, SettingError> {
-        let invalid = |expected| SettingError::InvalidValue {
-            key: key.to_owned(),
-            value: raw.to_owned(),
-            expected,
-        };
-        let v = raw.trim();
         match key {
             "language" => {
-                let lang = match v.to_ascii_lowercase().as_str() {
+                let lang = match raw.trim().to_ascii_lowercase().as_str() {
                     "system" => Language::System,
                     "es" => Language::Es,
                     "en" => Language::En,
-                    _ => return Err(invalid(Expected::OneOf(Language::NAMES))),
+                    _ => {
+                        return Err(SettingError::InvalidValue {
+                            key: key.to_owned(),
+                            value: raw.to_owned(),
+                            expected: Expected::OneOf(Language::NAMES),
+                        });
+                    }
                 };
                 self.language = Some(lang);
-            }
-            "journal.retention_days" => {
-                let days = v
-                    .parse::<u64>()
-                    .ok()
-                    .filter(|d| retention_ok(*d))
-                    .and_then(|d| u32::try_from(d).ok())
-                    .ok_or_else(|| invalid(RETENTION))?;
-                self.journal.retention_days = Some(days);
             }
             _ if self.exclusion_list(key).is_some() => {
                 return Err(SettingError::ReadOnly {
@@ -198,16 +153,9 @@ impl Config {
         self.get(key)
     }
 
-    /// Las reglas de cada clave y las exclusiones compiladas contra `home`.
-    /// `ConfigState::load` da por corrupto un fichero que no las cumple.
+    /// Las exclusiones compiladas contra `home`. `ConfigState::load` da por
+    /// corrupto un fichero que no las cumple.
     pub fn validate(&self, home: &Path) -> Result<(), String> {
-        if let Some(d) = self.journal.retention_days
-            && !retention_ok(u64::from(d))
-        {
-            return Err(format!(
-                "journal.retention_days = {d}: expected {RETENTION}"
-            ));
-        }
         Exclusions::compile(self, home).map(|_| ())
     }
 }
@@ -228,15 +176,13 @@ mod tests {
             c.get(key).unwrap_or_else(|e| panic!("{key}: {e}"));
         }
         assert_eq!(c.get("language"), Ok(SettingValue::Text("system".into())));
-        assert_eq!(
-            c.get("journal.retention_days"),
-            Ok(SettingValue::Integer(180))
-        );
         assert_eq!(c.get("exclusions.paths"), Ok(SettingValue::List(vec![])));
-        assert!(matches!(
-            c.get("nope"),
-            Err(SettingError::UnknownKey { .. })
-        ));
+        for unknown in ["nope", "journal.retention_days"] {
+            assert!(matches!(
+                c.get(unknown),
+                Err(SettingError::UnknownKey { .. })
+            ));
+        }
     }
 
     #[test]
@@ -247,45 +193,37 @@ mod tests {
             Ok(SettingValue::Text("es".into()))
         );
         assert_eq!(c.language, Some(Language::Es));
-        assert_eq!(
-            c.set("journal.retention_days", "30"),
-            Ok(SettingValue::Integer(30))
-        );
         let before = c.clone();
-        for (key, bad) in [
-            ("language", "fr"),
-            ("language", ""),
-            ("journal.retention_days", "0"),
-            ("journal.retention_days", "3651"),
-            ("journal.retention_days", "-5"),
-            ("journal.retention_days", "30 días"),
-            ("journal.retention_days", "99999999999999999999"),
-        ] {
+        for bad in ["fr", "", "español"] {
             assert!(
-                matches!(c.set(key, bad), Err(SettingError::InvalidValue { .. })),
-                "{key} = {bad:?}"
+                matches!(
+                    c.set("language", bad),
+                    Err(SettingError::InvalidValue { .. })
+                ),
+                "{bad:?}"
             );
         }
         assert!(matches!(
             c.set("exclusions.paths", "~/x"),
             Err(SettingError::ReadOnly { .. })
         ));
-        assert!(matches!(
-            c.set("schema_version", "2"),
-            Err(SettingError::UnknownKey { .. })
-        ));
+        for unknown in ["schema_version", "journal.retention_days"] {
+            assert!(matches!(
+                c.set(unknown, "2"),
+                Err(SettingError::UnknownKey { .. })
+            ));
+        }
         assert_eq!(c, before, "un valor rechazado no cambia nada");
     }
 
-    /// Lo que escribe `set` se vuelve a cargar igual; lo que `set` rechaza,
-    /// escrito a mano, deja la configuración corrupta (fail-closed).
+    /// Lo que escribe `set` se vuelve a cargar igual; un valor que `set`
+    /// rechaza, escrito a mano, deja la configuración corrupta (fail-closed).
     #[test]
     fn what_is_written_is_what_is_loaded() {
         let dir = tempfile::tempdir().expect("tempdir");
         let p = dir.path().join("config.toml");
         let mut c = Config::default();
         c.set("language", "en").expect("set");
-        c.set("journal.retention_days", "90").expect("set");
         c.save(&p).expect("save");
         assert_eq!(
             ConfigState::load(&p, Path::new(HOME)),
@@ -294,9 +232,7 @@ mod tests {
         for bad in [
             "language = \"fr\"\n",
             "language = 1\n",
-            "[journal]\nretention_days = 0\n",
-            "[journal]\nretention_days = \"90\"\n",
-            "[journal]\nkeep = 1\n",
+            "[exclusions]\nkeep = [\"~/x\"]\n",
         ] {
             fs::write(&p, bad).expect("write");
             assert!(
@@ -307,6 +243,33 @@ mod tests {
                 "{bad:?}"
             );
         }
+    }
+
+    /// I3: claves desconocidas fuera de `[exclusions]` se toleran, se avisan
+    /// y se conservan al reescribir.
+    #[test]
+    fn unknown_keys_outside_exclusions_are_kept() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let p = dir.path().join("config.toml");
+        fs::write(
+            &p,
+            "theme = \"dark\"\n\n[journal]\nretention_days = 30\n\n[exclusions]\npaths = [\"~/keep\"]\n",
+        )
+        .expect("write");
+        let ConfigState::Loaded(mut c) = ConfigState::load(&p, Path::new(HOME)) else {
+            panic!("debería cargar");
+        };
+        assert_eq!(c.unknown_keys(), ["journal", "theme"]);
+        c.set("language", "es").expect("set");
+        c.save(&p).expect("save");
+        let text = fs::read_to_string(&p).expect("read");
+        assert!(text.contains("theme = \"dark\""), "{text}");
+        assert!(text.contains("retention_days = 30"), "{text}");
+        let ConfigState::Loaded(again) = ConfigState::load(&p, Path::new(HOME)) else {
+            panic!("debería cargar: {text}");
+        };
+        assert_eq!(again, c);
+        assert_eq!(again.exclusions.paths, ["~/keep"]);
     }
 
     #[test]
@@ -327,6 +290,55 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&p).expect("read"),
             "schema_version = 1\nlanguage = \"es\"\n\n[exclusions]\n"
+        );
+    }
+
+    /// B1: si la configuración canónica es un enlace (dotfiles), se escribe
+    /// en su destino y el enlace se conserva; también con un destino
+    /// relativo o con un enlace a otro enlace.
+    #[test]
+    fn save_writes_through_a_symlinked_config() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = fs::canonicalize(dir.path()).expect("canon");
+        let dotfiles = root.join("dotfiles");
+        let state = root.join("state");
+        fs::create_dir_all(&dotfiles).expect("mkdir");
+        fs::create_dir_all(&state).expect("mkdir");
+        let real = dotfiles.join("rotten.toml");
+        fs::write(&real, "schema_version = 1\n").expect("write");
+        let hop = root.join("hop.toml");
+        std::os::unix::fs::symlink("dotfiles/rotten.toml", &hop).expect("ln");
+        let canonical = state.join("config.toml");
+        std::os::unix::fs::symlink(&hop, &canonical).expect("ln");
+
+        let mut c = Config::default();
+        c.set("language", "en").expect("set");
+        c.save(&canonical).expect("save");
+
+        assert!(
+            fs::symlink_metadata(&canonical)
+                .expect("lstat")
+                .is_symlink()
+        );
+        assert_eq!(fs::read_link(&canonical).expect("readlink"), hop);
+        assert_eq!(
+            fs::read_link(&hop).expect("readlink"),
+            Path::new("dotfiles/rotten.toml")
+        );
+        assert!(
+            fs::read_to_string(&real)
+                .expect("read")
+                .contains("language = \"en\"")
+        );
+        let leftovers: Vec<_> = fs::read_dir(&dotfiles)
+            .expect("ls")
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(leftovers.len(), 1, "{leftovers:?}");
+        assert_eq!(
+            ConfigState::load(&canonical, Path::new(HOME)),
+            ConfigState::Loaded(c)
         );
     }
 }

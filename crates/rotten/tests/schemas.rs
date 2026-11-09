@@ -395,31 +395,20 @@ fn config() {
         &["config", "set", "language", "es", "--dry-run", "--json"],
         0,
     );
+    // `system` para que la salida siguiente no cambie de idioma.
     check(
         &fx,
         "config_set_creates_link",
-        &["config", "set", "language", "es", "--json"],
+        &["config", "set", "language", "system", "--json"],
         0,
     );
     check(
         &fx,
         "config_set_unchanged",
-        &["config", "set", "language", "es", "--json"],
-        0,
-    );
-    check(
-        &fx,
-        "config_set_integer",
-        &["config", "set", "journal.retention_days", "90", "--json"],
+        &["config", "set", "language", "system", "--json"],
         0,
     );
     check(&fx, "config_path_linked", &["config", "path", "--json"], 0);
-    check(
-        &fx,
-        "config_get_integer",
-        &["config", "get", "journal.retention_days", "--json"],
-        0,
-    );
     check(
         &fx,
         "config_error_unknown_key",
@@ -429,7 +418,7 @@ fn config() {
     check(
         &fx,
         "config_error_invalid_value",
-        &["config", "set", "journal.retention_days", "0", "--json"],
+        &["config", "set", "language", "fr", "--json"],
         2,
     );
     check(
@@ -463,6 +452,17 @@ fn config() {
         5,
     );
     fs::remove_file(&link).expect("rm");
+
+    // `~/.config/rotten` es un fichero: se guarda, pero sin enlace (4).
+    fs::remove_dir_all(fx.p(".config/rotten")).expect("rm");
+    fs::write(fx.p(".config/rotten"), "x").expect("write");
+    check(
+        &fx,
+        "config_set_link_parent_not_directory",
+        &["config", "set", "language", "system", "--json"],
+        4,
+    );
+    fs::remove_file(fx.p(".config/rotten")).expect("rm");
 
     write_corrupt_config(&fx);
     check(
@@ -607,7 +607,7 @@ fn sample_documents() -> Vec<Value> {
     docs.push(fx.run(&["trash", "empty", "--yes", "--json"]).1);
     docs.push(fx.run(&["history", "--json"]).1);
     docs.push(fx.run(&["config", "get", "language", "--json"]).1);
-    docs.push(fx.run(&["config", "set", "language", "es", "--json"]).1);
+    docs.push(fx.run(&["config", "set", "language", "system", "--json"]).1);
     docs.push(fx.run(&["config", "path", "--json"]).1);
     docs.push(fx.run(&["config", "get", "nope", "--json"]).1);
     let link = fx.p(".config/rotten/config.toml");

@@ -4,146 +4,330 @@
   "title": "rotten doctor --json (schema_version 2)",
   "description": "Permisos, plataforma, configuración e integridad del journal (RF-CLI-07). O el documento de error común.",
   "oneOf": [
-    { "$ref": "#/$defs/document" },
-    { "$ref": "#/$defs/error" }
+    {
+      "$ref": "#/$defs/document"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
   ],
   "$defs": {
-    "count": { "type": "integer", "minimum": 0 },
-    "path": { "type": "string", "minLength": 1 },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
     "document": {
       "type": "object",
       "description": "El código de salida (0 todo bien · 3 sin Acceso total al disco · 5 configuración corrupta u otra cosa en la ruta de su enlace) se deduce de report.full_disk_access, report.config y report.config_link; no se repite en el documento.",
-      "required": ["schema_version", "command", "report"],
+      "required": [
+        "schema_version",
+        "command",
+        "report"
+      ],
       "additionalProperties": false,
       "properties": {
-        "schema_version": { "const": 2 },
-        "command": { "const": "doctor" },
-        "report": { "$ref": "#/$defs/report" }
+        "schema_version": {
+          "const": 2
+        },
+        "command": {
+          "const": "doctor"
+        },
+        "report": {
+          "$ref": "#/$defs/report"
+        }
       }
     },
     "report": {
       "type": "object",
       "required": [
-        "version", "macos_version", "arch", "platform_supported", "running_as_root", "home",
-        "home_source", "state_dir", "config_path", "config", "config_link", "journal_dir", "journal_records",
-        "journal_problems", "trash", "exec_lock_free", "full_disk_access", "running_apps",
+        "version",
+        "macos_version",
+        "arch",
+        "platform_supported",
+        "running_as_root",
+        "home",
+        "home_source",
+        "state_dir",
+        "config_path",
+        "config",
+        "journal_dir",
+        "journal_records",
+        "journal_problems",
+        "trash",
+        "exec_lock_free",
+        "full_disk_access",
+        "running_apps",
         "catalog_version"
       ],
       "additionalProperties": false,
       "properties": {
-        "version": { "type": "string" },
-        "macos_version": { "type": ["string", "null"] },
-        "arch": { "type": "string" },
-        "platform_supported": { "type": "boolean" },
-        "running_as_root": { "type": "boolean" },
-        "home": { "$ref": "#/$defs/path" },
-        "home_source": { "enum": ["ROTTEN_HOME", "HOME", "explicit"] },
-        "state_dir": { "$ref": "#/$defs/path" },
-        "config_path": { "$ref": "#/$defs/path" },
-        "config": { "enum": ["missing", "ok", "corrupt"] },
-        "config_error": { "type": "string" },
+        "version": {
+          "type": "string"
+        },
+        "macos_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "arch": {
+          "type": "string"
+        },
+        "platform_supported": {
+          "type": "boolean"
+        },
+        "running_as_root": {
+          "type": "boolean"
+        },
+        "home": {
+          "$ref": "#/$defs/path"
+        },
+        "home_source": {
+          "enum": [
+            "ROTTEN_HOME",
+            "HOME",
+            "explicit"
+          ]
+        },
+        "state_dir": {
+          "$ref": "#/$defs/path"
+        },
+        "config_path": {
+          "$ref": "#/$defs/path"
+        },
+        "config": {
+          "enum": [
+            "missing",
+            "ok",
+            "corrupt"
+          ]
+        },
+        "config_error": {
+          "type": "string"
+        },
         "config_link": {
-          "description": "Lo que hay en ~/.config/rotten/config.toml: nada, el enlace a config_path, u otra cosa. Con otra cosa no se limpia nada (RF-SEG-05 c) y el código de salida es 5.",
+          "description": "Lo que hay en ~/.config/rotten/config.toml. Se emite siempre, pero es opcional en el esquema porque llegó dentro de la versión 2 (07 §1). Con otra cosa (conflict) no se limpia nada (RF-SEG-05 c) y el código de salida es 5.",
           "oneOf": [
             {
               "type": "object",
-              "required": ["path", "state"],
+              "required": [
+                "path",
+                "state"
+              ],
               "additionalProperties": false,
               "properties": {
-                "path": { "$ref": "#/$defs/path" },
-                "state": { "enum": ["missing", "linked"] }
+                "path": {
+                  "$ref": "#/$defs/path"
+                },
+                "state": {
+                  "enum": [
+                    "missing",
+                    "linked"
+                  ]
+                }
               }
             },
             {
               "type": "object",
-              "required": ["path", "state", "found"],
+              "required": [
+                "path",
+                "state",
+                "parent"
+              ],
               "additionalProperties": false,
               "properties": {
-                "path": { "$ref": "#/$defs/path" },
-                "state": { "const": "conflict" },
-                "found": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "required": ["kind"],
-                      "additionalProperties": false,
-                      "properties": { "kind": { "enum": ["file", "directory", "other"] } }
-                    },
-                    {
-                      "type": "object",
-                      "required": ["kind", "target"],
-                      "additionalProperties": false,
-                      "properties": { "kind": { "const": "symlink" }, "target": { "$ref": "#/$defs/path" } }
-                    },
-                    {
-                      "type": "object",
-                      "required": ["kind", "detail"],
-                      "additionalProperties": false,
-                      "properties": { "kind": { "const": "unreadable" }, "detail": { "type": "string" } }
-                    }
+                "path": {
+                  "$ref": "#/$defs/path"
+                },
+                "state": {
+                  "const": "parent_not_directory"
+                },
+                "parent": {
+                  "description": "La carpeta del camino que es un fichero: ahí no se puede crear el enlace.",
+                  "$ref": "#/$defs/path"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "state",
+                "reason"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "const": "not_applicable"
+                },
+                "reason": {
+                  "description": "Por qué no aplica: state_dir_override (ROTTEN_STATE_DIR definida; el enlace ni se crea ni se comprueba).",
+                  "enum": [
+                    "state_dir_override"
                   ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "state",
+                "found"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "$ref": "#/$defs/path"
+                },
+                "state": {
+                  "const": "conflict"
+                },
+                "found": {
+                  "$ref": "#/$defs/found"
                 }
               }
             }
           ]
         },
-        "journal_dir": { "$ref": "#/$defs/path" },
-        "journal_records": { "$ref": "#/$defs/count" },
-        "journal_problems": { "type": "array", "items": { "type": "string" } },
+        "journal_dir": {
+          "$ref": "#/$defs/path"
+        },
+        "journal_records": {
+          "$ref": "#/$defs/count"
+        },
+        "journal_problems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "trash_unreadable_ops": {
           "description": "Operaciones con elementos que, tras un cierre abrupto, no se pudieron buscar en la Papelera por falta de permiso. Se omite si no hay.",
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "trash": {
           "description": "Papelera que se usa: la del sistema o una carpeta (ROTTEN_TRASH_DIR, en pruebas).",
           "oneOf": [
             {
               "type": "object",
-              "required": ["backend"],
+              "required": [
+                "backend"
+              ],
               "additionalProperties": false,
-              "properties": { "backend": { "const": "system" } }
+              "properties": {
+                "backend": {
+                  "const": "system"
+                }
+              }
             },
             {
               "type": "object",
-              "required": ["backend", "path"],
+              "required": [
+                "backend",
+                "path"
+              ],
               "additionalProperties": false,
-              "properties": { "backend": { "const": "dir" }, "path": { "$ref": "#/$defs/path" } }
+              "properties": {
+                "backend": {
+                  "const": "dir"
+                },
+                "path": {
+                  "$ref": "#/$defs/path"
+                }
+              }
             }
           ]
         },
-        "exec_lock_free": { "type": "boolean" },
-        "full_disk_access": { "enum": ["granted", "denied", "undetermined"] },
+        "exec_lock_free": {
+          "type": "boolean"
+        },
+        "full_disk_access": {
+          "enum": [
+            "granted",
+            "denied",
+            "undetermined"
+          ]
+        },
         "running_apps": {
           "description": "Si se pueden saber las apps abiertas: cuántas hay, o por qué no se puede (entonces se omite todo lo que exige una app cerrada).",
           "oneOf": [
             {
               "type": "object",
-              "required": ["status", "count"],
+              "required": [
+                "status",
+                "count"
+              ],
               "additionalProperties": false,
-              "properties": { "status": { "const": "ok" }, "count": { "$ref": "#/$defs/count" } }
+              "properties": {
+                "status": {
+                  "const": "ok"
+                },
+                "count": {
+                  "$ref": "#/$defs/count"
+                }
+              }
             },
             {
               "type": "object",
-              "required": ["status", "detail"],
+              "required": [
+                "status",
+                "detail"
+              ],
               "additionalProperties": false,
-              "properties": { "status": { "const": "unavailable" }, "detail": { "type": "string" } }
+              "properties": {
+                "status": {
+                  "const": "unavailable"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
             }
           ]
         },
-        "catalog_version": { "type": "string" }
+        "catalog_version": {
+          "type": "string"
+        },
+        "config_unknown_keys": {
+          "description": "Claves de config.toml que esta versión no conoce: se ignoran y se conservan (07 §2). Se omite si no hay.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     },
     "error": {
       "type": "object",
-      "required": ["schema_version", "command", "error"],
+      "required": [
+        "schema_version",
+        "command",
+        "error"
+      ],
       "additionalProperties": false,
       "properties": {
-        "schema_version": { "const": 2 },
-        "command": { "const": "doctor" },
+        "schema_version": {
+          "const": 2
+        },
+        "command": {
+          "const": "doctor"
+        },
         "error": {
           "type": "object",
-          "required": ["code", "exit_code", "message"],
+          "required": [
+            "code",
+            "exit_code",
+            "message"
+          ],
           "additionalProperties": false,
           "properties": {
             "code": {
@@ -151,11 +335,79 @@
               "type": "string",
               "pattern": "^[a-z][a-z_]*$"
             },
-            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
-            "message": { "description": "Mensaje en inglés, igual en cualquier idioma.", "type": "string" }
+            "exit_code": {
+              "enum": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            },
+            "message": {
+              "description": "Mensaje en inglés, igual en cualquier idioma.",
+              "type": "string"
+            },
+            "detail": {
+              "description": "Opcional: lo que no cabe en una línea del mensaje (p. ej. el fragmento del TOML de una configuración corrupta). Se omite si no hay.",
+              "type": "string"
+            }
           }
         }
       }
+    },
+    "found": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "file",
+                "directory",
+                "other"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "target"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "symlink"
+            },
+            "target": {
+              "$ref": "#/$defs/path"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "detail"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unreadable"
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        }
+      ]
     }
   }
 }

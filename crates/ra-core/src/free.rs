@@ -247,6 +247,9 @@ impl Core {
 
     /// Prepara la liberación de `ops` y la simula (la revisión).
     pub fn prepare_free(&self, ops: &[String]) -> Result<FreePreview, CoreError> {
+        // RF-SEG-05 c: con la configuración corrupta o con otra cosa en la
+        // ruta de su enlace no se borra nada.
+        self.config_ok_or_abort()?;
         let (records, _) = ra_history::read_journal(&self.history_paths())?;
         let plan = self.free_plan(&records, ops)?;
         Self::trash_readable(&plan)?;
@@ -263,6 +266,8 @@ impl Core {
         reviewed_hash: &str,
         by: &str,
     ) -> Result<FreeResult, CoreError> {
+        // La configuración se vuelve a validar justo antes de borrar.
+        self.config_ok_or_abort()?;
         let ctx = self.trash_ctx(by)?;
         let exec = ctx.exec(self, by);
         let (records, _) = ra_history::read_journal(&ctx.history)?;

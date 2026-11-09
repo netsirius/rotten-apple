@@ -20,7 +20,7 @@ mod selection;
 use std::path::Path;
 use std::time::SystemTime;
 
-pub use config::{ConfigLink, ConfigSet};
+pub use config::{ConfigLink, ConfigSet, LINK_NOT_APPLICABLE_STATE_DIR, LinkError};
 pub use doctor::{AppsProbe, DoctorReport, FdaState, TrashInfo};
 pub use empty::{EmptyPreview, OpInTrash, TrashView, TrashVolume};
 pub use env::{BUNDLE_ID, Env, EnvError};
@@ -38,7 +38,7 @@ pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};
 pub use ra_safety::apps::AppBlock;
 pub use ra_safety::settings::KEYS as CONFIG_KEYS;
 pub use ra_safety::{
-    ConfigState, Exclusion, ExclusionMatch, Expected, FileKind, FlagViolation, LinkFound,
+    ConfigState, Exclusion, ExclusionMatch, Expected, FileKind, FlagViolation, Language, LinkFound,
     LinkState, Origin, ProtectionReason, RunningApps, SettingError, SettingValue, SystemApps,
 };
 pub use scan::{CategorySummary, ScanReport, ScanStatus, VolumeState};
@@ -109,12 +109,7 @@ impl Core {
     /// configuración se puede validar y en la ruta de su enlace no hay otra
     /// cosa que alguien pueda estar editando en su lugar.
     fn exclusions_or_abort(&self) -> Result<Exclusions, CoreError> {
-        let state = self.config_state();
-        if let ConfigState::Corrupt { path, reason } = state {
-            return Err(CoreError::ConfigCorrupt { path, reason });
-        }
-        self.config_link_or_abort()?;
-        state
+        self.config_ok_or_abort()?
             .exclusions(&self.env.home)
             .map_err(|reason| CoreError::ConfigCorrupt {
                 path: self.env.config_path.clone(),
@@ -160,6 +155,30 @@ impl Core {
             exclusions.as_ref(),
             &config,
         );
+        // Lo que impedirá limpiar, o que se ignora, se avisa ya aquí.
+        if let ConfigLink {
+            path: Some(path),
+            state: LinkState::Conflict { found },
+        } = self.config_link()
+        {
+            report.warnings.push(
+                CoreError::ConfigLinkConflict {
+                    path,
+                    target: self.env.config_path.clone(),
+                    found,
+                }
+                .to_string(),
+            );
+        }
+        if let ConfigState::Loaded(c) = &config
+            && !c.unknown.is_empty()
+        {
+            report.warnings.push(format!(
+                "{} has keys this version does not know and ignores: {}",
+                self.env.config_path.display(),
+                c.unknown_keys().join(", ")
+            ));
+        }
         scan::add_volume(&mut report, &self.env.home);
         Ok(report)
     }

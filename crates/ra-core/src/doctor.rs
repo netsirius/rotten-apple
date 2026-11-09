@@ -68,6 +68,10 @@ pub struct DoctorReport {
     /// `~/.config/rotten/config.toml`: si hay otra cosa que no es el
     /// enlace, no se actúa (RF-SEG-05 c).
     pub config_link: ConfigLink,
+    /// Claves de `config.toml` que esta versión no conoce: se ignoran y se
+    /// conservan (07 §2). Se omite si no hay.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub config_unknown_keys: Vec<String>,
     pub journal_dir: PathBuf,
     pub journal_records: usize,
     pub journal_problems: Vec<String>,
@@ -122,10 +126,10 @@ pub(crate) fn run(core: &Core) -> DoctorReport {
     let env = core.env();
     let macos = macos_version();
     let arch = std::env::consts::ARCH.to_owned();
-    let (config, config_error) = match core.config_state() {
-        ConfigState::Missing => ("missing", None),
-        ConfigState::Loaded(_) => ("ok", None),
-        ConfigState::Corrupt { reason, .. } => ("corrupt", Some(reason)),
+    let (config, config_error, config_unknown_keys) = match core.config_state() {
+        ConfigState::Missing => ("missing", None, vec![]),
+        ConfigState::Loaded(c) => ("ok", None, c.unknown_keys()),
+        ConfigState::Corrupt { reason, .. } => ("corrupt", Some(reason), vec![]),
     };
     let history = core.history_paths();
     let (records, problems) = match ra_history::read_journal(&history) {
@@ -156,6 +160,7 @@ pub(crate) fn run(core: &Core) -> DoctorReport {
         config: config.into(),
         config_error,
         config_link: core.config_link(),
+        config_unknown_keys,
         journal_dir: history.journal_dir,
         journal_records: records.len(),
         journal_problems: problems,

@@ -384,7 +384,7 @@ proptest! {
         let preview = w.core.plan(&selection(true), Action::Trash).expect("plan sin nada en el enlace");
         let hash = preview.plan.plan_hash().to_owned();
 
-        let link = w.core.env().config_link_path.clone();
+        let link = w.core.env().config_link_path.clone().expect("el enlace aplica");
         fs::create_dir_all(link.parent().expect("carpeta")).expect("mkdir");
         match foreign {
             0 => fs::write(&link, "language = \"en\"\n").expect("write"),
@@ -410,11 +410,11 @@ proptest! {
             Just("[exclusions\npaths = [".to_owned()),
             Just("[exclusions]\npaths = [\"relativa\"]\n".to_owned()),
             Just("language = \"fr\"\n".to_owned()),
-            Just("[journal]\nretention_days = 0\n".to_owned()),
+            Just("[exclusion]\npaths = []\n".to_owned()),
             Just("schema_version = 7\n".to_owned()),
             "[a-z=\\[\\]\"\n ]{1,40}",
         ],
-        key in prop_oneof![Just("language"), Just("journal.retention_days"), Just("nope")],
+        key in prop_oneof![Just("language"), Just("exclusions.paths"), Just("nope")],
         value in prop_oneof![Just("es".to_owned()), Just("30".to_owned()), "[a-z0-9]{0,6}"],
         dry_run in any::<bool>(),
     ) {
@@ -424,7 +424,8 @@ proptest! {
         prop_assume!(matches!(w.core.config_state(), ra_core::ConfigState::Corrupt { .. }));
         prop_assert_eq!(w.core.config_set(key, &value, dry_run).err().map(|e| e.code()), Some("config_corrupt"));
         prop_assert_eq!(fs::read_to_string(&config).expect("config"), garbage, "no se reescribe");
-        prop_assert!(fs::symlink_metadata(&w.core.env().config_link_path).is_err(), "no se crea el enlace");
+        let link = w.core.env().config_link_path.clone().expect("el enlace aplica");
+        prop_assert!(fs::symlink_metadata(&link).is_err(), "no se crea el enlace");
     }
 
     /// 4: omite los elementos que cambian entre el plan y la ejecución, y no

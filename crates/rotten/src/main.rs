@@ -118,12 +118,27 @@ impl Ui {
     /// Error común: en JSON, un código estable y el mensaje en inglés (no
     /// dependen del idioma); para personas, `human` en su idioma.
     fn fail(&self, command: &str, exit: Exit, code: &str, message: &str, human: &str) -> Exit {
+        self.fail_detail(command, exit, code, message, None, human)
+    }
+
+    /// Como [`Ui::fail`], con un detalle opcional para el JSON
+    /// (`error.detail`) que no va en el mensaje ni en el log técnico.
+    fn fail_detail(
+        &self,
+        command: &str,
+        exit: Exit,
+        code: &str,
+        message: &str,
+        detail: Option<&str>,
+        human: &str,
+    ) -> Exit {
         techlog::error(command, code, exit as u8, message);
         if self.json {
-            self.emit(
-                command,
-                json!({ "error": { "code": code, "exit_code": exit as u8, "message": message } }),
-            );
+            let mut error = json!({ "code": code, "exit_code": exit as u8, "message": message });
+            if let Some(d) = detail {
+                error["detail"] = json!(d);
+            }
+            self.emit(command, json!({ "error": error }));
         } else {
             let line = tr!(self, "error-line", message = human);
             eprintln!("{}", style::paint(self.color_err, Style::Red, &line));
@@ -147,7 +162,15 @@ impl Ui {
             ErrorClass::NotFound | ErrorClass::Other => Exit::Error,
         };
         let human = render::core_error(&self.i18n, e, &self.home);
-        self.fail(command, exit, e.code(), &e.to_string(), &human)
+        let detail = e.detail();
+        self.fail_detail(
+            command,
+            exit,
+            e.code(),
+            &e.to_string(),
+            detail.as_deref(),
+            &human,
+        )
     }
 
     /// Confirmación: `--yes`, o una pregunta si hay terminal; si no, error
@@ -249,6 +272,13 @@ fn run(mut ui: Ui, cli: Cli, command: &str) -> Exit {
         }
     };
     ui.home = env.home.clone();
+    // RF-AJU-07: sin `--lang`, el idioma de la configuración manda sobre
+    // `LANG` (la ayuda de clap ya salió con `LANG`: se genera antes).
+    if cli.lang.is_none()
+        && let Some(lang) = cmd::config::configured_lang(&env)
+    {
+        ui.i18n = I18n::new(lang);
+    }
     techlog::set_home(&env.home);
     techlog::env(&env, ui.i18n.lang().code(), ui.json);
     // `update` no usa el estado de la app (T-15).
@@ -384,6 +414,7 @@ fn scan(ui: &Ui, core: &Core, categories: Vec<String>) -> Exit {
             reason = reason
         ));
     }
+    cmd::config::scan_notes(ui, core);
     ui.say(ui.paint(
         Style::Green,
         tr!(
@@ -871,6 +902,13 @@ fn doctor(ui: &Ui, core: &Core) -> Exit {
         )),
     }
     ui.say(cmd::config::link_line(ui, &r.config_link, &r.config_path));
+    if !r.config_unknown_keys.is_empty() {
+        ui.say(cmd::config::unknown_keys_line(
+            ui,
+            &r.config_path,
+            &r.config_unknown_keys,
+        ));
+    }
     ui.say(tr!(
         ui,
         "doctor-journal",

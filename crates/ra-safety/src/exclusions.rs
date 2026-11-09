@@ -1,15 +1,23 @@
 //! Exclusiones del usuario (`config.toml`), fail-closed (RF-SEG-05, CU-07).
 //!
 //! - Si `config.toml` no existe, no hay exclusiones: es una instalación limpia.
-//! - Si existe pero no se puede leer, no es TOML válido, tiene claves
-//!   desconocidas, un patrón inválido o una ruta relativa, el estado es
-//!   [`ConfigState::Corrupt`]: el escaneo puede seguir con un aviso, pero
-//!   ninguna acción destructiva se ejecuta hasta corregirlo.
+//! - Si existe pero no se puede leer, no es TOML válido, tiene una clave
+//!   desconocida en `[exclusions]`, un valor de otro tipo, un patrón
+//!   inválido o una ruta relativa, el estado es [`ConfigState::Corrupt`]: el
+//!   escaneo puede seguir con un aviso, pero ninguna acción destructiva se
+//!   ejecuta hasta corregirlo.
+//! - Las claves desconocidas fuera de `[exclusions]` (de una versión más
+//!   nueva, por ejemplo) se toleran, se conservan al reescribir el fichero y
+//!   se avisan (07 §2). En `[exclusions]` no: una clave mal escrita ahí
+//!   dejaría una exclusión sin aplicar, así que falla cerrado. Tampoco una
+//!   clave de primer nivel que contenga «exclu» (`[exclusion]`,
+//!   `[exclusiones]`): parece esa sección mal escrita.
 //!
 //! Las exclusiones prevalecen sobre cualquier regla. Una ruta excluida
 //! bloquea también a sus ancestros: mover la carpeta que la contiene la
 //! movería con ella.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::io::{self, Write};
@@ -19,22 +27,22 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::paths::{self, fold};
-use crate::settings::{JournalSettings, Language};
+use crate::settings::Language;
 
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "default_schema")]
     pub schema_version: u32,
     /// Idioma de la interfaz (RF-AJU-07). Sin valor, el del sistema.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<Language>,
-    #[serde(default, skip_serializing_if = "JournalSettings::is_unset")]
-    pub journal: JournalSettings,
     #[serde(default)]
     pub exclusions: ExclusionLists,
+    /// Claves que esta versión no conoce: se toleran y se conservan.
+    #[serde(flatten)]
+    pub unknown: BTreeMap<String, toml::Value>,
 }
 
 fn default_schema() -> u32 {
@@ -46,8 +54,8 @@ impl Default for Config {
         Self {
             schema_version: CONFIG_SCHEMA_VERSION,
             language: None,
-            journal: JournalSettings::default(),
             exclusions: ExclusionLists::default(),
+            unknown: BTreeMap::new(),
         }
     }
 }
@@ -179,6 +187,11 @@ impl Config {
         list.len() != before
     }
 
+    /// Claves que esta versión no conoce (se ignoran y se conservan).
+    pub fn unknown_keys(&self) -> Vec<String> {
+        self.unknown.keys().cloned().collect()
+    }
+
     /// Todas las exclusiones, en el formato de `rotten exclude list`.
     pub fn all(&self) -> Vec<Exclusion> {
         let l = &self.exclusions;
@@ -195,8 +208,12 @@ impl Config {
     /// misma carpeta, `fsync` (en macOS, `F_FULLFSYNC`), `rename` sobre el
     /// definitivo y `fsync` de la carpeta. Un corte en cualquier punto deja
     /// el fichero anterior o el nuevo, nunca uno a medias.
+    ///
+    /// Si `path` es un enlace (la configuración guardada con los dotfiles),
+    /// se escribe en el fichero al que lleva y el enlace se conserva.
     pub fn save(&self, path: &Path) -> io::Result<()> {
         let text = toml::to_string_pretty(self).map_err(io::Error::other)?;
+        let path = &write_target(path)?;
         let dir = path
             .parent()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path without a folder"))?;
@@ -213,6 +230,29 @@ impl Config {
         }
         fs::File::open(dir)?.sync_all()
     }
+}
+
+/// El fichero que hay que reescribir para cambiar `path`: el propio `path`
+/// o, si es un enlace, el final de la cadena (un destino relativo lo es a la
+/// carpeta del enlace). Funciona también con un enlace roto.
+fn write_target(path: &Path) -> io::Result<PathBuf> {
+    let mut p = path.to_path_buf();
+    for _ in 0..32 {
+        match fs::symlink_metadata(&p) {
+            Ok(m) if m.file_type().is_symlink() => {
+                let to = fs::read_link(&p)?;
+                p = match p.parent() {
+                    Some(dir) if to.is_relative() => dir.join(to),
+                    _ => to,
+                };
+            }
+            _ => return Ok(p),
+        }
+    }
+    Err(io::Error::other(format!(
+        "{}: too many levels of symbolic links",
+        path.display()
+    )))
 }
 
 /// Temporal con un nombre que no existía (`create_new`): nunca se escribe
@@ -239,7 +279,7 @@ fn new_temp(dir: &Path) -> io::Result<(PathBuf, fs::File)> {
 }
 
 /// Estado de la configuración tras intentar cargarla.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConfigState {
     Missing,
     Loaded(Config),
@@ -258,6 +298,19 @@ impl ConfigState {
             Ok(c) => c,
             Err(e) => return Self::corrupt(path, format!("invalid TOML: {e}")),
         };
+        // Una sección desconocida que parece `[exclusions]` mal escrita
+        // (`[exclusion]`, `[exclusiones]`…) dejaría exclusiones sin aplicar:
+        // falla cerrado aunque el resto de claves desconocidas se toleren.
+        if let Some(k) = config
+            .unknown
+            .keys()
+            .find(|k| k.to_lowercase().contains("exclu"))
+        {
+            return Self::corrupt(
+                path,
+                format!("unknown key «{k}» (is it a misspelled [exclusions]?)"),
+            );
+        }
         if config.schema_version != CONFIG_SCHEMA_VERSION {
             return Self::corrupt(
                 path,
