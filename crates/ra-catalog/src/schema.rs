@@ -95,7 +95,14 @@ pub struct Rule {
     #[serde(default)]
     pub never: Vec<String>,
     pub title: Localized,
+    /// Qué es (RF-LIM-04).
     pub explain: Localized,
+    /// Qué pasa si se borra.
+    pub if_deleted: Localized,
+    /// Si se regenera (coherente con `regenerable`).
+    pub regenerates: Localized,
+    /// Por qué tiene ese riesgo.
+    pub why_risk: Localized,
     /// Justificación de que es seguro (documento, enlace…).
     pub evidence: String,
 }

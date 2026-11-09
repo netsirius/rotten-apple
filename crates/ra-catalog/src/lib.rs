@@ -183,6 +183,22 @@ impl Catalog {
             if !ids.insert(r.id.clone()) {
                 return Err(lint("id duplicado".into()));
             }
+            // RNF-25 y RF-LIM-04: todos los textos en los dos idiomas; las
+            // explicaciones, traducidas (no la misma frase en ambos).
+            for (name, text, translated) in [
+                ("title", &r.title, false),
+                ("explain", &r.explain, true),
+                ("if_deleted", &r.if_deleted, true),
+                ("regenerates", &r.regenerates, true),
+                ("why_risk", &r.why_risk, true),
+            ] {
+                if text.es.trim().is_empty() || text.en.trim().is_empty() {
+                    return Err(lint(format!("{name} vacío en algún idioma")));
+                }
+                if translated && text.es.trim() == text.en.trim() {
+                    return Err(lint(format!("{name} sin traducir")));
+                }
+            }
             if r.version == 0 {
                 return Err(lint("version debe ser ≥ 1".into()));
             }
