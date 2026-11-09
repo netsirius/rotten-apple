@@ -1,5 +1,6 @@
 //! Ejecución de planes, deshacer y recuperación tras un cierre abrupto.
 
+use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
@@ -8,7 +9,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 use ra_history::{
     Event, HistoryPaths, Journal, JournalError, OpKind, OpMode, OpStatus, StepAction, UndoPlan,
@@ -179,11 +180,147 @@ fn step(action: Action) -> StepAction {
     }
 }
 
+/// Intenciones por `fsync` (RNF-06, 05 §5.6). Con `F_FULLFSYNC` cada
+/// sincronización cuesta varios milisegundos: con un `fsync` por evento,
+/// 10 000 elementos tardaban casi dos minutos. Con lotes de 128 son unas 80
+/// sincronizaciones y el coste pasa a ser el de verificar y mover. Más grande
+/// apenas gana y deja más intenciones sin resultado tras un corte de
+/// corriente.
+pub const DEFAULT_FSYNC_BATCH: usize = 128;
+
+/// Variable que cambia el tamaño del lote (entero ≥ 1).
+pub const FSYNC_BATCH_VAR: &str = "ROTTEN_FSYNC_BATCH";
+
+/// En un lote lento (p. ej. con la Papelera del sistema), los resultados se
+/// sincronizan como mucho cada este tiempo: así un corte de corriente pierde
+/// pocos resultados que haya que deducir al recuperar.
+const RESULTS_SYNC_EVERY: Duration = Duration::from_millis(250);
+
+/// Tamaño del lote: [`FSYNC_BATCH_VAR`] si es un entero ≥ 1 o, si no,
+/// [`DEFAULT_FSYNC_BATCH`].
+pub fn fsync_batch() -> usize {
+    std::env::var(FSYNC_BATCH_VAR)
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n >= 1)
+        .unwrap_or(DEFAULT_FSYNC_BATCH)
+}
+
+/// Gancho de prueba: orden en que ocurren las intenciones, los `fsync` de
+/// los lotes y las acciones sobre el sistema de ficheros.
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Probe {
+    Intent(u32),
+    Synced,
+    /// Justo antes del `rename` o el `unlink` del elemento.
+    Act(u32),
+}
+
+#[cfg(test)]
+thread_local! {
+    static PROBES: std::cell::RefCell<Vec<Probe>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+fn probe(p: Probe) {
+    PROBES.with(|v| v.borrow_mut().push(p));
+}
+
+#[cfg(not(test))]
+#[inline(always)]
+fn probe(_: Probe) {}
+
+/// Anota el resultado de un elemento. No espera al disco: lo lleva el
+/// `fsync` del lote siguiente o el de `op_finished`.
+fn write_outcome(j: &mut Journal, item: u32, outcome: &Outcome) -> Result<(), JournalError> {
+    let ev = match outcome {
+        Outcome::Done {
+            result_path,
+            post_check,
+        } => Event::ItemDone {
+            item,
+            result_path: result_path.clone(),
+            post_check: post_check.clone(),
+        },
+        Outcome::Skipped { cause, message } => Event::ItemSkipped {
+            item,
+            reason: cause.code().into(),
+            detail: Some(message.clone()),
+        },
+        Outcome::Failed { error } => Event::ItemFailed {
+            item,
+            error: error.clone(),
+        },
+        Outcome::Would { .. } => return Ok(()),
+    };
+    j.write(ev, false)?;
+    Ok(())
+}
+
+/// `fsync` del journal. El gancho de prueba va pegado a la llamada real:
+/// la traza no puede decir que hubo `fsync` si no lo hubo.
+fn sync(j: &mut Journal) -> Result<(), JournalError> {
+    j.sync()?;
+    probe(Probe::Synced);
+    Ok(())
+}
+
+/// Escritura anticipada por lotes: anexa las intenciones de `batch`
+/// elementos, las lleva al disco con un único `fsync` y después, elemento a
+/// elemento, verifica, actúa (`act`) y anota el resultado.
+///
+/// Nunca se actúa sobre un elemento cuya intención no es durable. La
+/// verificación de cada elemento sigue siendo justo antes de actuar, con su
+/// intención ya escrita: si lo omite, queda anotado como omitido.
+fn run_batched<T>(
+    j: &mut Journal,
+    items: &[T],
+    batch: usize,
+    intent: impl Fn(&T) -> Event,
+    mut act: impl FnMut(&T) -> ItemReport,
+    report: &mut ExecReport,
+) -> Result<(), ExecError> {
+    for chunk in items.chunks(batch.max(1)) {
+        let mut seqs = Vec::with_capacity(chunk.len());
+        for it in chunk {
+            let ev = intent(it);
+            if let Event::ItemIntent { item, .. } = &ev {
+                probe(Probe::Intent(*item));
+            }
+            seqs.push(j.write(ev, false)?);
+        }
+        sync(j)?;
+        let mut synced_at = Instant::now();
+        for (it, seq) in chunk.iter().zip(seqs) {
+            // Invariante de la escritura anticipada; no depende del lote.
+            assert!(j.is_durable(seq), "intención no durable antes de actuar");
+            let r = act(it);
+            write_outcome(j, r.item_id, &r.outcome)?;
+            report.push(r);
+            if synced_at.elapsed() >= RESULTS_SYNC_EVERY {
+                sync(j)?;
+                synced_at = Instant::now();
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Ejecuta un plan aprobado. Exige el cerrojo de ejecución.
 pub fn execute(
     approved: &ApprovedPlan,
     ctx: &ExecContext<'_>,
+    lock: &ExecLock,
+) -> Result<ExecReport, ExecError> {
+    execute_batched(approved, ctx, lock, fsync_batch())
+}
+
+fn execute_batched(
+    approved: &ApprovedPlan,
+    ctx: &ExecContext<'_>,
     _lock: &ExecLock,
+    batch: usize,
 ) -> Result<ExecReport, ExecError> {
     let plan = approved.plan();
     let now = SystemTime::now();
@@ -211,14 +348,16 @@ pub fn execute(
         ..Default::default()
     };
     let g = ctx.guards();
-    for item in plan.items() {
-        // Escritura anticipada: la intención llega al disco antes de actuar.
-        let parent_mode = item
-            .path
-            .parent()
-            .and_then(|p| fs::symlink_metadata(p).ok())
-            .map(|m| m.permissions().mode() & 0o7777);
-        j.write(
+    run_batched(
+        &mut j,
+        plan.items(),
+        batch,
+        |item| {
+            let parent_mode = item
+                .path
+                .parent()
+                .and_then(|p| fs::symlink_metadata(p).ok())
+                .map(|m| m.permissions().mode() & 0o7777);
             Event::ItemIntent {
                 item: item.item_id,
                 action: step(item.action),
@@ -230,41 +369,11 @@ pub fn execute(
                 bytes: item.bytes_allocated,
                 parent_mode,
                 origin: Some(item.origin),
-            },
-            true,
-        )?;
-        let r = run_item(item, ctx, &g);
-        match &r.outcome {
-            Outcome::Done {
-                result_path,
-                post_check,
-            } => j.write(
-                Event::ItemDone {
-                    item: item.item_id,
-                    result_path: result_path.clone(),
-                    post_check: post_check.clone(),
-                },
-                true,
-            )?,
-            Outcome::Skipped { cause, message } => j.write(
-                Event::ItemSkipped {
-                    item: item.item_id,
-                    reason: cause.code().into(),
-                    detail: Some(message.clone()),
-                },
-                true,
-            )?,
-            Outcome::Failed { error } => j.write(
-                Event::ItemFailed {
-                    item: item.item_id,
-                    error: error.clone(),
-                },
-                true,
-            )?,
-            Outcome::Would { .. } => {}
-        }
-        report.push(r);
-    }
+            }
+        },
+        |item| run_item(item, ctx, &g),
+        &mut report,
+    )?;
     j.write(
         Event::OpFinished {
             status: report.status(),
@@ -284,6 +393,7 @@ fn run_item(item: &PlanItem, ctx: &ExecContext<'_>, g: &Guards<'_>) -> ItemRepor
         Ok(v) => v,
         Err(cause) => return skipped(item.item_id, &item.path, item.bytes_allocated, cause),
     };
+    probe(Probe::Act(item.item_id));
     let outcome = match item.action {
         Action::Trash => match ctx.trash.trash(&item.path, v.parent.as_fd(), v.name) {
             Ok(to) => {
@@ -457,7 +567,16 @@ fn check_restorable(u: &ra_history::UndoItem) -> Result<(), SkipCause> {
 pub fn execute_undo(
     plan: &UndoPlan,
     ctx: &ExecContext<'_>,
+    lock: &ExecLock,
+) -> Result<ExecReport, ExecError> {
+    execute_undo_batched(plan, ctx, lock, fsync_batch())
+}
+
+fn execute_undo_batched(
+    plan: &UndoPlan,
+    ctx: &ExecContext<'_>,
     _lock: &ExecLock,
+    batch: usize,
 ) -> Result<ExecReport, ExecError> {
     let now = SystemTime::now();
     let op = ra_plan::new_id(now);
@@ -479,68 +598,45 @@ pub fn execute_undo(
         op_id: Some(op.clone()),
         ..Default::default()
     };
-    for u in &plan.ready {
-        j.write(
-            Event::ItemIntent {
-                item: u.item_id,
-                action: StepAction::Restore,
-                path: u.from.clone(),
-                identity: u.identity,
-                target: Some(u.to.clone()),
-                category: None,
-                regenerable: u.regenerable,
-                bytes: u.bytes,
-                parent_mode: u.parent_mode,
-                origin: None,
-            },
-            true,
-        )?;
-        let outcome = match restore_one(u) {
-            Ok(to) => Outcome::Done {
-                result_path: Some(to),
-                post_check: None,
-            },
-            Err(Ok(cause)) => Outcome::Skipped {
-                message: cause.to_string(),
-                cause,
-            },
-            Err(Err(e)) => Outcome::Failed {
-                error: e.to_string(),
-            },
-        };
-        match &outcome {
-            Outcome::Done { result_path, .. } => j.write(
-                Event::ItemDone {
-                    item: u.item_id,
-                    result_path: result_path.clone(),
+    run_batched(
+        &mut j,
+        &plan.ready,
+        batch,
+        |u| Event::ItemIntent {
+            item: u.item_id,
+            action: StepAction::Restore,
+            path: u.from.clone(),
+            identity: u.identity,
+            target: Some(u.to.clone()),
+            category: None,
+            regenerable: u.regenerable,
+            bytes: u.bytes,
+            parent_mode: u.parent_mode,
+            origin: None,
+        },
+        |u| {
+            let outcome = match restore_one(u) {
+                Ok(to) => Outcome::Done {
+                    result_path: Some(to),
                     post_check: None,
                 },
-                true,
-            )?,
-            Outcome::Skipped { cause, message } => j.write(
-                Event::ItemSkipped {
-                    item: u.item_id,
-                    reason: cause.code().into(),
-                    detail: Some(message.clone()),
+                Err(Ok(cause)) => Outcome::Skipped {
+                    message: cause.to_string(),
+                    cause,
                 },
-                true,
-            )?,
-            Outcome::Failed { error } => j.write(
-                Event::ItemFailed {
-                    item: u.item_id,
-                    error: error.clone(),
+                Err(Err(e)) => Outcome::Failed {
+                    error: e.to_string(),
                 },
-                true,
-            )?,
-            Outcome::Would { .. } => {}
-        }
-        report.push(ItemReport {
-            item_id: u.item_id,
-            path: u.to.clone(),
-            bytes: u.bytes,
-            outcome,
-        });
-    }
+            };
+            ItemReport {
+                item_id: u.item_id,
+                path: u.to.clone(),
+                bytes: u.bytes,
+                outcome,
+            }
+        },
+        &mut report,
+    )?;
     j.write(
         Event::OpFinished {
             status: report.status(),
@@ -565,6 +661,7 @@ fn restore_one(u: &ra_history::UndoItem) -> RestoreResult {
     if !ra_safety::Identity::from_stat(&st).same_after_move(&u.identity) {
         return Err(Ok(SkipCause::IdentityChanged));
     }
+    probe(Probe::Act(u.item_id));
     // Recrear las carpetas padre que falten con los permisos registrados.
     let to_parent_path = u.to.parent().ok_or(Ok(SkipCause::Missing))?;
     if fs::symlink_metadata(to_parent_path).is_err() {
@@ -608,6 +705,10 @@ fn restore_one(u: &ra_history::UndoItem) -> RestoreResult {
 /// llegaron a `op_finished`. Para cada intención sin resultado, mira si el
 /// original sigue en su sitio y, si no, si llegó a su destino (la Papelera
 /// de la operación o la ruta que restauraba).
+///
+/// Con la escritura por lotes puede haber muchas intenciones sin resultado:
+/// las del lote en curso que aún no se habían tocado (siguen en su sitio) y,
+/// tras un corte de corriente, resultados que no llegaron al disco.
 pub fn recover_incomplete(
     ctx: &ExecContext<'_>,
     _lock: &ExecLock,
@@ -631,13 +732,15 @@ pub fn recover_incomplete(
         .filter(|(op, ..)| !finished.contains(op))
     {
         let mut j = Journal::open(ctx.history, op, SystemTime::now())?;
-        let mut resolved: Vec<u32> = Vec::new();
+        let mut resolved: BTreeSet<u32> = BTreeSet::new();
         for r in records.iter().filter(|r| r.op == op) {
             match &r.event {
                 Event::ItemDone { item, .. }
                 | Event::ItemSkipped { item, .. }
                 | Event::ItemFailed { item, .. }
-                | Event::ItemReconciled { item, .. } => resolved.push(*item),
+                | Event::ItemReconciled { item, .. } => {
+                    resolved.insert(*item);
+                }
                 _ => {}
             }
         }
@@ -658,9 +761,22 @@ pub fn recover_incomplete(
                 continue;
             }
             let (state, result_path, detail) = match stat_nofollow_any(path) {
-                Ok((id, _)) if id.same_after_move(identity) => {
+                // Mover y borrar no conservan el objeto en su ruta: si el
+                // mismo objeto (volumen, inode y tipo) sigue ahí, no se tocó.
+                // Puede haber cambiado (la verificación lo habría omitido),
+                // y una carpeta que se borraba puede haber perdido parte de
+                // su contenido.
+                Ok((id, _)) if id.same_object(identity) => {
                     skipped += 1;
-                    ("not_moved", None, None)
+                    let detail = (!id.same_after_move(identity)).then(|| {
+                        if *action == StepAction::Delete && identity.kind == FileKind::Dir {
+                            "sigue en su sitio, pero cambió: puede faltar parte de su contenido"
+                        } else {
+                            "sigue en su sitio, pero cambió desde la revisión"
+                        }
+                        .to_owned()
+                    });
+                    ("not_moved", None, detail)
                 }
                 // Un borrado permanente cuyo original ya no está se hizo.
                 _ if *action == StepAction::Delete => {
@@ -698,6 +814,7 @@ pub fn recover_incomplete(
                     }
                 }
             };
+            // Lo lleva al disco el `fsync` de `op_finished`.
             j.write(
                 Event::ItemReconciled {
                     item: *item,
@@ -705,7 +822,7 @@ pub fn recover_incomplete(
                     result_path,
                     detail,
                 },
-                true,
+                false,
             )?;
         }
         j.write(
@@ -845,5 +962,346 @@ mod tests {
             assert_eq!(v["reason"], code);
             assert!(v["message"].as_str().is_some_and(|m| !m.is_empty()));
         }
+    }
+}
+
+/// Escritura anticipada por lotes (T-08, RNF-06).
+#[cfg(test)]
+mod batch_tests {
+    use std::collections::BTreeMap;
+
+    use ra_catalog::{Candidate, Risk, RuleAction, ScanResult};
+    use ra_history::{ItemState, manifest_for, prepare_undo};
+    use ra_plan::{PlanInputs, Selection};
+    use ra_safety::fingerprint::fingerprint_path;
+    use ra_safety::{Config, Exclusions, Origin, ProtectedList};
+
+    use super::*;
+
+    struct Fx {
+        _tmp: tempfile::TempDir,
+        home: PathBuf,
+        logs: PathBuf,
+        history: HistoryPaths,
+        state: PathBuf,
+        protected: ProtectedList,
+        exclusions: Exclusions,
+        apps: AppProbe,
+        trash: TrashBackend,
+        trash_dir: PathBuf,
+    }
+
+    impl Fx {
+        fn new() -> Fx {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            // Canónica: la verificación no sigue enlaces (/var → /private/var).
+            let root = fs::canonicalize(tmp.path()).expect("canon");
+            let (home, state, trash_dir) = (root.join("home"), root.join("state"), root.join("t"));
+            let logs = home.join("Library/Logs");
+            for d in [&logs, &state, &trash_dir] {
+                fs::create_dir_all(d).expect("mkdir");
+            }
+            Fx {
+                history: HistoryPaths::new(&state),
+                protected: ProtectedList::embedded(&home, &state),
+                exclusions: Exclusions::compile(&Config::default(), &home).expect("exclusiones"),
+                apps: AppProbe::snapshot(&BTreeSet::<String>::new()),
+                trash: TrashBackend::Dir(trash_dir.clone()),
+                _tmp: tmp,
+                home,
+                logs,
+                state,
+                trash_dir,
+            }
+        }
+
+        fn ctx(&self) -> ExecContext<'_> {
+            ExecContext {
+                history: &self.history,
+                protected: &self.protected,
+                exclusions: &self.exclusions,
+                apps: &self.apps,
+                trash: &self.trash,
+                by: "test",
+            }
+        }
+
+        /// `n` ficheros y una carpeta con dos ficheros dentro (la última).
+        fn files(&self, n: usize) -> Vec<PathBuf> {
+            let mut out: Vec<PathBuf> = (0..n)
+                .map(|i| {
+                    let p = self.logs.join(format!("f-{i:02}.log"));
+                    fs::write(&p, b"contenido").expect("write");
+                    p
+                })
+                .collect();
+            let d = self.logs.join("z-dir");
+            fs::create_dir(&d).expect("mkdir");
+            for f in ["a.log", "b.log"] {
+                fs::write(d.join(f), b"x").expect("write");
+            }
+            out.push(d);
+            out
+        }
+
+        fn approved(&self, paths: &[PathBuf], action: Action) -> ApprovedPlan {
+            let candidates = paths
+                .iter()
+                .map(|p| Candidate {
+                    path: p.clone(),
+                    rule_id: "test".into(),
+                    rule_version: 1,
+                    cat: "CAT-03".into(),
+                    risk: Risk::Safe,
+                    regenerable: false,
+                    preselected: true,
+                    action: RuleAction::Trash,
+                    identity: stat_nofollow_any(p).expect("lstat").0,
+                    fingerprint: Some(fingerprint_path(p).expect("huella")),
+                    apps: vec![],
+                    block: None,
+                })
+                .collect();
+            let scan = ScanResult {
+                catalog_version: "test".into(),
+                candidates,
+                roots: vec![],
+            };
+            let plan = Plan::build(&PlanInputs {
+                scan: &scan,
+                home: &self.home,
+                protected: &self.protected,
+                exclusions: &self.exclusions,
+                selection: &Selection::default(),
+                action,
+                origin: Origin::ExplicitSelection,
+                now: SystemTime::now(),
+            });
+            assert_eq!(plan.items().len(), paths.len(), "{:?}", plan.skipped());
+            let hash = plan.plan_hash().to_owned();
+            plan.approve(&hash, SystemTime::now()).expect("aprobar")
+        }
+
+        fn lock(&self) -> ExecLock {
+            ExecLock::try_acquire(&self.state)
+                .expect("cerrojo")
+                .expect("libre")
+        }
+    }
+
+    fn take_probes() -> Vec<Probe> {
+        PROBES.with(|v| std::mem::take(&mut *v.borrow_mut()))
+    }
+
+    /// Reproduce la traza: una intención es durable desde el primer `fsync`
+    /// posterior, y ningún `rename` ni `unlink` puede llegar antes. Devuelve
+    /// los elementos sobre los que se actuó y cuántos lotes hubo.
+    fn check_write_ahead(probes: &[Probe]) -> (Vec<u32>, usize) {
+        let (mut pending, mut durable) = (BTreeSet::new(), BTreeSet::new());
+        let mut acted = Vec::new();
+        let mut batches = 0;
+        let mut prev = None;
+        for p in probes {
+            match *p {
+                Probe::Intent(i) => {
+                    if !matches!(prev, Some(Probe::Intent(_))) {
+                        batches += 1;
+                    }
+                    pending.insert(i);
+                }
+                Probe::Synced => durable.append(&mut pending),
+                Probe::Act(i) => {
+                    assert!(
+                        durable.contains(&i),
+                        "se actuó sobre {i} antes del fsync de su intención: {probes:?}"
+                    );
+                    acted.push(i);
+                }
+            }
+            prev = Some(*p);
+        }
+        (acted, batches)
+    }
+
+    /// Estado de cada elemento en el manifiesto de `op`.
+    fn states(fx: &Fx, op: &str) -> BTreeMap<u32, ItemState> {
+        let (records, _) = read_journal(&fx.history).expect("journal");
+        let m = manifest_for(&records, op).expect("manifiesto");
+        m.items.into_iter().map(|i| (i.item_id, i.state)).collect()
+    }
+
+    /// Con cualquier tamaño de lote, cada `rename` (Papelera) y cada
+    /// `unlink` (borrado permanente) llega después del `fsync` de su
+    /// intención; los elementos que la verificación omite, con la intención
+    /// ya escrita, quedan anotados como omitidos.
+    #[test]
+    fn no_rename_or_unlink_before_its_intent_is_durable() {
+        for action in [Action::Trash, Action::Delete] {
+            for batch in [1, 2, 3, 7, 100] {
+                let fx = Fx::new();
+                let paths = fx.files(6);
+                let approved = fx.approved(&paths, action);
+                // Cambian después de la revisión: la verificación los omite.
+                fs::write(&paths[1], b"otro contenido").expect("write");
+                fs::remove_file(&paths[4]).expect("rm");
+                take_probes();
+                let r = execute_batched(&approved, &fx.ctx(), &fx.lock(), batch).expect("ejecutar");
+                let (acted, batches) = check_write_ahead(&take_probes());
+                let ctx = format!("{action:?}, lote {batch}");
+                assert_eq!(batches, paths.len().div_ceil(batch), "{ctx}");
+                assert_eq!((r.done, r.skipped, r.failed), (5, 2, 0), "{ctx}");
+                assert_eq!(acted, vec![1, 3, 4, 6, 7], "{ctx}");
+                let st = states(&fx, r.op_id.as_deref().expect("op"));
+                assert_eq!(
+                    st[&2],
+                    ItemState::Skipped {
+                        reason: "identity_changed".into()
+                    },
+                    "{ctx}"
+                );
+                assert_eq!(
+                    st[&5],
+                    ItemState::Skipped {
+                        reason: "missing".into()
+                    },
+                    "{ctx}"
+                );
+                let done = match action {
+                    Action::Trash => ItemState::Trashed,
+                    Action::Delete => ItemState::Deleted,
+                };
+                for i in [1, 3, 4, 6, 7] {
+                    assert_eq!(st[&i], done, "{ctx}: elemento {i}");
+                }
+            }
+        }
+    }
+
+    /// Deshacer también restaura (`rename`) solo con la intención durable.
+    #[test]
+    fn undo_restores_only_after_its_intent_is_durable() {
+        for batch in [1, 2, 100] {
+            let fx = Fx::new();
+            let paths = fx.files(4);
+            let approved = fx.approved(&paths, Action::Trash);
+            let r = execute_batched(&approved, &fx.ctx(), &fx.lock(), 3).expect("ejecutar");
+            let op = r.op_id.expect("op");
+            let (records, _) = read_journal(&fx.history).expect("journal");
+            let plan = prepare_undo(&records, &op, None).expect("deshacer");
+            assert_eq!(plan.ready.len(), paths.len());
+            take_probes();
+            let u = execute_undo_batched(&plan, &fx.ctx(), &fx.lock(), batch).expect("deshacer");
+            let (acted, batches) = check_write_ahead(&take_probes());
+            assert_eq!(batches, paths.len().div_ceil(batch), "lote {batch}");
+            assert_eq!(acted.len(), paths.len(), "lote {batch}");
+            assert_eq!(u.done, paths.len() as u64, "lote {batch}");
+            for p in &paths {
+                assert!(p.exists(), "lote {batch}: {p:?} no se restauró");
+            }
+        }
+    }
+
+    /// Un lote cortado: todas sus intenciones en el disco y ningún
+    /// resultado (un corte de corriente puede perder los que no se
+    /// sincronizaron).
+    fn interrupted_batch(fx: &Fx, op: &str, approved: &ApprovedPlan) {
+        let plan = approved.plan();
+        let mut j = Journal::open(&fx.history, op, SystemTime::now()).expect("journal");
+        j.write(
+            Event::OpStarted {
+                kind: OpKind::Clean,
+                mode: match plan.action() {
+                    Action::Trash => OpMode::Trash,
+                    Action::Delete => OpMode::Permanent,
+                },
+                plan_hash: Some(plan.plan_hash().to_owned()),
+                undo_of: None,
+                items: plan.totals().items,
+                bytes: plan.totals().bytes_allocated,
+                by: "test".into(),
+                trash: fx.trash.describe(),
+            },
+            true,
+        )
+        .expect("start");
+        for item in plan.items() {
+            let ev = Event::ItemIntent {
+                item: item.item_id,
+                action: step(item.action),
+                path: item.path.clone(),
+                identity: item.identity,
+                target: None,
+                category: Some(item.category.clone()),
+                regenerable: item.regenerable,
+                bytes: item.bytes_allocated,
+                parent_mode: None,
+                origin: Some(item.origin),
+            };
+            j.write(ev, false).expect("intent");
+        }
+        j.sync().expect("sync");
+    }
+
+    fn not_moved() -> ItemState {
+        ItemState::Skipped {
+            reason: "interrupted_before_action".into(),
+        }
+    }
+
+    /// `recover_incomplete` resuelve a la vez todas las intenciones sin
+    /// resultado de un lote, y lo que la verificación omitió (porque cambió)
+    /// queda omitido, no `unknown`.
+    #[test]
+    fn recovery_resolves_every_pending_intent_of_a_trash_batch() {
+        let fx = Fx::new();
+        let paths = fx.files(3);
+        let approved = fx.approved(&paths, Action::Trash);
+        interrupted_batch(&fx, "op-lote", &approved);
+        // 1: movido sin resultado anotado. 2: la verificación lo omitió
+        // porque cambió, y su `item_skipped` no llegó al disco. 3 y 4 (la
+        // carpeta): el corte llegó antes.
+        fs::rename(&paths[0], fx.trash_dir.join("f-00.log")).expect("mover");
+        fs::write(&paths[1], b"cambiado").expect("write");
+        let recovered = recover_incomplete(&fx.ctx(), &fx.lock()).expect("recover");
+        assert_eq!(recovered, vec!["op-lote"]);
+        let st = states(&fx, "op-lote");
+        assert_eq!(st[&1], ItemState::Trashed);
+        for i in [2, 3, 4] {
+            assert_eq!(st[&i], not_moved(), "elemento {i}");
+        }
+        assert!(
+            recover_incomplete(&fx.ctx(), &fx.lock())
+                .expect("recover")
+                .is_empty()
+        );
+    }
+
+    /// En un borrado permanente cortado, lo que sigue en su sitio (aunque
+    /// sea una carpeta a medio borrar) no se anota como borrado.
+    #[test]
+    fn recovery_of_a_permanent_batch_never_calls_deleted_what_is_still_there() {
+        let fx = Fx::new();
+        let paths = fx.files(2);
+        let approved = fx.approved(&paths, Action::Delete);
+        interrupted_batch(&fx, "op-borrado", &approved);
+        // 1: borrado. 3: carpeta a medio borrar. 2: no se llegó a tocar.
+        fs::remove_file(&paths[0]).expect("rm");
+        fs::remove_file(paths[2].join("a.log")).expect("rm");
+        recover_incomplete(&fx.ctx(), &fx.lock()).expect("recover");
+        let st = states(&fx, "op-borrado");
+        assert_eq!(st[&1], ItemState::Deleted);
+        assert_eq!(st[&2], not_moved());
+        assert_eq!(st[&3], not_moved());
+        let (records, _) = read_journal(&fx.history).expect("journal");
+        let detail = records.iter().find_map(|r| match &r.event {
+            Event::ItemReconciled {
+                item: 3, detail, ..
+            } => detail.clone(),
+            _ => None,
+        });
+        assert!(
+            detail.is_some_and(|d| d.contains("puede faltar parte de su contenido")),
+            "la carpeta a medio borrar debe decirlo"
+        );
     }
 }
