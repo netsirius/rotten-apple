@@ -434,12 +434,43 @@ pub struct UndoItem {
     pub parent_mode: Option<u32>,
 }
 
+/// Por qué un elemento ya no se puede restaurar. El JSON lleva el código
+/// (`reason`), no un texto: el CLI lo traduce.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(tag = "reason", rename_all = "snake_case")]
+pub enum NotRecoverableReason {
+    /// Ya no está en la Papelera, o ha cambiado.
+    #[error("it is no longer in the Trash or it has changed")]
+    NotInTrash,
+    #[error("it was deleted permanently")]
+    Deleted,
+    #[error("it was already restored")]
+    AlreadyRestored,
+    /// Paradero desconocido tras un cierre abrupto (con el motivo, si se
+    /// sabe: p. ej. la Papelera no se pudo leer).
+    #[error("whereabouts unknown after an abrupt shutdown{}", detail.as_deref().map(|d| format!(": {d}")).unwrap_or_default())]
+    UnknownWhereabouts {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
+    /// No se llegó a mover (omitido, fallido o interrumpido antes).
+    #[error("it was never moved")]
+    NeverMoved,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotRecoverable {
+    pub item_id: u32,
+    #[serde(flatten)]
+    pub reason: NotRecoverableReason,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UndoPlan {
     pub undo_of: String,
     pub ready: Vec<UndoItem>,
     /// Elementos pedidos que ya no se pueden restaurar, con el motivo.
-    pub not_recoverable: Vec<(u32, String)>,
+    pub not_recoverable: Vec<NotRecoverable>,
 }
 
 /// Por qué no se puede preparar un deshacer.
@@ -497,27 +528,31 @@ pub fn prepare_undo(
                     });
                 }
             }
-            ItemState::Trashed => plan
-                .not_recoverable
-                .push((i.item_id, "ya no está en la Papelera o ha cambiado".into())),
-            ItemState::Deleted => plan
-                .not_recoverable
-                .push((i.item_id, "borrado permanentemente".into())),
-            ItemState::Restored { .. } => plan
-                .not_recoverable
-                .push((i.item_id, "ya se restauró".into())),
-            ItemState::Unknown { detail } => plan.not_recoverable.push((
-                i.item_id,
-                match detail {
-                    Some(d) => format!("paradero desconocido tras un cierre abrupto: {d}"),
-                    None => "paradero desconocido tras un cierre abrupto".into(),
+            ItemState::Trashed => plan.not_recoverable.push(NotRecoverable {
+                item_id: i.item_id,
+                reason: NotRecoverableReason::NotInTrash,
+            }),
+            ItemState::Deleted => plan.not_recoverable.push(NotRecoverable {
+                item_id: i.item_id,
+                reason: NotRecoverableReason::Deleted,
+            }),
+            ItemState::Restored { .. } => plan.not_recoverable.push(NotRecoverable {
+                item_id: i.item_id,
+                reason: NotRecoverableReason::AlreadyRestored,
+            }),
+            ItemState::Unknown { detail } => plan.not_recoverable.push(NotRecoverable {
+                item_id: i.item_id,
+                reason: NotRecoverableReason::UnknownWhereabouts {
+                    detail: detail.clone(),
                 },
-            )),
+            }),
             ItemState::Pending | ItemState::Skipped { .. } | ItemState::Failed { .. } => {
                 // No se movió: no hay nada que deshacer. Solo se informa si se pidió.
                 if items.is_some() {
-                    plan.not_recoverable
-                        .push((i.item_id, "no se llegó a mover".into()));
+                    plan.not_recoverable.push(NotRecoverable {
+                        item_id: i.item_id,
+                        reason: NotRecoverableReason::NeverMoved,
+                    });
                 }
             }
         }

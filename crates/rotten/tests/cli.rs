@@ -70,7 +70,7 @@ fn clean_dry_run_json_produces_a_valid_plan_and_changes_nothing() {
     // CAT-01 queda sin marcar.
     assert_eq!(plan.not_selected()["CAT-01"].items, 1);
     // La simulación prevé mover cada elemento.
-    let preview = doc["preview"]["items"].as_array().expect("items");
+    let preview = doc["report"]["items"].as_array().expect("items");
     assert_eq!(preview.len(), 3);
     assert!(preview.iter().all(|i| i["action"] == "would_trash"));
 
@@ -181,7 +181,13 @@ fn undo_by_items_and_when_trash_was_emptied() {
     let (code, doc) = fx.run(&["undo", "--yes", "--json"]);
     assert_eq!(code, 4, "{doc:#}");
     assert_eq!(doc["report"]["done"], 1);
-    assert_eq!(doc["not_recoverable"].as_array().expect("lista").len(), 2);
+    assert_eq!(
+        doc["plan"]["not_recoverable"]
+            .as_array()
+            .expect("lista")
+            .len(),
+        2
+    );
     // Dos restaurados y uno ya no está: «restaurada en parte».
     let (_, hist) = fx.run(&["history", "--json"]);
     assert_eq!(hist["operations"][2]["undo_state"], "partly_restored");

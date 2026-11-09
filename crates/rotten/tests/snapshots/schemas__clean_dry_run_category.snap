@@ -79,7 +79,7 @@ expression: "redact(fx, &doc)"
       "items": 1
     }
   },
-  "preview": {
+  "report": {
     "bytes_done": 0,
     "done": 0,
     "dry_run": true,

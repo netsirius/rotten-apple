@@ -5,7 +5,30 @@ expression: "redact(fx, &doc)"
 {
   "command": "undo",
   "dry_run": false,
-  "not_recoverable": [],
+  "plan": {
+    "not_recoverable": [],
+    "ready": [
+      {
+        "bytes": 4096,
+        "from": "[TRASH]/old-app",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 2,
+        "parent_mode": "[parent_mode]",
+        "regenerable": false,
+        "to": "[HOME]/Library/Logs/old-app"
+      }
+    ],
+    "undo_of": "[undo_of]"
+  },
   "report": {
     "bytes_done": 4096,
     "done": 1,
@@ -24,6 +47,5 @@ expression: "redact(fx, &doc)"
     "skipped": 0,
     "would": 0
   },
-  "schema_version": 2,
-  "undo_of": "[undo_of]"
+  "schema_version": 2
 }

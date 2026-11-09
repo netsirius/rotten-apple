@@ -22,7 +22,9 @@ pub use env::{BUNDLE_ID, Env, EnvError};
 pub use error::{CoreError, ErrorClass};
 pub use ra_catalog::{Catalog, Localized, Risk};
 pub use ra_exec::{ExecReport, ItemReport, Outcome, SkipCause, TrashBackend};
-pub use ra_history::{HistoryKind, OpSummary, UndoError, UndoPlan, UndoState};
+pub use ra_history::{
+    HistoryKind, NotRecoverable, NotRecoverableReason, OpSummary, UndoError, UndoPlan, UndoState,
+};
 pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};
 pub use ra_safety::{ConfigState, Exclusion, FileKind, Origin, RunningApps, SystemApps};
 pub use scan::{CategorySummary, ScanReport, ScanStatus};

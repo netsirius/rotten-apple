@@ -54,7 +54,7 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
         if ui.json {
             ui.emit(
                 COMMAND,
-                json!({ "action": "put", "dry_run": true, "plan": preview.plan, "preview": preview.dry_run }),
+                json!({ "action": "put", "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
             );
         } else {
             print_plan(ui, &preview.plan, &preview.dry_run);

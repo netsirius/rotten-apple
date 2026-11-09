@@ -23,7 +23,7 @@
 
     "dry_run": {
       "type": "object",
-      "required": ["schema_version", "command", "action", "dry_run", "plan", "preview"],
+      "required": ["schema_version", "command", "action", "dry_run", "plan", "report"],
       "additionalProperties": false,
       "properties": {
         "schema_version": { "const": 2 },
@@ -31,7 +31,10 @@
         "action": { "const": "put" },
         "dry_run": { "const": true },
         "plan": { "$ref": "#/$defs/plan" },
-        "preview": { "$ref": "#/$defs/exec_report" }
+        "report": {
+          "description": "Simulación de lo que haría (outcome «would»). En v1 se llamaba «preview».",
+          "$ref": "#/$defs/exec_report"
+        }
       }
     },
     "executed": {

@@ -154,7 +154,7 @@ expression: "redact(fx, &doc)"
       "items": 3
     }
   },
-  "preview": {
+  "report": {
     "bytes_done": 0,
     "done": 0,
     "dry_run": true,

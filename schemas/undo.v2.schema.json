@@ -18,46 +18,72 @@
 
     "dry_run": {
       "type": "object",
-      "required": ["schema_version", "command", "dry_run", "undo_of", "plan", "not_recoverable", "preview"],
+      "required": ["schema_version", "command", "dry_run", "plan", "report"],
       "additionalProperties": false,
       "properties": {
         "schema_version": { "const": 2 },
         "command": { "const": "undo" },
         "dry_run": { "const": true },
-        "undo_of": { "$ref": "#/$defs/op_id" },
-        "plan": {
-          "description": "Elementos listos para restaurar. Ojo: en `clean`, «plan» es el documento de plan entero (anotado para T-03).",
-          "type": "array",
-          "items": { "$ref": "#/$defs/undo_item" }
-        },
-        "not_recoverable": { "$ref": "#/$defs/not_recoverable" },
-        "preview": { "$ref": "#/$defs/exec_report" }
+        "plan": { "$ref": "#/$defs/undo_plan" },
+        "report": {
+          "description": "Simulación de lo que haría (outcome «would»). En v1 se llamaba «preview».",
+          "$ref": "#/$defs/exec_report"
+        }
       }
     },
     "executed": {
       "type": "object",
-      "required": ["schema_version", "command", "dry_run", "undo_of", "not_recoverable", "report"],
+      "required": ["schema_version", "command", "dry_run", "plan", "report"],
       "additionalProperties": false,
       "properties": {
         "schema_version": { "const": 2 },
         "command": { "const": "undo" },
         "dry_run": { "const": false },
-        "undo_of": { "$ref": "#/$defs/op_id" },
-        "not_recoverable": { "$ref": "#/$defs/not_recoverable" },
+        "plan": { "$ref": "#/$defs/undo_plan" },
         "report": { "$ref": "#/$defs/exec_report" }
       }
     },
-    "not_recoverable": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["item_id", "reason"],
-        "additionalProperties": false,
-        "properties": {
-          "item_id": { "type": "integer", "minimum": 1 },
-          "reason": { "type": "string" }
+    "undo_plan": {
+      "description": "Plan de deshacer: igual con y sin --dry-run. En v1, undo_of y not_recoverable iban sueltos y «plan» era solo la lista ready.",
+      "type": "object",
+      "required": ["undo_of", "ready", "not_recoverable"],
+      "additionalProperties": false,
+      "properties": {
+        "undo_of": { "$ref": "#/$defs/op_id" },
+        "ready": {
+          "description": "Elementos listos para restaurar.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/undo_item" }
+        },
+        "not_recoverable": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/not_recoverable" }
         }
       }
+    },
+    "not_recoverable": {
+      "description": "Elemento pedido que ya no se puede restaurar. «reason» es un código estable; el texto lo pone el CLI.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["item_id", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "item_id": { "type": "integer", "minimum": 1 },
+            "reason": { "enum": ["not_in_trash", "deleted", "already_restored", "never_moved"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["item_id", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "item_id": { "type": "integer", "minimum": 1 },
+            "reason": { "const": "unknown_whereabouts" },
+            "detail": { "type": "string" }
+          }
+        }
+      ]
     },
     "identity": {
       "type": "object",

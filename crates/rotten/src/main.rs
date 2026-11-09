@@ -367,7 +367,7 @@ fn clean(
         if ui.json {
             ui.emit(
                 "clean",
-                json!({ "dry_run": true, "plan": preview.plan, "preview": preview.dry_run }),
+                json!({ "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
             );
         } else {
             print_plan(ui, &preview.plan, &preview.dry_run);
@@ -512,12 +512,6 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
         Err(e) => return ui.core_error("undo", &e),
     };
     let home = &core.env().home;
-    let not_recoverable: Vec<Value> = preview
-        .plan
-        .not_recoverable
-        .iter()
-        .map(|(id, why)| json!({ "item_id": id, "reason": why }))
-        .collect();
     if !ui.json {
         ui.say(format!(
             "{} {} · {} {}",
@@ -529,10 +523,12 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
         for u in &preview.plan.ready {
             ui.say(format!("  [{}] {}", u.item_id, tilde(&u.to, home)));
         }
-        for (id, why) in &preview.plan.not_recoverable {
+        for n in &preview.plan.not_recoverable {
             ui.say(format!(
-                "  [{id}] {} — {why}",
-                ui.t("no recuperable", "not recoverable")
+                "  [{}] {} — {}",
+                n.item_id,
+                ui.t("no recuperable", "not recoverable"),
+                n.reason
             ));
         }
     }
@@ -540,7 +536,7 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
         if ui.json {
             ui.emit(
                 "undo",
-                json!({ "dry_run": true, "undo_of": preview.plan.undo_of, "plan": preview.plan.ready, "not_recoverable": not_recoverable, "preview": preview.dry_run }),
+                json!({ "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
             );
         } else {
             ui.say(ui.t(
@@ -555,7 +551,7 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
         if ui.json {
             ui.emit(
                 "undo",
-                json!({ "dry_run": false, "undo_of": preview.plan.undo_of, "not_recoverable": not_recoverable, "report": ExecReport::default() }),
+                json!({ "dry_run": false, "plan": preview.plan, "report": ExecReport::default() }),
             );
         } else {
             ui.say(ui.t("Nada que restaurar.", "Nothing to restore."));
@@ -582,7 +578,7 @@ fn undo(ui: &Ui, core: &Core, op: Option<String>, items: Vec<u32>, dry_run: bool
     if ui.json {
         ui.emit(
             "undo",
-            json!({ "dry_run": false, "undo_of": preview.plan.undo_of, "not_recoverable": not_recoverable, "report": report }),
+            json!({ "dry_run": false, "plan": preview.plan, "report": report }),
         );
     } else {
         for r in &report.items {
