@@ -20,8 +20,7 @@ pub use journal::{
 };
 pub use manifest::{
     HistoryKind, ItemState, Manifest, ManifestItem, NotRecoverable, NotRecoverableReason,
-    OpSummary, UndoError, UndoItem, UndoPlan, UndoState,
-    list_ops, manifest_for, prepare_undo,
+    OpSummary, UndoError, UndoItem, UndoPlan, UndoState, list_ops, manifest_for, prepare_undo,
 };
 
 use std::path::{Path, PathBuf};

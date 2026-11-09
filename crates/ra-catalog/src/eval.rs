@@ -280,7 +280,8 @@ fn evaluate(
             });
         }
     }
-    opts.apps.check(&c.apps)
+    opts.apps
+        .check(&c.apps)
         .map_err(|detail| Block::App { detail })?;
     Ok(())
 }

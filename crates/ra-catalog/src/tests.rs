@@ -193,8 +193,16 @@ fn lints_reject_dangerous_rules() {
 fn rule_texts_are_complete_and_translated() {
     let ok = rule_with(r#"roots = ["~/Library/Caches"]"#);
     for (from, to, why) in [
-        (r#"why_risk = { es = "por qué", en = "why" }"#, r#"why_risk = { es = "por qué", en = " " }"#, "vacío"),
-        (r#"if_deleted = { es = "qué pasa", en = "what happens" }"#, r#"if_deleted = { es = "igual", en = "igual" }"#, "sin traducir"),
+        (
+            r#"why_risk = { es = "por qué", en = "why" }"#,
+            r#"why_risk = { es = "por qué", en = " " }"#,
+            "vacío",
+        ),
+        (
+            r#"if_deleted = { es = "qué pasa", en = "what happens" }"#,
+            r#"if_deleted = { es = "igual", en = "igual" }"#,
+            "sin traducir",
+        ),
         (r#"regenerates = { es = "sí", en = "yes" }"#, "", "falta"),
     ] {
         let bad = ok.replace(from, to);
@@ -210,7 +218,12 @@ fn rule_texts_are_complete_and_translated() {
             "{}: «regenerates» no coincide con «regenerable»",
             r.id
         );
-        assert_eq!(r.regenerates.es.starts_with("Sí"), r.regenerable, "{}", r.id);
+        assert_eq!(
+            r.regenerates.es.starts_with("Sí"),
+            r.regenerable,
+            "{}",
+            r.id
+        );
     }
 }
 

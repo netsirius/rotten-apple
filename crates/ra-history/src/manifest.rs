@@ -491,7 +491,8 @@ pub fn prepare_undo(
     op: &str,
     items: Option<&[u32]>,
 ) -> Result<UndoPlan, UndoError> {
-    let m = manifest_for(records, op).ok_or_else(|| UndoError::UnknownOperation { op: op.into() })?;
+    let m =
+        manifest_for(records, op).ok_or_else(|| UndoError::UnknownOperation { op: op.into() })?;
     if m.kind != OpKind::Clean {
         return Err(UndoError::NotUndoable { op: op.into() });
     }

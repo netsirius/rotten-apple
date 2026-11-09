@@ -110,7 +110,9 @@ impl Exclusion {
             Exclusion::Glob(g) => {
                 let expanded = expand_glob_home(g, probe_home);
                 if !expanded.starts_with('/') {
-                    return Err(format!("the pattern must be absolute or start with ~/: {g}"));
+                    return Err(format!(
+                        "the pattern must be absolute or start with ~/: {g}"
+                    ));
                 }
                 GlobBuilder::new(&expanded)
                     .build()
