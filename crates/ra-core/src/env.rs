@@ -6,6 +6,7 @@
 //!   `HOME`). Las pruebas la apuntan a un directorio temporal.
 //! - `ROTTEN_STATE_DIR`: estado de la app (configuración, journal,
 //!   manifiestos). Por defecto `<home>/Library/Application Support/<bundle-id>`.
+//!   Con ella, el enlace `~/.config/rotten/config.toml` no aplica.
 //! - `ROTTEN_TRASH_DIR`: en lugar de la Papelera del sistema, mover a esta
 //!   carpeta (mismo volumen, sin sobrescribir). Para pruebas y entornos
 //!   aislados; `doctor` lo indica.
@@ -15,8 +16,9 @@ use std::path::{Path, PathBuf};
 
 use crate::TrashBackend;
 
-/// Bundle ID provisional (D-08: falta fijarlo antes de la beta).
-pub const BUNDLE_ID: &str = "io.github.netsirius.RottenApple";
+/// Bundle ID provisional (D-08: falta fijarlo antes de la beta). Vive en
+/// `ra-safety`, que protege la carpeta del log técnico que sale de él.
+pub use ra_safety::protected::BUNDLE_ID;
 
 #[derive(Debug, Clone)]
 pub struct Env {
@@ -27,7 +29,11 @@ pub struct Env {
     pub state_dir: PathBuf,
     pub config_path: PathBuf,
     /// Enlace a `config_path` en `<home>/.config/rotten/config.toml` (07 §2).
-    pub config_link_path: PathBuf,
+    /// `None` con `ROTTEN_STATE_DIR`: el estado no es el de la app, así que
+    /// el enlace ni se crea ni se comprueba (un enlace al estado normal no
+    /// es un conflicto, y no se crea uno en el `~/.config` real apuntando a
+    /// un estado de pruebas).
+    pub config_link_path: Option<PathBuf>,
     pub trash: TrashBackend,
 }
 
@@ -71,6 +77,7 @@ impl Env {
             (None, None) => return Err(EnvError::NoHome),
         };
         let home = canonical_dir(home_source, &home_raw)?;
+        let state_override = var("ROTTEN_STATE_DIR").is_some();
         let state_dir = match var("ROTTEN_STATE_DIR") {
             Some(s) => {
                 let p = PathBuf::from(&s);
@@ -91,13 +98,16 @@ impl Env {
         };
         let mut env = Self::new(home, state_dir, trash);
         env.home_source = home_source;
+        if state_override {
+            env.config_link_path = None;
+        }
         Ok(env)
     }
 
     /// Entorno explícito (pruebas). `home` debe ser canónica.
     pub fn new(home: PathBuf, state_dir: PathBuf, trash: TrashBackend) -> Self {
         let config_path = state_dir.join("config.toml");
-        let config_link_path = home.join(".config/rotten/config.toml");
+        let config_link_path = Some(home.join(".config/rotten/config.toml"));
         Self {
             home,
             home_source: "explicit",

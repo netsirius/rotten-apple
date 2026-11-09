@@ -55,7 +55,9 @@ pub enum CoreError {
     #[error("the path must be absolute: {}", .0.display())]
     RelativePath(PathBuf),
     /// `config.toml` no se puede usar: no se actúa ni se reescribe.
-    #[error("{} is corrupt ({reason}): nothing is done until it is fixed", path.display())]
+    /// El mensaje lleva solo la primera línea del motivo (dónde falla); el
+    /// resto, que puede citar el TOML, va en [`CoreError::detail`].
+    #[error("{} is corrupt ({}): nothing is done until it is fixed", path.display(), first_line(reason))]
     ConfigCorrupt { path: PathBuf, reason: String },
     /// En la ruta del enlace a la configuración hay otra cosa: no se actúa
     /// ni se reescribe la configuración (RF-SEG-05 c).
@@ -184,6 +186,26 @@ impl CoreError {
             E::TrashUnreadable { .. } | E::EmptyUnreadable { .. } => "trash_unreadable",
             E::FreePlanChanged { .. } => "plan_changed",
             E::TrashGone { .. } => "trash_gone",
+        }
+    }
+}
+
+fn first_line(s: &str) -> &str {
+    s.lines().next().unwrap_or_default()
+}
+
+impl CoreError {
+    /// Detalle opcional para el JSON (`error.detail`): lo que no cabe en una
+    /// línea del mensaje, como el fragmento del TOML de una configuración
+    /// corrupta.
+    pub fn detail(&self) -> Option<String> {
+        match self {
+            CoreError::ConfigCorrupt { reason, .. } => {
+                let rest: Vec<&str> = reason.lines().skip(1).collect();
+                let rest = rest.join("\n");
+                (!rest.trim().is_empty()).then_some(rest)
+            }
+            _ => None,
         }
     }
 }

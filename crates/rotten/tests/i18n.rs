@@ -111,14 +111,12 @@ fn scenario<T>(mut run: impl FnMut(&Fx, &[&str]) -> T) -> Vec<(String, T)> {
     step(&fx, &["config", "get", "language"]);
     step(&fx, &["config", "get", "exclusions.paths"]);
     step(&fx, &["config", "get", "nope"]);
+    // `language = es` cambiaría el idioma de lo que sigue (I2): aquí solo
+    // se simula; el cambio de idioma se prueba en `config.rs`.
     step(&fx, &["config", "set", "language", "es", "--dry-run"]);
-    step(&fx, &["config", "set", "language", "es"]);
-    step(&fx, &["config", "set", "language", "es"]);
-    step(
-        &fx,
-        &["config", "set", "journal.retention_days", "90", "--dry-run"],
-    );
-    step(&fx, &["config", "set", "journal.retention_days", "0"]);
+    step(&fx, &["config", "set", "language", "system"]);
+    step(&fx, &["config", "set", "language", "system"]);
+    step(&fx, &["config", "get", "journal.retention_days"]);
     step(&fx, &["config", "set", "language", "fr"]);
     step(&fx, &["config", "set", "exclusions.paths", "~/x"]);
     step(&fx, &["config", "set", "nope", "1"]);

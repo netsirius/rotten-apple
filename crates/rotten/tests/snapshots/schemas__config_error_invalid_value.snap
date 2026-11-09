@@ -7,7 +7,7 @@ expression: "redact(fx, &doc)"
   "error": {
     "code": "invalid_config_value",
     "exit_code": 2,
-    "message": "invalid value «0» for «journal.retention_days»: expected a whole number from 1 to 3650"
+    "message": "invalid value «fr» for «language»: expected one of: system, es, en"
   },
   "schema_version": 2
 }

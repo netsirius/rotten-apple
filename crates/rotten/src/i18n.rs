@@ -294,15 +294,28 @@ mod tests {
     #[test]
     fn every_message_used_in_the_code_exists() {
         let en = ids(EN_FTL);
-        let sources = [
-            include_str!("main.rs"),
-            include_str!("render.rs"),
-            include_str!("cmd/trash.rs"),
-            include_str!("cmd/free.rs"),
-            include_str!("cmd/update.rs"),
-        ];
+        // `main.rs`, `render.rs` y todos los `cmd/*.rs`: un comando nuevo
+        // entra solo.
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = vec![src_dir.join("main.rs"), src_dir.join("render.rs")];
+        let mut cmds: Vec<_> = std::fs::read_dir(src_dir.join("cmd"))
+            .expect("src/cmd")
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+            .collect();
+        cmds.sort();
+        assert!(
+            cmds.iter().any(|p| p.ends_with("cmd/config.rs")),
+            "{cmds:?}"
+        );
+        files.extend(cmds);
+        let sources: Vec<String> = files
+            .iter()
+            .map(|p| std::fs::read_to_string(p).expect("leer fuente"))
+            .collect();
         let mut used = 0;
-        for src in sources {
+        for src in &sources {
             for (i, _) in src.match_indices("tr!(") {
                 let rest = &src[i..];
                 let Some(q) = rest.find('"') else { continue };

@@ -459,3 +459,56 @@ fn real_trash_is_read_only_and_matches_du() {
         );
     }
 }
+
+/// B2 (RF-SEG-05 c): con la configuración corrupta o con otra cosa en la
+/// ruta de su enlace, ni `free` ni `trash empty` borran nada, aunque el
+/// problema aparezca después de la revisión. `undo` sí devuelve las cosas a
+/// su sitio: no depende de la configuración.
+#[test]
+fn a_config_problem_blocks_free_and_empty_but_not_undo() {
+    type Spoil = fn(&Path, &Path);
+    let problems: [(&str, &str, Spoil); 2] = [
+        ("conflict", "config_link_conflict", |_, link| {
+            fs::create_dir_all(link.parent().expect("padre")).expect("mkdir");
+            fs::write(link, "language = \"en\"\n").expect("write");
+        }),
+        ("corrupt", "config_corrupt", |config, _| {
+            fs::write(config, "[exclusions\npaths = [").expect("write");
+        }),
+    ];
+    for (name, code, spoil) in problems {
+        let fx = fx();
+        let op = fx.trash_put(&["a.log", "b.log"]);
+        let empty = fx.core.prepare_empty().expect("plan");
+        let free = fx
+            .core
+            .prepare_free(std::slice::from_ref(&op))
+            .expect("plan");
+
+        let env = fx.core.env();
+        let link = env.config_link_path.clone().expect("el enlace aplica");
+        spoil(&env.config_path, &link);
+        let before = fx.names();
+        let results = [
+            fx.core.prepare_empty().map(|_| ()),
+            fx.core
+                .empty_trash(&empty.plan, &empty.plan.plan_hash, "test")
+                .map(|_| ()),
+            fx.core.prepare_free(std::slice::from_ref(&op)).map(|_| ()),
+            fx.core
+                .free(&free.plan, &free.plan.plan_hash, "test")
+                .map(|_| ()),
+        ];
+        for (i, r) in results.into_iter().enumerate() {
+            let err = r.expect_err(name);
+            assert_eq!(err.code(), code, "{name} #{i}: {err:?}");
+            assert_eq!(err.class(), ErrorClass::Safety, "{name} #{i}");
+        }
+        assert_eq!(fx.names(), before, "{name}: se borró algo");
+
+        let undo = fx.core.prepare_undo(Some(&op), None).expect("deshacer");
+        let r = fx.core.undo(&undo.plan, "test").expect(name);
+        assert_eq!(r.done, 2, "{name}");
+        assert!(fx.home.join("a.log").exists() && fx.home.join("b.log").exists());
+    }
+}

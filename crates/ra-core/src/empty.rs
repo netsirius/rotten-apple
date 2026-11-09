@@ -174,6 +174,9 @@ impl Core {
 
     /// Prepara el vaciado de la Papelera y lo simula (la revisión).
     pub fn prepare_empty(&self) -> Result<EmptyPreview, CoreError> {
+        // RF-SEG-05 c: con la configuración corrupta o con otra cosa en la
+        // ruta de su enlace no se borra nada.
+        self.config_ok_or_abort()?;
         let plan = self.empty_plan()?;
         let dry_run = ra_exec::dry_run_empty(&plan, &self.env.trash, &self.env.home);
         Ok(EmptyPreview { plan, dry_run })
@@ -188,6 +191,8 @@ impl Core {
         reviewed_hash: &str,
         by: &str,
     ) -> Result<FreeResult, CoreError> {
+        // La configuración se vuelve a validar justo antes de borrar.
+        self.config_ok_or_abort()?;
         let actual = plan.compute_hash();
         if actual != reviewed_hash || plan.plan_hash != reviewed_hash {
             return Err(CoreError::Plan(PlanError::HashMismatch {

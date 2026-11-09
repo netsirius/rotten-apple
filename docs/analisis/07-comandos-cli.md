@@ -11,7 +11,7 @@
 
 1. **Mismas garantías que la GUI.** El CLI genera el plan, lo previsualiza, verifica cada elemento justo antes de actuar, lo apunta en el journal y permite deshacer. Por defecto todo va a la Papelera.
 2. **`--dry-run` en todos los comandos que cambian algo.** Muestra el plan exacto, con los mismos datos que la hoja de revisión de la GUI.
-3. **`--json` en todos los comandos.** Se activa solo si la salida va a una tubería, como en Mole. Cada documento lleva `schema_version`, y los escaneos incluyen `scan_status: complete | partial | unavailable`.
+3. **`--json` en todos los comandos.** Se activa solo si la salida va a una tubería, como en Mole. Cada documento lleva `schema_version`, y los escaneos incluyen `scan_status: complete | partial | unavailable`. Dentro de una versión, los campos nuevos entran como opcionales en el esquema aunque se emitan siempre (p. ej. `config_link` en `doctor` v2), para que un documento de una versión anterior siga validando; añadir un campo obligatorio, quitar uno o cambiar su tipo sube `schema_version`.
 4. **Sin interacción solo con `--yes`.** Sin `--yes` y sin terminal interactiva, el comando aborta con código `2`.
 5. **Borrado permanente solo con `--permanent`**, en los comandos que lo admiten, nunca por defecto. Ningún comando vacía la Papelera como efecto secundario.
 6. **Sin `sudo` salvo que haga falta.** El CLI no se eleva solo: pide la acción con privilegios al helper (v1) o explica por qué no puede hacerla.
@@ -50,6 +50,8 @@
 | Instalación con `install.sh` (`--prefix`, versión) y Nix | DMG notarizado + cask; fórmula del CLI en un tap; `install.sh` opcional con `--prefix` | Mismo comportamiento con `--prefix` para no pedir contraseña al actualizar. | — | MVP (tap) · v1 (script) |
 
 **Prueba de paridad (RF-CLI-20):** un test de CI ejecuta cada comando de la tabla con `--dry-run --json` y falla si falta alguno o si su JSON no valida contra el esquema.
+
+**`config.toml` entre versiones.** Una clave nueva no rompe una versión anterior: las claves desconocidas fuera de `[exclusions]` se toleran, se avisan (`doctor` y los `warnings` de `scan`) y se conservan al reescribir el fichero. `[exclusions]` sí es estricto: una clave desconocida ahí, o una sección de primer nivel que parezca un `[exclusions]` mal escrito (cualquier nombre que contenga `exclu`), da la configuración por corrupta, porque ignorar una exclusión podría limpiar algo que la persona quiso proteger. `schema_version` del fichero solo sube con un cambio incompatible; una versión que no lo conoce lo da por corrupto (fail-closed). Si `config.toml` es un enlace (dotfiles), se escribe en su destino y el enlace se conserva. Con `ROTTEN_STATE_DIR`, el enlace de `~/.config/rotten/config.toml` no aplica: ni se crea ni se comprueba, y `doctor` y `config path` lo dicen (`state: not_applicable`).
 
 ---
 
@@ -123,6 +125,8 @@ Amplía la higiene de secretos del doc 03 §6, H1–H9, a petición del autor.
 ## 5. Códigos de salida
 
 `0` ok · `1` error · `2` uso incorrecto o falta `--yes` · `3` falta permiso · `4` completado con omisiones · `5` abortado por seguridad o plan cambiado · `6` otro ejecutor activo · `10` (`vulns` y `secrets` con `--fail-on`) hallazgos por encima del umbral.
+
+Con la configuración corrupta o con otra cosa en la ruta del enlace `~/.config/rotten/config.toml` (RF-SEG-05 c), las acciones destructivas abortan con `5` sin tocar nada, también con `--dry-run`: `clean`, `trash put`, `free`, `trash empty` y los cambios de configuración (`exclude add|remove`, `config set`). `undo` no: devolver algo a su sitio no depende de la configuración. Si `config set` guarda la configuración pero no puede crear el enlace (p. ej. `~/.config/rotten` es un fichero), sale con `4`.
 
 Con `--dry-run`, el código es el que tendría la ejecución: `4` si la simulación ya prevé omisiones (decisión del autor del 2026-11-08, 08 §2.1).
 

@@ -7,7 +7,7 @@ expression: "redact(fx, &doc)"
   "error": {
     "code": "unknown_config_key",
     "exit_code": 2,
-    "message": "unknown configuration key «nope»; the keys are: language, journal.retention_days, exclusions.paths, exclusions.globs, exclusions.rules, exclusions.categories, exclusions.bundle_ids"
+    "message": "unknown configuration key «nope»; the keys are: language, exclusions.paths, exclusions.globs, exclusions.rules, exclusions.categories, exclusions.bundle_ids"
   },
   "schema_version": 2
 }

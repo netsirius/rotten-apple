@@ -20,9 +20,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths::{self, PathError};
 
-/// Bundle ID de la app (provisional, D-08). `ra_core::BUNDLE_ID` debe ser
-/// el mismo (lo comprueba `ra-core/tests/bundle_id.rs`): de él salen la
-/// carpeta de estado y la del log técnico, que se protege aquí.
+/// Bundle ID de la app (provisional, D-08), única fuente: `ra_core` lo
+/// reexporta. De él salen la carpeta de estado y la del log técnico, que se
+/// protege aquí.
 pub const BUNDLE_ID: &str = "io.github.netsirius.RottenApple";
 
 /// Carpeta del log técnico del CLI (T-14) para una carpeta personal.

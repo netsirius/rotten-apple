@@ -25,6 +25,13 @@ pub enum LinkState {
     Linked,
     /// Otra cosa: no se toca y no se actúa.
     Conflict { found: Found },
+    /// Una carpeta del camino (p. ej. `~/.config/rotten`) es un fichero:
+    /// ahí no puede haber nada que se confunda con la configuración, pero
+    /// tampoco se puede crear el enlace.
+    ParentNotDirectory { parent: PathBuf },
+    /// El enlace no aplica a este entorno (`reason`, código estable: p. ej.
+    /// `state_dir_override` con `ROTTEN_STATE_DIR`). Lo decide quien llama.
+    NotApplicable { reason: String },
 }
 
 /// Qué hay en la ruta del enlace cuando no es el enlace esperado.
@@ -75,19 +82,30 @@ fn points_at(link: &Path, points_to: &Path, target: &Path) -> bool {
     )
 }
 
+/// La primera carpeta del camino de `link` que existe y no es una carpeta
+/// (siguiendo enlaces: `~/.config` puede ser un enlace a otra carpeta).
+fn blocking_ancestor(link: &Path) -> Option<PathBuf> {
+    link.ancestors()
+        .skip(1)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .find(|a| fs::metadata(a).is_ok_and(|m| !m.is_dir()))
+        .map(Path::to_path_buf)
+}
+
 /// Qué hay en `link` respecto a la configuración `target`. No cambia nada.
 pub fn inspect(link: &Path, target: &Path) -> LinkState {
     let meta = match fs::symlink_metadata(link) {
         Ok(m) => m,
-        // Nada, o una carpeta intermedia que no es carpeta: ahí no puede
-        // haber ningún fichero que se confunda con la configuración.
-        Err(e)
-            if matches!(
-                e.kind(),
-                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
-            ) =>
-        {
-            return LinkState::Missing;
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return LinkState::Missing,
+        // Una carpeta intermedia que no es carpeta: ahí no puede haber
+        // ningún fichero que se confunda con la configuración.
+        Err(e) if e.kind() == io::ErrorKind::NotADirectory => {
+            return match blocking_ancestor(link) {
+                Some(parent) => LinkState::ParentNotDirectory { parent },
+                None => LinkState::Missing,
+            };
         }
         Err(e) => {
             return LinkState::Conflict {
@@ -245,13 +263,16 @@ mod tests {
     }
 
     #[test]
-    fn a_file_where_a_folder_should_be_is_nothing_there() {
+    fn a_file_where_a_folder_should_be_is_reported() {
         let f = fx();
         let config_dir = f.link.parent().expect("rotten").to_path_buf();
         fs::create_dir_all(config_dir.parent().expect(".config")).expect("mkdir");
         fs::write(&config_dir, "no soy una carpeta").expect("write");
-        assert_eq!(inspect(&f.link, &f.target), LinkState::Missing);
-        assert!(create(&f.link, &f.target).is_err());
+        let blocked = LinkState::ParentNotDirectory {
+            parent: config_dir.clone(),
+        };
+        assert_eq!(inspect(&f.link, &f.target), blocked);
+        assert_eq!(create(&f.link, &f.target).expect("create"), blocked);
         assert_eq!(
             fs::read_to_string(&config_dir).expect("read"),
             "no soy una carpeta"
