@@ -301,10 +301,13 @@ Medida de RNF-06 (`release`, 10 000 elementos, Papelera de prueba, política `ut
 | Tema | Qué pasa | Cómo se cierra |
 |---|---|---|
 | Totales del plan con enlaces duros | `Plan::build` suma `bytes_allocated` por elemento sin deduplicar, así que la confirmación de `clean` y `op_started.bytes` pueden superar lo que mostró `scan` para la misma selección | Reutilizar el recuento de `scan` (moverlo a `ra-safety`) en los totales del plan |
-| `assert!` de durabilidad | `run.rs` comprueba con `assert!` que la intención es durable antes de actuar; si fallara, la operación queda abierta (recuperable), pero el CLI muere con traza | Devolver `ExecError` en su lugar |
+| `assert!` de durabilidad | `run.rs` comprueba con `assert!` que la intención es durable antes de actuar (también en `free` y `trash empty`); si fallara, la operación queda abierta (recuperable), pero el CLI muere con traza | Devolver `ExecError` en su lugar |
 | Política de E/S al arrancar | Si `iopolicy::apply()` falla, no arranca ningún comando, ni `doctor` | Que `doctor` arranque y lo explique. En H-6, con el núcleo dentro de la app, la política debe tener ámbito de hilo en los *workers* para no despriorizar la interfaz |
 | Contadores de clones y enlaces | `cloned_entries` y `hardlinked_entries` se cuentan por elemento: un mismo inode en dos elementos cuenta dos veces (documentado en `scan.v2`) | Deduplicar si molesta en la interfaz |
 | Valor atípico en la medida | Una pasada de 123 s justo después de crear 10 000 ficheros, sin reproducirse; probablemente Spotlight indexando | Vigilar en T-30 |
+| Papelera de un volumen externo sin permiso (T-12) | `trash_roots` incluye `/Volumes/X/.Trashes/<uid>` aunque dé `PermissionDenied`, así que vaciar `~/.Trash` sale con `3` por un volumen ajeno. Es *fail-closed* | Decir en el mensaje qué volumen lo impide, u ofrecer vaciar solo las Papeleras legibles |
+| Espacio medido en un mismo contenedor APFS (T-11, T-12) | `measured_bytes` agrupa por `st_dev`; dos Papeleras en volúmenes del mismo contenedor comparten el espacio libre y se cuenta dos veces | Deduplicar por disco físico (`f_mntfromname` sin el sufijo `sN`) |
+| `OpKind` nuevos en el journal (T-11, T-12) | `free` y `trash_empty` se añadieron con `schema_version` 1 del journal. Un binario anterior no los entiende: `doctor` los da por ilegibles y cree que los elementos siguen en la Papelera. No se pierde nada (`undo` dice `not_in_trash`) | Antes de la primera versión publicada: `#[serde(other)]` en `OpKind` o subir la versión del journal con migración |
 
 ---
 
