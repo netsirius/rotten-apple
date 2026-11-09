@@ -166,8 +166,16 @@ prop_compose! {
     }
 }
 
+/// `PROPTEST_CASES` sube los casos en la tanda nocturna (RNF-08).
+fn proptest_cases(default: u32) -> u32 {
+    std::env::var("PROPTEST_CASES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 32, .. ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig::with_cases(proptest_cases(32)))]
 
     /// RF-SEG-09: preseleccionados ∩ documentos = ∅. Ni lo preseleccionado
     /// ni siquiera todas las categorías con `--include-review` meten nada

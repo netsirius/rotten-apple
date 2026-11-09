@@ -16,7 +16,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -228,10 +228,22 @@ impl Plan {
 
         // Orden determinista y sin solapes: si un elemento está dentro de
         // otro, se omite el interior (el exterior ya lo incluye).
-        kept.sort_by(|a, b| a.path.cmp(&b.path));
+        //
+        // Se ordena por componentes plegados (como compara `paths::is_within`)
+        // para que un antepasado vaya siempre antes que sus descendientes,
+        // también cuando solo difieren en mayúsculas (`A/b` frente a `a`).
+        // El solape se busca con un índice de prefijos plegados: O(n · d)
+        // en vez de O(n²) (RNF-06, 10 000 elementos).
+        let mut kept: Vec<(Vec<String>, &Candidate)> = kept
+            .into_iter()
+            .map(|c| (paths::folded_components(&c.path), c))
+            .collect();
+        kept.sort_by(|(fa, a), (fb, b)| fa.cmp(fb).then_with(|| a.path.cmp(&b.path)));
         let mut items: Vec<PlanItem> = Vec::new();
-        for c in kept {
-            if let Some(outer) = items.iter().find(|i| paths::is_within(&c.path, &i.path)) {
+        let mut by_folded: HashMap<Vec<String>, PathBuf> = HashMap::new();
+        for (folded, c) in kept {
+            let outer = (1..=folded.len()).find_map(|n| by_folded.get(&folded[..n]));
+            if let Some(outer) = outer {
                 skipped.push(Skipped {
                     path: c.path.clone(),
                     rule: RuleRef {
@@ -239,7 +251,7 @@ impl Plan {
                         version: c.rule_version,
                     },
                     category: c.cat.clone(),
-                    reason: SkipReason::Overlaps(outer.path.clone()),
+                    reason: SkipReason::Overlaps(outer.clone()),
                 });
                 continue;
             }
@@ -266,6 +278,7 @@ impl Plan {
                 apps: c.apps.clone(),
                 origin: inp.origin,
             });
+            by_folded.insert(folded, c.path.clone());
         }
         skipped.sort_by(|a, b| a.path.cmp(&b.path));
 

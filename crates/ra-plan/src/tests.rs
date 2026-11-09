@@ -172,6 +172,54 @@ fn category_selection_takes_all_safe() {
     assert_eq!(p.items()[0].category, "CAT-01");
 }
 
+/// El solape se detecta sin distinguir mayúsculas (como `paths::is_within`)
+/// aunque otra ruta quede en medio en orden de bytes: `Caches/Zed` va entre
+/// `Caches/Foo` y `Caches/foo/bar`.
+#[test]
+fn overlap_ignores_case_and_byte_order() {
+    let p = build(
+        vec![
+            cand("/Users/ana/Library/Caches/foo/bar", "CAT-01", true, None),
+            cand("/Users/ana/Library/Caches/Zed", "CAT-01", true, None),
+            cand("/Users/ana/Library/Caches/Foo", "CAT-01", true, None),
+            cand("/Users/ana/Library/Caches/B/x", "CAT-01", true, None),
+            cand("/Users/ana/Library/Caches/b", "CAT-01", true, None),
+        ],
+        &Selection::default(),
+        "",
+    );
+    let paths: Vec<_> = p.items().iter().map(|i| i.path.clone()).collect();
+    assert_eq!(
+        paths,
+        vec![
+            PathBuf::from("/Users/ana/Library/Caches/b"),
+            PathBuf::from("/Users/ana/Library/Caches/Foo"),
+            PathBuf::from("/Users/ana/Library/Caches/Zed"),
+        ]
+    );
+    let overlaps: Vec<_> = p
+        .skipped()
+        .iter()
+        .filter_map(|s| match &s.reason {
+            SkipReason::Overlaps(outer) => Some((s.path.clone(), outer.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        overlaps,
+        vec![
+            (
+                PathBuf::from("/Users/ana/Library/Caches/B/x"),
+                PathBuf::from("/Users/ana/Library/Caches/b")
+            ),
+            (
+                PathBuf::from("/Users/ana/Library/Caches/foo/bar"),
+                PathBuf::from("/Users/ana/Library/Caches/Foo")
+            ),
+        ]
+    );
+}
+
 #[test]
 fn blocked_protected_excluded_and_overlapping_are_skipped() {
     let p = build(
@@ -245,8 +293,16 @@ fn ids_are_unique_and_sortable() {
     assert!(new_id(t + Duration::from_secs(1)) > a);
 }
 
+/// `PROPTEST_CASES` sube los casos en la tanda nocturna (RNF-08).
+fn proptest_cases(default: u32) -> u32 {
+    std::env::var("PROPTEST_CASES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(64))]
+    #![proptest_config(ProptestConfig::with_cases(proptest_cases(64)))]
 
     /// El hash no depende del orden en que llegan los candidatos, y cambiar
     /// cualquier byte de una ruta lo cambia.
