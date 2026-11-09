@@ -181,10 +181,11 @@ fn step(action: Action) -> StepAction {
 }
 
 /// Intenciones por `fsync` (RNF-06, 05 §5.6). Con `F_FULLFSYNC` cada
-/// sincronización cuesta varios milisegundos: con un `fsync` por evento,
-/// 10 000 elementos tardaban casi dos minutos. Con lotes de 128 son unas 80
-/// sincronizaciones y el coste pasa a ser el de verificar y mover. Más grande
-/// apenas gana y deja más intenciones sin resultado tras un corte de
+/// sincronización cuesta unos 6–7 ms. Medido con 10 000 elementos a la
+/// Papelera de prueba (solo la ejecución, 2026-11-09): lote 1 → 50,9 s;
+/// 16 → 7,5 s; 64 → 4,3 s; 128 → 3,8 s; 512 → 3,5 s; 1024 → 3,5 s. Con 128
+/// el `fsync` ya es ~10 % del total (verificar y mover son el resto); más
+/// grande apenas gana y deja más intenciones sin resultado tras un corte de
 /// corriente.
 pub const DEFAULT_FSYNC_BATCH: usize = 128;
 
