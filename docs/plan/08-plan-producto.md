@@ -62,7 +62,7 @@ Qué cumple ya el código de PR #2 y qué falta. «Hecho» quiere decir implemen
 | RF-SEG-08 Ficheros en uso | Hecho | Apps abiertas por bundle ID; ficheros abiertos por procesos visibles (`ra-platform/files.rs`) → `in_use`; `AT_NODELETEBUSY` en el borrado permanente (T-04) | La lista de ficheros abiertos se toma una vez por pasada, no por elemento (§2.2) |
 | RF-SEG-09 Nunca preseleccionar documentos | Parcial | Catálogo y selección explícita, con la propiedad «preseleccionados ∩ documentos = ∅» (`ra-core/tests/selection.rs`, T-10) | La misma propiedad en cada tarea de módulo |
 | RF-SEG-10 Sin descargas de iCloud | Parcial | `check_flags` rechaza `SF_DATALESS` antes de actuar | Política de proceso `setiopolicy_np` → T-06 |
-| RF-SEG-11 Log de operaciones | Parcial | Journal JSONL | Log técnico local rotado → T-14 |
+| RF-SEG-11 Log de operaciones | Hecho (2026-11-09) | Journal JSONL y log técnico en `~/Library/Logs/<bundle>/rotten.log` (líneas JSON, 1 MiB × 4, sin rutas ni mensajes; T-14) | — |
 | RF-SEG-12 Tamaños honestos | Hecho (2026-11-09) | `PRIVATESIZE`, clones y enlaces duros contados una vez y solo si están enteros en la selección; «liberado» medido con `statfs` en `free` y `trash empty` | Totales del plan sin deduplicar (§2.3) |
 | RF-SEG-13 Mínimo privilegio | Hecho | Sin elevación; como root, aborta salvo `--allow-root` | — |
 | RF-SEG-14 Automatizaciones (CLI) | Hecho | `--yes` obligatorio sin TTY | Programación: v1 → T-103 |
@@ -118,9 +118,9 @@ Qué cumple ya el código de PR #2 y qué falta. «Hecho» quiere decir implemen
 | `scan`, `clean`, `history`, `undo`, `doctor`, `exclude`, `--version`, `--help`, `help <cmd>` | Hecho | — |
 | `free <op-id>` | Hecho (2026-11-09) | T-11 |
 | `trash`, `trash empty` | Hecho (2026-11-09) | T-12 |
-| `config get\|set\|path` | Pendiente | T-13 |
-| `completion zsh\|bash\|fish` | Pendiente | T-14 |
-| `update` | Pendiente | T-15 |
+| `config get\|set\|path` | Hecho (2026-11-09) | T-13 |
+| `completion zsh\|bash\|fish` | Hecho (2026-11-09) | T-14 |
+| `update` | Hecho (2026-11-09; Sparkle con H-7) | T-15 |
 | `rotten` (menú interactivo) | Pendiente | T-16 |
 | `analyze [ruta]` (lista) | Pendiente | T-19 |
 | `installer` | Pendiente | T-20 |
@@ -153,12 +153,12 @@ D-11 promete **todos los comandos de Mole como mínimo** para el producto, pero 
 | `mo status` | `rotten status` | **v1** | T-99, T-100 | Pendiente |
 | `mo history` | `rotten history` | MVP | — | Hecho |
 | `mo touchid` | `rotten touchid` | **v2** | T-120 | Pendiente |
-| `mo completion` | `rotten completion` | MVP | T-14 | Pendiente |
-| `mo update` | `rotten update` | MVP | T-15 | Pendiente |
+| `mo completion` | `rotten completion` | MVP | T-14 | Hecho |
+| `mo update` | `rotten update` | MVP | T-15 | Hecho (Homebrew; Sparkle con H-7) |
 | `mo remove` | `rotten remove` | **v1** | T-108 | Pendiente |
 | `mo --version` · `--help` | `rotten --version` · `--help` · `help <cmd>` | MVP | — | Hecho |
 | Teclas de `status`, `uninstall` y `purge` | Las mismas, más `u` | MVP (las de `status`, con `status`) | T-16, T-22, T-27, T-99 | Pendiente |
-| `~/.config/mole/` | `config.toml` con enlace en `~/.config/rotten/` | MVP | T-13 | Parcial (sin `config` ni enlace) |
+| `~/.config/mole/` | `config.toml` con enlace en `~/.config/rotten/` | MVP | T-13 | Hecho |
 | `operations.log` | Journal | MVP | — | Hecho |
 | `MO_LAUNCHER_APP` · Raycast y Alfred | `ROTTEN_TERMINAL` · `rotten launchers install` | v1 | T-107 | Pendiente |
 | Skills para agentes y `llms.txt` | Skill y `llms.txt` · `rotten mcp` | v1 · v2 | T-107, T-119 | Pendiente |
@@ -308,10 +308,28 @@ Medida de RNF-06 (`release`, 10 000 elementos, Papelera de prueba, política `ut
 | `statfs` redondeado (T-11, T-12) | En el sandbox, `df -k` da «usado» y «disponible» en múltiplos exactos de 400 000 KiB. Si macOS también redondea, el aviso «se liberó menos» saltaría sin motivo en borrados de entre unos 200 MB y unos 8 GB. Volver a medir no lo arregla | Comprobar con `df -k ~` fuera del sandbox. Si macOS redondea: tolerancia con la granularidad observada o medir con `ATTR_VOL_SPACEFREE` |
 | `.DS_Store` en subcarpetas (T-11) | `free` cuenta las fechas de las subcarpetas para detectar cambios dentro, así que abrir una subcarpeta en Finder (que crea un `.DS_Store`) hace que `free` la omita. `trash empty` lo ignora. Es el lado seguro, pero se notará | Ignorar también el `ctime` que deja `.DS_Store` en su carpeta padre si se puede distinguir; si no, explicarlo en el motivo de la omisión |
 | Relojes en volúmenes de red (T-11) | `free` compara las fechas de los ficheros con la hora en que se movió la carpeta; en un volumen de red con otro reloj puede omitir de más o, en el peor caso, de menos | Medir en T-29; si hace falta, guardar en `ItemDone` una huella de los hijos |
-| Arnés `kill -9` aleatorio para una carpeta a medio borrar | El caso solo sale al azar en `crash.rs` (falló en 150 rondas y no en 50); lo cubre siempre la prueba unitaria `a_folder_deleted_halfway…` | La nocturna con 1 000 rondas lo ejercita |
+| Arnés `kill -9` aleatorio para una carpeta a medio borrar | El caso solo sale al azar en `crash.rs`; lo cubren siempre las pruebas unitarias `a_folder_deleted_halfway…` y `a_folder_cut_deep_inside…` | La nocturna con 1 000 rondas lo ejercita |
 | Papelera de un volumen externo sin permiso (T-12) | `trash_roots` incluye `/Volumes/X/.Trashes/<uid>` aunque dé `PermissionDenied`, así que vaciar `~/.Trash` sale con `3` por un volumen ajeno. Es *fail-closed* | Decir en el mensaje qué volumen lo impide, u ofrecer vaciar solo las Papeleras legibles |
 | Espacio medido en un mismo contenedor APFS (T-11, T-12) | `measured_bytes` agrupa por `st_dev`; dos Papeleras en volúmenes del mismo contenedor comparten el espacio libre y se cuenta dos veces | Deduplicar por disco físico (`f_mntfromname` sin el sufijo `sN`) |
 | `OpKind` nuevos en el journal (T-11, T-12) | `free` y `trash_empty` se añadieron con `schema_version` 1 del journal. Un binario anterior no los entiende: `doctor` los da por ilegibles y cree que los elementos siguen en la Papelera. No se pierde nada (`undo` dice `not_in_trash`) | Antes de la primera versión publicada: `#[serde(other)]` en `OpKind` o subir la versión del journal con migración |
+
+
+### 2.4 Seguimiento de la tercera tanda (2026-11-09)
+
+T-13, T-14 y T-15 pasaron una revisión crítica. Ya corregido tras la revisión:
+- Config: escritura atómica sin seguir enlaces en la ruta canónica, enlace `~/.config/rotten/config.toml` validado (también si `~/.config` es un enlace a un repositorio de *dotfiles*), `error.detail` con el fragmento del TOML corrupto fuera de `message`.
+- Log técnico: sin mensajes ni rutas (solo comando, código y salida), no sigue un enlace en `rotten.log` y no se bloquea con un FIFO.
+- `BUNDLE_ID` con una sola fuente (`ra-safety`, que protege la carpeta del log).
+- **Bloqueante del núcleo encontrado de paso** (el arnés `kill -9` falló una vez en `trash empty`): `remove_at` borra en profundidad, así que un corte tras borrar `sub/x` dejaba intacta la identidad de la carpeta de arriba y la recuperación la anotaba como «no tocada» aunque le faltaba contenido. Ahora la recuperación mira también dentro: si alguna subcarpeta cambió después de la intención, queda en paradero incierto («contenido parcial») en las dos operaciones. Prueba determinista `a_folder_cut_deep_inside_is_unknown_in_both_operations`.
+
+| Tema | Qué pasa | Cómo se cierra |
+|---|---|---|
+| Escrituras concurrentes de `config.toml` (T-13) | Dos `config set` a la vez no toman el bloqueo: gana la última escritura entera (no hay ficheros a medias), pero se pierde la otra. Un corte deja un temporal `.config.toml.*` huérfano junto a la configuración | Tomar el bloqueo de ejecución en `config set` y limpiar temporales viejos al arrancar |
+| Heurística de exclusiones (T-13) | Una sección desconocida cuyo nombre contiene `exclu` (`[exclusion]`, `[exclusiones]`…) da la configuración por corrupta, para no dejar exclusiones mal escritas sin aplicar; el resto de claves desconocidas se toleran. Puede pillar un nombre legítimo que no sea una errata | Confirmar con el autor la heurística o cambiarla por una lista cerrada de erratas |
+| Ayuda de `clap` (T-14) | `--help` sigue el idioma de `LANG` y no el `language` de la configuración (se lee después de analizar los argumentos) | Leer la configuración antes de construir el `Command` o aceptar la diferencia |
+| Colores y fish (T-14) | La tarea nocturna de colores aún no ha corrido; el script de fish no se ha probado en un fish real | Primera nocturna; probar a mano con fish |
+| Reloj que retrocede en mitad de un borrado | La detección de una carpeta a medio borrar compara las fechas de cambio de sus subcarpetas con la hora de la intención; si el reloj retrocede entre la intención y el borrado, puede no verlo | Junto a «Relojes en volúmenes de red»: guardar en la intención una huella de las subcarpetas si se mide un caso real |
+| `update` (T-15) | Nombres del *tap* y de la fórmula provisionales; sin Sparkle hasta H-7; la salida de `brew` se resume en `brew_failed` con su código en `message` | Decisiones del autor antes de publicar (§2, D-08) |
 
 ---
 
@@ -405,9 +423,9 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 | T-10 | Planes por selección explícita y `rotten trash put` | H-0 | M | — | Hecho (2026-11-08) |
 | T-11 | `rotten free <op-id>` («Liberar ahora») | H-1 | M | T-01 | Hecho (2026-11-09) |
 | T-12 | `rotten trash` y `rotten trash empty` | H-1 | M | T-11 | Hecho (2026-11-09); la prueba con la Papelera real (`#[ignore]`) está sin ejecutar |
-| T-13 | `rotten config` y enlace en `~/.config/rotten/` | H-1 | S | — | Pendiente |
-| T-14 | `completion`, `--debug`, `--no-color` y log técnico | H-1 | S | — | Pendiente |
-| T-15 | `rotten update` | H-1 | S | — | Pendiente |
+| T-13 | `rotten config` y enlace en `~/.config/rotten/` | H-1 | S | — | Hecho (2026-11-09) |
+| T-14 | `completion`, `--debug`, `--no-color` y log técnico | H-1 | S | — | Hecho (2026-11-09) |
+| T-15 | `rotten update` | H-1 | S | — | Hecho (2026-11-09) |
 | T-16 | Menú interactivo | H-1 | M | T-11 a T-15 | Pendiente |
 | T-17 | Preflight de permisos por módulo | H-2 | M | — | Pendiente |
 | T-18 | Corpus sintético y *benchmarks* | H-3 | M | — | Pendiente |
