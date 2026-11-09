@@ -187,6 +187,7 @@ fn main() -> ExitCode {
         Cmd::Doctor => "doctor",
         Cmd::Exclude { .. } => "exclude",
         Cmd::Trash { .. } => "trash",
+        Cmd::Config { .. } => "config",
         Cmd::Update { .. } => "update",
     };
 
@@ -237,6 +238,7 @@ fn main() -> ExitCode {
         Cmd::Doctor => doctor(&ui, &core),
         Cmd::Exclude { action } => exclude(&ui, &core, action),
         Cmd::Trash { action } => cmd::trash::run(&ui, &core, action),
+        Cmd::Config { action } => cmd::config::run(&ui, &core, action),
         Cmd::Update { .. } => unreachable!("se despacha antes de abrir el núcleo"),
     };
     exit.into()
@@ -750,7 +752,10 @@ fn yes_no(b: bool) -> &'static str {
 
 fn doctor(ui: &Ui, core: &Core) -> Exit {
     let r: DoctorReport = core.doctor();
-    let code = if r.config == "corrupt" {
+    // Con la configuración corrupta u otra cosa en la ruta de su enlace, no
+    // se puede limpiar (RF-SEG-05 c): el mismo veredicto aquí.
+    let link_conflict = matches!(r.config_link.state, ra_core::LinkState::Conflict { .. });
+    let code = if r.config == "corrupt" || link_conflict {
         Exit::Safety
     } else if r.full_disk_access == FdaState::Denied {
         Exit::Permission
@@ -808,6 +813,7 @@ fn doctor(ui: &Ui, core: &Core) -> Exit {
             state = r.config.as_str()
         )),
     }
+    ui.say(cmd::config::link_line(ui, &r.config_link, &r.config_path));
     ui.say(tr!(
         ui,
         "doctor-journal",

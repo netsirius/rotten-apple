@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use ra_history::{FreeError, ItemRef, UndoError};
 use ra_plan::PlanError;
-use ra_safety::ProtectionReason;
+use ra_safety::{LinkFound, ProtectionReason, SettingError};
 
 /// Clase del error: decide el código de salida (07 §5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +57,18 @@ pub enum CoreError {
     /// `config.toml` no se puede usar: no se actúa ni se reescribe.
     #[error("{} is corrupt ({reason}): nothing is done until it is fixed", path.display())]
     ConfigCorrupt { path: PathBuf, reason: String },
+    /// En la ruta del enlace a la configuración hay otra cosa: no se actúa
+    /// ni se reescribe la configuración (RF-SEG-05 c).
+    #[error("{} is {found}, not the link to the configuration ({}): nothing is done until it is moved away", path.display(), target.display())]
+    ConfigLinkConflict {
+        path: PathBuf,
+        target: PathBuf,
+        found: LinkFound,
+    },
+    /// `rotten config get|set`: clave desconocida, de solo lectura o valor
+    /// no válido.
+    #[error(transparent)]
+    Setting(#[from] SettingError),
     #[error("the plan belongs to another home folder ({})", .0.display())]
     WrongHome(PathBuf),
     /// Hash distinto, revisión caducada o plan ilegible.
@@ -112,13 +124,15 @@ impl CoreError {
             | E::UnknownCategory(_)
             | E::InvalidExclusion(_)
             | E::NoPaths
-            | E::RelativePath(_) => ErrorClass::Usage,
+            | E::RelativePath(_)
+            | E::Setting(_) => ErrorClass::Usage,
             E::Permission(_) | E::TrashUnreadable { .. } | E::EmptyUnreadable { .. } => {
                 ErrorClass::Permission
             }
             E::Free(FreeError::NoOperations) => ErrorClass::Usage,
             E::Safety(_)
             | E::ConfigCorrupt { .. }
+            | E::ConfigLinkConflict { .. }
             | E::WrongHome(_)
             | E::Plan(_)
             | E::SelectionProtected { .. }
@@ -148,6 +162,10 @@ impl CoreError {
             E::NoPaths => "no_paths",
             E::RelativePath(_) => "relative_path",
             E::ConfigCorrupt { .. } => "config_corrupt",
+            E::ConfigLinkConflict { .. } => "config_link_conflict",
+            E::Setting(SettingError::UnknownKey { .. }) => "unknown_config_key",
+            E::Setting(SettingError::ReadOnly { .. }) => "read_only_config_key",
+            E::Setting(SettingError::InvalidValue { .. }) => "invalid_config_value",
             E::WrongHome(_) => "wrong_home",
             E::Plan(PlanError::HashMismatch { .. }) => "plan_changed",
             E::Plan(PlanError::Expired { .. }) => "plan_expired",

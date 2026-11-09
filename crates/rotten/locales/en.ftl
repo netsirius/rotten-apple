@@ -287,6 +287,46 @@ exclude-result-dry = { $change ->
    *[absent] Not present: { $value }
 }
 
+## config
+
+config-value = { $value }
+config-list-empty = (empty list)
+config-set-result = { $change ->
+    [changed] Saved: { $key } = { $value }
+   *[unchanged] No change: { $key } was already { $value }
+}
+config-set-result-dry = { $change ->
+    [changed] Would save: { $key } = { $value } (dry run)
+   *[unchanged] No change: { $key } is already { $value }
+}
+config-path = Configuration: { $path }
+config-link-linked = Link: { $link } → { $path }
+config-link-missing = Link: { $link } (not there; `rotten config set` creates it)
+config-link-conflict = ! { $link } is { $found }, not the link to the configuration: nothing is cleaned until you move it away (the configuration in use is { $path })
+config-link-created = Link created: { $link } → { $path }
+config-link-error = ! Could not create the link { $link }: { $error }
+config-link-found-file = a file
+config-link-found-directory = a folder
+config-link-found-symlink = a link to { $target }
+config-link-found-other = something that is not a file
+config-link-found-unreadable = something that cannot be inspected ({ $detail })
+config-expected-one-of = one of: { $values }
+config-expected-range = a whole number from { $min } to { $max }
+error-config-link-conflict = { $link } is { $found }, not the link to the configuration ({ $path }): nothing is done until you move it away
+error-unknown-config-key = unknown configuration key «{ $key }»; the keys are: { $keys }
+error-read-only-config-key = «{ $key }» is changed with `rotten exclude add|remove`, not with `rotten config set`
+error-invalid-config-value = invalid value «{ $value }» for «{ $key }»: expected { $expected }
+cli-cmd-config = Configuration: read it, change it and where it is
+cli-cmd-config-get = The value of a key (or the one applied by default)
+cli-cmd-config-get-arg-key = The key: language, journal.retention_days or exclusions.*
+cli-cmd-config-set = Changes a key after validating it; creates the link in ~/.config/rotten/ if nothing is there
+cli-cmd-config-set-arg-key = The key: language or journal.retention_days
+cli-cmd-config-set-arg-new_value = The new value
+cli-cmd-config-set-arg-dry_run = Shows the change without saving it
+cli-cmd-config-path = Where the configuration and its link in ~/.config/rotten/ are
+cli-value-key = KEY
+cli-value-new_value = VALUE
+
 ## Why something is skipped or protected
 
 failed = failed: { $error }

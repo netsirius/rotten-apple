@@ -39,7 +39,8 @@ fn schemas_are_valid_and_match_their_file_name() {
     assert_eq!(
         commands,
         [
-            "clean", "doctor", "exclude", "free", "history", "scan", "trash", "undo", "update"
+            "clean", "config", "doctor", "exclude", "free", "history", "scan", "trash", "undo",
+            "update"
         ]
     );
     for ((command, version), (path, schema)) in &files {
@@ -371,6 +372,107 @@ fn doctor() {
     check(&fx, "doctor_config_corrupt", &["doctor", "--json"], 5);
 }
 
+/// `rotten config get|set|path` (T-13) y el enlace en `~/.config/rotten/`.
+#[test]
+fn config() {
+    let fx = fixture();
+    check(&fx, "config_path_no_link", &["config", "path", "--json"], 0);
+    check(
+        &fx,
+        "config_get_default",
+        &["config", "get", "language", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "config_get_list",
+        &["config", "get", "exclusions.paths", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "config_set_dry_run",
+        &["config", "set", "language", "es", "--dry-run", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "config_set_creates_link",
+        &["config", "set", "language", "es", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "config_set_unchanged",
+        &["config", "set", "language", "es", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "config_set_integer",
+        &["config", "set", "journal.retention_days", "90", "--json"],
+        0,
+    );
+    check(&fx, "config_path_linked", &["config", "path", "--json"], 0);
+    check(
+        &fx,
+        "config_get_integer",
+        &["config", "get", "journal.retention_days", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "config_error_unknown_key",
+        &["config", "get", "nope", "--json"],
+        2,
+    );
+    check(
+        &fx,
+        "config_error_invalid_value",
+        &["config", "set", "journal.retention_days", "0", "--json"],
+        2,
+    );
+    check(
+        &fx,
+        "config_error_read_only",
+        &["config", "set", "exclusions.paths", "~/x", "--json"],
+        2,
+    );
+
+    // Otra cosa en la ruta del enlace.
+    let link = fx.p(".config/rotten/config.toml");
+    fs::remove_file(&link).expect("rm");
+    fs::write(&link, "language = \"en\"\n").expect("write");
+    check(
+        &fx,
+        "config_path_conflict",
+        &["config", "path", "--json"],
+        0,
+    );
+    check(
+        &fx,
+        "config_error_link_conflict",
+        &["config", "set", "language", "en", "--json"],
+        5,
+    );
+    check(&fx, "doctor_config_link_conflict", &["doctor", "--json"], 5);
+    check(
+        &fx,
+        "clean_error_config_link_conflict",
+        &["clean", "--dry-run", "--json"],
+        5,
+    );
+    fs::remove_file(&link).expect("rm");
+
+    write_corrupt_config(&fx);
+    check(
+        &fx,
+        "config_error_config_corrupt",
+        &["config", "set", "language", "en", "--json"],
+        5,
+    );
+}
+
 #[test]
 fn exclude() {
     let fx = fixture();
@@ -504,6 +606,15 @@ fn sample_documents() -> Vec<Value> {
     docs.push(fx.run(&["trash", "empty", "--dry-run", "--json"]).1);
     docs.push(fx.run(&["trash", "empty", "--yes", "--json"]).1);
     docs.push(fx.run(&["history", "--json"]).1);
+    docs.push(fx.run(&["config", "get", "language", "--json"]).1);
+    docs.push(fx.run(&["config", "set", "language", "es", "--json"]).1);
+    docs.push(fx.run(&["config", "path", "--json"]).1);
+    docs.push(fx.run(&["config", "get", "nope", "--json"]).1);
+    let link = fx.p(".config/rotten/config.toml");
+    fs::remove_file(&link).expect("rm");
+    std::os::unix::fs::symlink(fx.trash.join("otra.toml"), &link).expect("ln");
+    docs.push(fx.run(&["config", "path", "--json"]).1);
+    docs.push(fx.run(&["doctor", "--json"]).1);
     fx.use_install(Install::Homebrew);
     docs.push(fx.run(&["update", "--dry-run", "--json"]).1);
     docs.push(fx.run(&["update", "--yes", "--json"]).1);

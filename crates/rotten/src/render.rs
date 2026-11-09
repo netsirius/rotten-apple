@@ -6,8 +6,8 @@ use std::path::Path;
 
 use ra_core::{
     AppBlock, Block, CoreError, EnvError, ExclusionMatch, FlagViolation, FreeError, InUseDetail,
-    NotRecoverableReason, Outcome, PlanError, ProtectionReason, SkipCause, SkipReason, UndoError,
-    tilde,
+    NotRecoverableReason, Outcome, PlanError, ProtectionReason, SettingError, SkipCause,
+    SkipReason, UndoError, tilde,
 };
 
 use crate::i18n::{I18n, tr};
@@ -177,6 +177,37 @@ pub fn core_error(i: &I18n, e: &CoreError, home: &Path) -> String {
             "error-config-corrupt",
             path = path(p, home),
             reason = reason.as_str()
+        ),
+        E::ConfigLinkConflict {
+            path: p,
+            target,
+            found,
+        } => tr!(
+            i,
+            "error-config-link-conflict",
+            link = path(p, home),
+            found = crate::cmd::config::found(i, found, home),
+            path = path(target, home)
+        ),
+        E::Setting(SettingError::UnknownKey { key }) => tr!(
+            i,
+            "error-unknown-config-key",
+            key = key.as_str(),
+            keys = ra_core::CONFIG_KEYS.join(", ")
+        ),
+        E::Setting(SettingError::ReadOnly { key }) => {
+            tr!(i, "error-read-only-config-key", key = key.as_str())
+        }
+        E::Setting(SettingError::InvalidValue {
+            key,
+            value,
+            expected,
+        }) => tr!(
+            i,
+            "error-invalid-config-value",
+            key = key.as_str(),
+            value = value.as_str(),
+            expected = crate::cmd::config::expected(i, expected)
         ),
         E::WrongHome(p) => tr!(i, "error-wrong-home", path = p.display().to_string()),
         E::Plan(PlanError::HashMismatch { .. }) => tr!(i, "error-plan-changed"),

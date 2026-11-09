@@ -1,0 +1,14 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "action": "path",
+  "command": "config",
+  "link": {
+    "path": "[HOME]/.config/rotten/config.toml",
+    "state": "linked"
+  },
+  "path": "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml",
+  "schema_version": 2
+}

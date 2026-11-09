@@ -12,7 +12,7 @@
     "path": { "type": "string", "minLength": 1 },
     "document": {
       "type": "object",
-      "description": "El código de salida (0 todo bien · 3 sin Acceso total al disco · 5 configuración corrupta) se deduce de report.full_disk_access y report.config; no se repite en el documento.",
+      "description": "El código de salida (0 todo bien · 3 sin Acceso total al disco · 5 configuración corrupta u otra cosa en la ruta de su enlace) se deduce de report.full_disk_access, report.config y report.config_link; no se repite en el documento.",
       "required": ["schema_version", "command", "report"],
       "additionalProperties": false,
       "properties": {
@@ -25,7 +25,7 @@
       "type": "object",
       "required": [
         "version", "macos_version", "arch", "platform_supported", "running_as_root", "home",
-        "home_source", "state_dir", "config_path", "config", "journal_dir", "journal_records",
+        "home_source", "state_dir", "config_path", "config", "config_link", "journal_dir", "journal_records",
         "journal_problems", "trash", "exec_lock_free", "full_disk_access", "running_apps",
         "catalog_version"
       ],
@@ -42,6 +42,51 @@
         "config_path": { "$ref": "#/$defs/path" },
         "config": { "enum": ["missing", "ok", "corrupt"] },
         "config_error": { "type": "string" },
+        "config_link": {
+          "description": "Lo que hay en ~/.config/rotten/config.toml: nada, el enlace a config_path, u otra cosa. Con otra cosa no se limpia nada (RF-SEG-05 c) y el código de salida es 5.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["path", "state"],
+              "additionalProperties": false,
+              "properties": {
+                "path": { "$ref": "#/$defs/path" },
+                "state": { "enum": ["missing", "linked"] }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "state", "found"],
+              "additionalProperties": false,
+              "properties": {
+                "path": { "$ref": "#/$defs/path" },
+                "state": { "const": "conflict" },
+                "found": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["kind"],
+                      "additionalProperties": false,
+                      "properties": { "kind": { "enum": ["file", "directory", "other"] } }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["kind", "target"],
+                      "additionalProperties": false,
+                      "properties": { "kind": { "const": "symlink" }, "target": { "$ref": "#/$defs/path" } }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["kind", "detail"],
+                      "additionalProperties": false,
+                      "properties": { "kind": { "const": "unreadable" }, "detail": { "type": "string" } }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
         "journal_dir": { "$ref": "#/$defs/path" },
         "journal_records": { "$ref": "#/$defs/count" },
         "journal_problems": { "type": "array", "items": { "type": "string" } },

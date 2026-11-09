@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+mod config;
 mod doctor;
 mod empty;
 mod env;
@@ -19,6 +20,7 @@ mod selection;
 use std::path::Path;
 use std::time::SystemTime;
 
+pub use config::{ConfigLink, ConfigSet};
 pub use doctor::{AppsProbe, DoctorReport, FdaState, TrashInfo};
 pub use empty::{EmptyPreview, OpInTrash, TrashView, TrashVolume};
 pub use env::{BUNDLE_ID, Env, EnvError};
@@ -34,9 +36,10 @@ pub use ra_history::{
 };
 pub use ra_plan::{Action, Plan, PlanError, Selection, SkipReason};
 pub use ra_safety::apps::AppBlock;
+pub use ra_safety::settings::KEYS as CONFIG_KEYS;
 pub use ra_safety::{
-    ConfigState, Exclusion, ExclusionMatch, FileKind, FlagViolation, Origin, ProtectionReason,
-    RunningApps, SystemApps,
+    ConfigState, Exclusion, ExclusionMatch, Expected, FileKind, FlagViolation, LinkFound,
+    LinkState, Origin, ProtectionReason, RunningApps, SettingError, SettingValue, SystemApps,
 };
 pub use scan::{CategorySummary, ScanReport, ScanStatus, VolumeState};
 
@@ -102,12 +105,15 @@ impl Core {
         ConfigState::load(&self.env.config_path, &self.env.home)
     }
 
-    /// Exclusiones válidas o aborto por seguridad (RF-SEG-05).
+    /// Exclusiones válidas o aborto por seguridad (RF-SEG-05): la
+    /// configuración se puede validar y en la ruta de su enlace no hay otra
+    /// cosa que alguien pueda estar editando en su lugar.
     fn exclusions_or_abort(&self) -> Result<Exclusions, CoreError> {
         let state = self.config_state();
         if let ConfigState::Corrupt { path, reason } = state {
             return Err(CoreError::ConfigCorrupt { path, reason });
         }
+        self.config_link_or_abort()?;
         state
             .exclusions(&self.env.home)
             .map_err(|reason| CoreError::ConfigCorrupt {
@@ -324,7 +330,7 @@ impl Core {
         dry_run: bool,
     ) -> Result<(Exclusion, bool), CoreError> {
         let ex = Exclusion::parse(raw).map_err(CoreError::InvalidExclusion)?;
-        let mut config = self.editable_config()?;
+        let mut config = self.writable_config()?;
         let changed = if add {
             config.add(&ex)
         } else {

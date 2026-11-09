@@ -26,6 +26,8 @@ pub struct Env {
     pub home_source: &'static str,
     pub state_dir: PathBuf,
     pub config_path: PathBuf,
+    /// Enlace a `config_path` en `<home>/.config/rotten/config.toml` (07 §2).
+    pub config_link_path: PathBuf,
     pub trash: TrashBackend,
 }
 
@@ -95,11 +97,13 @@ impl Env {
     /// Entorno explícito (pruebas). `home` debe ser canónica.
     pub fn new(home: PathBuf, state_dir: PathBuf, trash: TrashBackend) -> Self {
         let config_path = state_dir.join("config.toml");
+        let config_link_path = home.join(".config/rotten/config.toml");
         Self {
             home,
             home_source: "explicit",
             state_dir,
             config_path,
+            config_link_path,
             trash,
         }
     }

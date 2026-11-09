@@ -28,8 +28,11 @@ rotten history
 rotten undo [<op-id>] [--items 1,2] [--dry-run] [--yes]
 rotten doctor
 rotten exclude add|list|remove <ruta|glob|rule:<id>|cat:<CAT-xx>|bundle:<id>>
+rotten config get <clave> · config set <clave> <valor> [--dry-run] · config path
 rotten update [--dry-run] [--yes]
 ```
+
+`config` lee y cambia `config.toml` (claves `language` y `journal.retention_days`; `exclusions.*` solo se leen, se cambian con `exclude`). `config set` crea el enlace `~/.config/rotten/config.toml` si en esa ruta no hay nada, y nunca sustituye lo que haya. Si ahí hay otra cosa, `doctor` lo avisa y las acciones destructivas abortan con `5`.
 
 `rotten update` nunca abre conexiones por su cuenta. Mira dónde está el binario (con los enlaces resueltos): en el Cellar de Homebrew ejecuta `brew upgrade netsirius/tap/rotten` con el `brew` de ese prefijo, tras confirmar o con `--yes`; dentro de un `.app`, explica que la app se actualizará con Sparkle (aún no disponible); con `cargo install` o en otra ruta, dice cómo actualizar. `--dry-run --json` da el método (`homebrew`, `app`, `cargo`, `other`) y el comando exacto (`argv`) sin ejecutar nada.
 
