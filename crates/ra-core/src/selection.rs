@@ -97,6 +97,7 @@ impl Core {
                 exclusions: &exclusions,
                 apps: &apps,
                 trash: &self.env.trash,
+                home: &self.env.home,
                 by: "cli",
             },
         );

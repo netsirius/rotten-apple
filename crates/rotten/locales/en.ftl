@@ -208,6 +208,8 @@ not-recoverable-already-restored = it was already restored
 not-recoverable-unknown = whereabouts unknown after an abrupt shutdown
 not-recoverable-unknown-detail = whereabouts unknown after an abrupt shutdown: { $detail }
 not-recoverable-never-moved = it was never moved
+not-recoverable-other-trash = it was sent to a different Trash than the one in use
+not-recoverable-volume-not-mounted = its Trash is not available (is the volume mounted?)
 
 ## doctor
 
@@ -273,6 +275,7 @@ skip-symlink-in-path = there is a symbolic link in the path
 skip-identity-changed = it changed since the review
 skip-contents-changed = its contents changed since the review
 skip-conflict-exists = something already exists at the original path
+skip-outside-trash = it is not in the Trash in use
 skip-in-use = in use by { $process } (pid { $pid })
 skip-in-use-unknown = cannot tell whether it is in use: { $detail }
 skip-overlaps = it is inside { $path }, which is already in the plan

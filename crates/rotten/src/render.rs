@@ -129,6 +129,7 @@ pub fn skip_cause(i: &I18n, c: &SkipCause, home: &Path) -> String {
         SkipCause::InUse {
             detail: InUseDetail::Unknown { detail },
         } => tr!(i, "skip-in-use-unknown", detail = detail.as_str()),
+        SkipCause::OutsideTrash => tr!(i, "skip-outside-trash"),
     }
 }
 
@@ -154,6 +155,8 @@ pub fn not_recoverable(i: &I18n, r: &NotRecoverableReason) -> String {
             tr!(i, "not-recoverable-unknown-detail", detail = d.as_str())
         }
         NotRecoverableReason::NeverMoved => tr!(i, "not-recoverable-never-moved"),
+        NotRecoverableReason::OtherTrash => tr!(i, "not-recoverable-other-trash"),
+        NotRecoverableReason::VolumeNotMounted => tr!(i, "not-recoverable-volume-not-mounted"),
     }
 }
 

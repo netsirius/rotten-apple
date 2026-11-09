@@ -301,40 +301,71 @@ fn unreadable_trash_exits_3_and_deletes_nothing() {
     }
 }
 
-/// Una línea del journal que dice que un documento está «en la Papelera»
-/// no basta: solo se borra lo que está en el primer nivel de la Papelera de
-/// la operación, aunque la identidad coincida.
-#[test]
-fn a_journal_path_outside_the_trash_is_never_deleted() {
-    let fx = fixture();
-    let doc_path = fx.p("Documents/tesis.docx");
-    let m = fs::symlink_metadata(&doc_path).expect("lstat");
+/// Escribe una operación `forged` que dice haber mandado `path` «a la
+/// Papelera» `trash` (descriptor de `op_started`), con su identidad real.
+fn forge(fx: &Fx, trash: &str, path: &Path) {
+    let m = fs::symlink_metadata(path).expect("lstat");
     let identity = json!({
         "dev": m.dev(), "ino": m.ino(), "kind": "file", "size": m.size(),
         "mtime": m.mtime(), "mtime_nsec": m.mtime_nsec(),
         "ctime": m.ctime(), "ctime_nsec": m.ctime_nsec(),
     });
     let ts = "2026-11-01T10:00:00.000Z";
-    let trash = format!("dir:{}", fx.trash.display());
     let lines = [
         json!({"schema_version":1,"ts":ts,"op":"forged","ev":"op_started","kind":"clean","mode":"trash","items":1,"bytes":1,"by":"cli","trash":trash}),
-        json!({"schema_version":1,"ts":ts,"op":"forged","ev":"item_intent","item":1,"action":"trash","path":doc_path,"identity":identity,"bytes":1}),
-        json!({"schema_version":1,"ts":ts,"op":"forged","ev":"item_done","item":1,"result_path":doc_path}),
+        json!({"schema_version":1,"ts":ts,"op":"forged","ev":"item_intent","item":1,"action":"trash","path":path,"identity":identity,"bytes":1}),
+        json!({"schema_version":1,"ts":ts,"op":"forged","ev":"item_done","item":1,"result_path":path}),
         json!({"schema_version":1,"ts":ts,"op":"forged","ev":"op_finished","status":"completed","done":1,"skipped":0,"failed":0}),
     ];
     let dir = fx.state.join("journal");
     fs::create_dir_all(&dir).expect("mkdir");
     let text: String = lines.iter().map(|l| format!("{l}\n")).collect();
     fs::write(dir.join("2026-11.jsonl"), text).expect("write");
+}
 
-    let (code, doc) = fx.run(&["free", "forged", "--yes", "--json"]);
-    assert_eq!(code, 4, "{doc:#}");
-    assert!(doc["plan"]["ready"].as_array().expect("ready").is_empty());
-    assert_eq!(doc["plan"]["not_freeable"][0]["reason"], "not_in_trash");
-    assert!(
-        doc_path.exists(),
-        "nunca se borra lo que no está en la Papelera"
-    );
+/// Una línea del journal que dice que un documento está «en la Papelera»
+/// no basta (B1 de la revisión):
+///
+/// - con el descriptor de la Papelera en uso, solo se borra lo que está en
+///   su primer nivel (`not_in_trash`);
+/// - con un descriptor que apunta a otra carpeta (`dir:~/Documents`, donde
+///   el documento sí está «en el primer nivel») o a la Papelera del
+///   sistema cuando se usa `ROTTEN_TRASH_DIR`, la operación no se puede
+///   liberar (`other_trash`).
+///
+/// En los tres casos sale con 4 y el documento sigue ahí.
+#[test]
+fn a_journal_path_outside_the_trash_is_never_deleted() {
+    for (desc, reason) in [
+        ("trash", "not_in_trash"),
+        ("documents", "other_trash"),
+        ("system", "other_trash"),
+    ] {
+        let fx = fixture();
+        let doc_path = fx.p("Documents/tesis.docx");
+        let trash = match desc {
+            "trash" => format!("dir:{}", fx.trash.display()),
+            "documents" => format!("dir:{}", fx.p("Documents").display()),
+            _ => "system".to_owned(),
+        };
+        forge(&fx, &trash, &doc_path);
+        let (code, dry) = fx.run(&["free", "forged", "--dry-run", "--json"]);
+        assert_eq!(code, 4, "{desc}: {dry:#}");
+        let (code, doc) = fx.run(&["free", "forged", "--yes", "--json"]);
+        assert_eq!(code, 4, "{desc}: {doc:#}");
+        assert!(
+            doc["plan"]["ready"].as_array().expect("ready").is_empty(),
+            "{desc}: {doc:#}"
+        );
+        assert_eq!(
+            doc["plan"]["not_freeable"][0]["reason"], reason,
+            "{desc}: {doc:#}"
+        );
+        assert!(
+            doc_path.exists(),
+            "{desc}: nunca se borra lo que no está en la Papelera en uso"
+        );
+    }
 }
 
 /// M-5: lo liberado medido con `statfs` coincide con lo estimado ±

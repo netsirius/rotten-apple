@@ -21,7 +21,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use ra_exec::{ExecContext, ExecReport};
-use ra_history::{FreePlan, Record};
+use ra_history::{FreePlan, NotRecoverableReason, Record};
 use ra_plan::PlanError;
 use ra_safety::{AppProbe, Config, Exclusions};
 use serde::Serialize;
@@ -145,23 +145,42 @@ impl Ctx {
             exclusions: &self.exclusions,
             apps: &self.apps,
             trash: &core.env.trash,
+            home: &core.env.home,
             by,
         }
     }
 }
 
 impl Core {
-    /// Plan de liberación desde el journal: solo rutas del primer nivel de
-    /// la Papelera que anotó cada operación.
+    /// Plan de liberación desde el journal. Un elemento entra solo si:
+    ///
+    /// - la Papelera que anotó su operación es la que se usa ahora (`dir:X`
+    ///   solo con `ROTTEN_TRASH_DIR=X`, `system` solo con la del sistema):
+    ///   el descriptor del journal no basta para decidir dónde borrar;
+    /// - la carpeta donde quedó existe (si no, el volumen no está montado);
+    /// - y su ruta está en el primer nivel de esa Papelera.
     fn free_plan(&self, records: &[Record], ops: &[String]) -> Result<FreePlan, CoreError> {
+        let active = self.env.trash.describe();
         Ok(ra_history::prepare_free(records, ops, |it| {
-            ra_exec::in_trash_top_level(
+            if it.trash != active {
+                return Err(NotRecoverableReason::OtherTrash);
+            }
+            if let Some(parent) = it.path.parent()
+                && fs::symlink_metadata(parent).is_err_and(|e| e.kind() == io::ErrorKind::NotFound)
+            {
+                return Err(NotRecoverableReason::VolumeNotMounted);
+            }
+            if ra_exec::in_trash_top_level(
                 &it.trash,
                 &it.path,
                 &it.original_path,
                 it.identity.dev,
                 &self.env.home,
-            )
+            ) {
+                Ok(())
+            } else {
+                Err(NotRecoverableReason::NotInTrash)
+            }
         })?)
     }
 
@@ -185,7 +204,7 @@ impl Core {
         let (records, _) = ra_history::read_journal(&self.history_paths())?;
         let plan = self.free_plan(&records, ops)?;
         Self::trash_readable(&plan)?;
-        let dry_run = ra_exec::dry_run_free(&plan);
+        let dry_run = ra_exec::dry_run_free(&plan, &self.env.trash, &self.env.home);
         Ok(FreePreview { plan, dry_run })
     }
 

@@ -12,9 +12,15 @@
 //!   de ejecutarlo: modificar, sustituir por otro con el mismo nombre o
 //!   quitar.
 //!
-//! Tras `free(A)`: solo desaparecen los elementos de A que siguen siendo el
-//! objeto anotado; los señuelos, los de B, lo cambiado y la carpeta
-//! personal siguen igual.
+//! B se manda a **otra** Papelera (otro `ROTTEN_TRASH_DIR`) y además hay
+//! una operación forjada en el journal que dice haber dejado «en la
+//! Papelera `dir:<carpeta personal>`» los elementos que se quedan en su
+//! sitio, con su identidad real.
+//!
+//! Se pide liberar A, B y la forjada a la vez. Solo entran en el plan los
+//! elementos de A (B y la forjada: `other_trash`), y tras `free` solo
+//! desaparecen los de A que siguen siendo el objeto anotado; los señuelos,
+//! la otra Papelera, lo cambiado y la carpeta personal siguen igual.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -22,7 +28,12 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use proptest::prelude::*;
-use ra_core::{Core, CoreError, Env, ErrorClass, Outcome, PlanError, TrashBackend};
+use std::time::SystemTime;
+
+use ra_core::{
+    Core, CoreError, Env, ErrorClass, NotRecoverableReason, Outcome, PlanError, TrashBackend,
+};
+use ra_history::{Event, HistoryPaths, Journal, OpKind, OpMode, OpStatus, StepAction};
 
 /// `PROPTEST_CASES` sube los casos en la tanda nocturna (RNF-08).
 fn cases() -> u32 {
@@ -192,6 +203,57 @@ fn a_plan_whose_journal_changed_is_refused() {
     assert_eq!(before, snapshot(&trash));
 }
 
+/// Operación `forged` en el journal de `state`: dice que cada ruta de
+/// `paths` quedó «en la Papelera» `trash`, en su propio sitio y con su
+/// identidad real.
+fn forge(state: &Path, trash: &str, paths: &[PathBuf]) {
+    let mut j =
+        Journal::open(&HistoryPaths::new(state), "forged", SystemTime::now()).expect("journal");
+    let start = Event::OpStarted {
+        kind: OpKind::Clean,
+        mode: OpMode::Trash,
+        plan_hash: None,
+        undo_of: None,
+        items: paths.len() as u64,
+        bytes: 1,
+        by: "test".into(),
+        trash: trash.into(),
+    };
+    j.write(start, true).expect("start");
+    for (i, p) in paths.iter().enumerate() {
+        let item = i as u32 + 1;
+        let identity = ra_safety::Identity::from_metadata(&fs::symlink_metadata(p).expect("lstat"));
+        let intent = Event::ItemIntent {
+            item,
+            action: StepAction::Trash,
+            path: p.clone(),
+            identity,
+            target: None,
+            category: None,
+            regenerable: false,
+            bytes: 1,
+            parent_mode: None,
+            origin: None,
+            of: None,
+        };
+        j.write(intent, true).expect("intent");
+        let done = Event::ItemDone {
+            item,
+            result_path: Some(p.clone()),
+            post_check: None,
+        };
+        j.write(done, true).expect("done");
+    }
+    let end = Event::OpFinished {
+        status: OpStatus::Completed,
+        done: paths.len() as u64,
+        skipped: 0,
+        failed: 0,
+        unknown: 0,
+    };
+    j.write(end, true).expect("end");
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: cases(), ..ProptestConfig::default() })]
 
@@ -204,7 +266,8 @@ proptest! {
         let tmp = tempfile::tempdir().expect("tempdir");
         let root = fs::canonicalize(tmp.path()).expect("canon");
         let (home, trash, state) = (root.join("home"), root.join("trash"), root.join("state"));
-        for d in [&home, &trash, &state] {
+        let trash_b = root.join("trash-b");
+        for d in [&home, &trash, &state, &trash_b] {
             fs::create_dir_all(d).expect("mkdir");
         }
         let work = home.join("work");
@@ -223,6 +286,12 @@ proptest! {
             Box::new(BTreeSet::<String>::new()),
         )
         .expect("core");
+        // Mismo historial, otra Papelera.
+        let core_b = Core::with_apps(
+            Env::new(home.clone(), state.clone(), TrashBackend::Dir(trash_b.clone())),
+            Box::new(BTreeSet::<String>::new()),
+        )
+        .expect("core");
 
         // Señuelos con el nombre de elementos de A, antes de moverlos: A
         // acaba en la Papelera como `e-N 2`.
@@ -236,20 +305,36 @@ proptest! {
         let of = |o: Owner| -> Vec<PathBuf> {
             items.iter().zip(&paths).filter(|(it, _)| it.owner == o).map(|(_, p)| p.clone()).collect()
         };
-        let (in_a, in_b) = (of(Owner::A), of(Owner::B));
+        let (in_a, in_b, stay) = (of(Owner::A), of(Owner::B), of(Owner::Home));
         prop_assume!(!in_a.is_empty());
         let op_a = trash_put(&core, &in_a);
+        let mut ops = vec![op_a.clone()];
         if !in_b.is_empty() {
-            trash_put(&core, &in_b);
+            ops.push(trash_put(&core_b, &in_b));
+        }
+        if !stay.is_empty() {
+            forge(&state, &format!("dir:{}", work.display()), &stay);
+            ops.push("forged".into());
         }
         for n in 0..decoys_after {
             fs::write(trash.join(format!("ajeno-{n}.txt")), b"ajeno").expect("write");
         }
 
-        // Revisión.
-        let preview = core.prepare_free(std::slice::from_ref(&op_a)).expect("plan");
+        // Revisión: un elemento cuya Papelera no es la que se usa nunca
+        // entra en el plan.
+        let preview = core.prepare_free(&ops).expect("plan");
         prop_assert_eq!(preview.plan.ready.len(), in_a.len());
         prop_assert!(preview.plan.ready.iter().all(|it| it.of.op == op_a));
+        prop_assert_eq!(preview.plan.not_freeable.len(), in_b.len() + stay.len());
+        prop_assert!(
+            preview
+                .plan
+                .not_freeable
+                .iter()
+                .all(|n| n.reason == NotRecoverableReason::OtherTrash),
+            "{:?}",
+            preview.plan.not_freeable
+        );
         let hash = preview.plan.plan_hash.clone();
 
         // Cambios dentro de la Papelera entre la revisión y la ejecución.
@@ -277,6 +362,7 @@ proptest! {
         }
         let home_before = snapshot(&home);
         let trash_before = snapshot(&trash);
+        let trash_b_before = snapshot(&trash_b);
 
         let result = core.free(&preview.plan, &hash, "test").expect("free");
 
@@ -293,6 +379,7 @@ proptest! {
         }
         prop_assert!(trash_after.keys().all(|k| trash_before.contains_key(k)));
         prop_assert_eq!(&home_before, &snapshot(&home), "la carpeta personal cambió");
+        prop_assert_eq!(&trash_b_before, &snapshot(&trash_b), "la otra Papelera cambió");
 
         let done: BTreeSet<PathBuf> = result
             .report

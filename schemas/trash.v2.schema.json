@@ -468,7 +468,7 @@
               "enum": [
                 "missing", "symlink_in_path", "identity_changed", "contents_changed", "flags",
                 "crosses_device", "protected", "excluded", "app", "unreadable", "conflict_exists",
-                "in_use"
+                "in_use", "outside_trash"
               ]
             },
             "message": { "type": "string" },

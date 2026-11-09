@@ -184,6 +184,7 @@ impl Core {
                 exclusions: &exclusions,
                 apps: &apps,
                 trash: &self.env.trash,
+                home: &self.env.home,
                 by: "cli",
             },
         );
@@ -219,6 +220,7 @@ impl Core {
             exclusions: &exclusions,
             apps: &apps,
             trash: &self.env.trash,
+            home: &self.env.home,
             by,
         };
         ra_exec::recover_incomplete(&ctx, &lock)?;
@@ -266,6 +268,7 @@ impl Core {
             exclusions: &exclusions,
             apps: &apps,
             trash: &self.env.trash,
+            home: &self.env.home,
             by,
         };
         ra_exec::recover_incomplete(&ctx, &lock)?;
@@ -288,6 +291,7 @@ impl Core {
             exclusions: &exclusions,
             apps: &apps,
             trash: &self.env.trash,
+            home: &self.env.home,
             by: "recovery",
         };
         Ok(ra_exec::recover_incomplete(&ctx, &lock)?)

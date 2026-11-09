@@ -489,6 +489,13 @@ pub enum NotRecoverableReason {
     /// No se llegó a mover (omitido, fallido o interrumpido antes).
     #[error("it was never moved")]
     NeverMoved,
+    /// La operación lo mandó a otra Papelera que la que se usa ahora
+    /// (otro `ROTTEN_TRASH_DIR`, o un journal manipulado): no se toca.
+    #[error("it was sent to a different Trash than the one in use")]
+    OtherTrash,
+    /// La carpeta de la Papelera donde quedó no existe (volumen sin montar).
+    #[error("its Trash is not available (is the volume mounted?)")]
+    VolumeNotMounted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -716,13 +723,13 @@ pub enum FreeError {
 }
 
 /// Prepara la liberación de `ops`: cada elemento que el journal da por
-/// movido a la Papelera y cuya ruta acepta `in_trash` (que está en el primer
-/// nivel de la Papelera que anotó la operación). Nunca entra nada que no
-/// esté registrado para esas operaciones.
+/// movido a la Papelera y que acepta `in_trash` (que su Papelera es la que
+/// se usa y que está en su primer nivel); si no lo acepta, devuelve el
+/// motivo. Nunca entra nada que no esté registrado para esas operaciones.
 pub fn prepare_free(
     records: &[Record],
     ops: &[String],
-    in_trash: impl Fn(&FreeItem) -> bool,
+    in_trash: impl Fn(&FreeItem) -> Result<(), NotRecoverableReason>,
 ) -> Result<FreePlan, FreeError> {
     let mut unique: Vec<String> = Vec::new();
     for op in ops {
@@ -761,13 +768,15 @@ pub fn prepare_free(
                         bytes: i.bytes,
                         trash: m.trash.clone(),
                     };
-                    if in_trash(&item) {
-                        plan.totals.items += 1;
-                        plan.totals.bytes += item.bytes;
-                        plan.ready.push(item);
-                        continue;
+                    match in_trash(&item) {
+                        Ok(()) => {
+                            plan.totals.items += 1;
+                            plan.totals.bytes += item.bytes;
+                            plan.ready.push(item);
+                            continue;
+                        }
+                        Err(reason) => reason,
                     }
-                    NotRecoverableReason::NotInTrash
                 }
                 (ItemState::Trashed, None) => NotRecoverableReason::NotInTrash,
                 (ItemState::Deleted, _) => NotRecoverableReason::Deleted,
@@ -933,11 +942,11 @@ mod tests {
     fn unknown_ops_and_items_are_errors() {
         assert!(prepare_undo(&[], "nada", None).is_err());
         assert_eq!(
-            prepare_free(&[], &["nada".into()], |_| true),
+            prepare_free(&[], &["nada".into()], |_| Ok(())),
             Err(FreeError::UnknownOperation { op: "nada".into() })
         );
         assert_eq!(
-            prepare_free(&[], &[], |_| true),
+            prepare_free(&[], &[], |_| Ok(())),
             Err(FreeError::NoOperations)
         );
     }
@@ -1025,7 +1034,11 @@ mod tests {
         let (recs, _) = crate::read_journal(&paths).expect("read");
         // Solo lo que acepta el filtro (la Papelera de la operación) entra.
         let plan = prepare_free(&recs, &["op-clean".into(), "op-clean".into()], |i| {
-            i.item_id == 1 || i.of.item == 2
+            if i.item_id == 1 || i.of.item == 2 {
+                Ok(())
+            } else {
+                Err(NotRecoverableReason::NotInTrash)
+            }
         })
         .expect("plan");
         assert_eq!(plan.ops, vec!["op-clean"]);
@@ -1044,7 +1057,7 @@ mod tests {
         );
         // Un deshacer no se libera.
         assert_eq!(
-            prepare_free(&recs, &["op-undo".into()], |_| true),
+            prepare_free(&recs, &["op-undo".into()], |_| Ok(())),
             Err(FreeError::NotFreeable {
                 op: "op-undo".into()
             })
@@ -1103,7 +1116,7 @@ mod tests {
         assert_eq!(by_id("op-free").kind, HistoryKind::Free);
         assert_eq!(by_id("op-free").undo_state, UndoState::NotApplicable);
         // Ya no queda nada que liberar ni que deshacer.
-        let again = prepare_free(&recs, &["op-clean".into()], |_| true).expect("plan");
+        let again = prepare_free(&recs, &["op-clean".into()], |_| Ok(())).expect("plan");
         assert!(again.ready.is_empty());
         assert_eq!(again.not_freeable.len(), 3);
         assert!(

@@ -169,7 +169,7 @@ impl Core {
     /// Prepara el vaciado de la Papelera y lo simula (la revisión).
     pub fn prepare_empty(&self) -> Result<EmptyPreview, CoreError> {
         let plan = self.empty_plan()?;
-        let dry_run = ra_exec::dry_run_empty(&plan);
+        let dry_run = ra_exec::dry_run_empty(&plan, &self.env.trash, &self.env.home);
         Ok(EmptyPreview { plan, dry_run })
     }
 

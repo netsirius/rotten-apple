@@ -45,6 +45,10 @@ pub enum SkipCause {
     ConflictExists,
     #[error("{detail}")]
     InUse { detail: InUseDetail },
+    /// Al borrar de la Papelera: la ruta no está en el primer nivel de una
+    /// carpeta de la Papelera que se usa ahora.
+    #[error("it is not in the Trash in use")]
+    OutsideTrash,
 }
 
 /// Detalle de [`SkipCause::InUse`] (RF-SEG-08).
@@ -75,6 +79,7 @@ impl SkipCause {
             SkipCause::Unreadable { .. } => "unreadable",
             SkipCause::ConflictExists => "conflict_exists",
             SkipCause::InUse { .. } => "in_use",
+            SkipCause::OutsideTrash => "outside_trash",
         }
     }
 }

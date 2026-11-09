@@ -208,6 +208,8 @@ not-recoverable-already-restored = ya se restauró
 not-recoverable-unknown = paradero desconocido tras un cierre abrupto
 not-recoverable-unknown-detail = paradero desconocido tras un cierre abrupto: { $detail }
 not-recoverable-never-moved = no se llegó a mover
+not-recoverable-other-trash = la mandó a otra Papelera distinta de la que se usa ahora
+not-recoverable-volume-not-mounted = su Papelera no está disponible (¿está montado el volumen?)
 
 ## doctor
 
@@ -273,6 +275,7 @@ skip-symlink-in-path = hay un enlace simbólico en la ruta
 skip-identity-changed = ha cambiado desde la revisión
 skip-contents-changed = su contenido ha cambiado desde la revisión
 skip-conflict-exists = ya hay algo en la ruta original
+skip-outside-trash = no está en la Papelera que se usa
 skip-in-use = lo usa { $process } (pid { $pid })
 skip-in-use-unknown = no se puede saber si está en uso: { $detail }
 skip-overlaps = está dentro de { $path }, que ya está en el plan
