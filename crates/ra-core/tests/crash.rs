@@ -437,7 +437,8 @@ fn check(w: &World, was_open: &[String], ctx: &str) -> usize {
 /// señuelos intactos y cada elemento del plan en su sitio o borrado. Lo que
 /// no está en su sitio tiene intención y está anotado como borrado; lo que
 /// sigue en su sitio no está anotado como borrado, y si no tiene intención
-/// está entero.
+/// está entero; si es una carpeta a medio borrar, está anotada como en
+/// paradero incierto.
 fn check_permanent(w: &World, was_open: &[String], ctx: &str) {
     let paths = HistoryPaths::new(&w.state);
     let (records, _) = read_journal(&paths).expect("journal");
@@ -479,6 +480,11 @@ fn check_permanent(w: &World, was_open: &[String], ctx: &str) {
                 }
             }
             (true, Some(ItemState::Skipped { .. } | ItemState::Failed { .. })) => {}
+            // I2: una carpeta a medio borrar queda en paradero incierto.
+            (true, Some(ItemState::Unknown { .. })) if orig.is_dir() => {
+                let n = fs::read_dir(orig).expect("carpeta").count();
+                assert!(n < 2, "{ctx}: {orig:?} entera y anotada como incierta");
+            }
             (true, Some(other)) => {
                 panic!("{ctx}: {orig:?} sigue en su sitio y el journal dice {other:?}")
             }

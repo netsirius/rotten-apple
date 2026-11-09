@@ -404,15 +404,36 @@ pub fn manifest_for(records: &[Record], op: &str) -> Option<Manifest> {
             })
             .collect();
         for r in records.iter() {
+            // Lo borrado de la Papelera queda borrado; una carpeta cuyo
+            // borrado se cortó a medias, en paradero incierto (le falta
+            // parte). Si la recuperación no pudo comprobarlo, no cambia.
             let freed = match &r.event {
-                Event::ItemDone { item, .. } => freed_by.get(&(r.op.as_str(), *item)),
-                Event::ItemReconciled { item, state, .. } if state == "deleted" => {
-                    freed_by.get(&(r.op.as_str(), *item))
-                }
+                Event::ItemDone { item, .. } => freed_by
+                    .get(&(r.op.as_str(), *item))
+                    .map(|of| (of, ItemState::Deleted)),
+                Event::ItemReconciled {
+                    item,
+                    state,
+                    detail,
+                    ..
+                } => freed_by
+                    .get(&(r.op.as_str(), *item))
+                    .and_then(|of| match state.as_str() {
+                        "deleted" => Some((of, ItemState::Deleted)),
+                        "partial" => Some((
+                            of,
+                            ItemState::Unknown {
+                                detail: detail.clone(),
+                            },
+                        )),
+                        _ => None,
+                    }),
                 _ => None,
             };
-            if let Some(i) = freed.and_then(|of| items.get_mut(of)) {
-                i.state = ItemState::Deleted;
+            if let Some((of, state)) = freed
+                && let Some(i) = items.get_mut(of)
+            {
+                i.state = state;
                 continue;
             }
             if !undo_ops.contains(&r.op.as_str()) {

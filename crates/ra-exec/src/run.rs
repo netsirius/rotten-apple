@@ -1140,28 +1140,35 @@ pub fn recover_incomplete(
             {
                 touched.push(of.op.clone());
             }
-            let (state, result_path, detail) = match stat_nofollow_any(path) {
+            let delete = *action == StepAction::Delete;
+            let (state, result_path, detail) = match what_is_at(path) {
                 // Mover y borrar no conservan el objeto en su ruta: si el
-                // mismo objeto (volumen, inode y tipo) sigue ahí, no se tocó.
-                // Puede haber cambiado (la verificación lo habría omitido),
-                // y una carpeta que se borraba puede haber perdido parte de
-                // su contenido.
-                Ok((id, _)) if id.same_object(identity) => {
-                    skipped += 1;
-                    let detail = (!id.same_after_move(identity)).then(|| {
-                        if *action == StepAction::Delete && identity.kind == FileKind::Dir {
-                            "sigue en su sitio, pero cambió: puede faltar parte de su contenido"
-                        } else {
-                            "sigue en su sitio, pero cambió desde la revisión"
-                        }
-                        .to_owned()
-                    });
-                    ("not_moved", None, detail)
+                // mismo objeto (volumen, inode y tipo) sigue ahí, no se tocó
+                // o, si es una carpeta que se borraba y cambió, se quedó a
+                // medias: falta parte de su contenido y no se sabe cuánto.
+                Ok(Some(id)) if id.same_object(identity) => {
+                    let changed = !id.same_after_move(identity);
+                    if delete && identity.kind == FileKind::Dir && changed {
+                        unknown += 1;
+                        let detail = "borrado interrumpido: contenido parcial";
+                        (PARTIAL, None, Some(detail.to_owned()))
+                    } else {
+                        skipped += 1;
+                        let detail = changed
+                            .then(|| "sigue en su sitio, pero cambió desde la revisión".to_owned());
+                        ("not_moved", None, detail)
+                    }
                 }
-                // Un borrado permanente cuyo original ya no está se hizo.
-                _ if *action == StepAction::Delete => {
+                // Un borrado permanente cuyo original ya no está (en su
+                // carpeta, que sí se pudo abrir) se hizo.
+                Ok(_) if delete => {
                     done += 1;
                     ("deleted", None, None)
+                }
+                // Si no se puede comprobar, no se da por borrado.
+                Err(e) if delete => {
+                    unknown += 1;
+                    ("unknown", None, Some(format!("no se pudo comprobar: {e}")))
                 }
                 _ => {
                     // Un deshacer interrumpido puede haber llegado a su destino
@@ -1224,6 +1231,22 @@ pub fn recover_incomplete(
     let ops: Vec<&str> = touched.iter().map(String::as_str).collect();
     save_manifests(ctx.history, &ops)?;
     Ok(recovered)
+}
+
+/// Estado reconciliado de una carpeta cuyo borrado se cortó a medias.
+const PARTIAL: &str = "partial";
+
+/// Lo que hay en `path`: `None` si no hay nada (ENOENT o ENOTDIR al mirar
+/// dentro de su carpeta, que sí se pudo abrir sin seguir enlaces). Si la
+/// carpeta no se puede abrir (sin permiso, volumen desmontado, enlace en la
+/// ruta) o falla otra cosa, error: no se sabe.
+fn what_is_at(path: &Path) -> io::Result<Option<ra_safety::Identity>> {
+    let (parent, name) = open_parent_nofollow(path)?;
+    match rustix::fs::statat(parent.as_fd(), name, AtFlags::SYMLINK_NOFOLLOW) {
+        Ok(st) => Ok(Some(ra_safety::Identity::from_stat(&st))),
+        Err(rustix::io::Errno::NOENT | rustix::io::Errno::NOTDIR) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Busca en la ruta original (y en sus variantes « (restaurado N)») el
@@ -1817,14 +1840,11 @@ mod batch_tests {
         }
     }
 
-    /// Un corte a mitad de liberar: lo que ya no está en la Papelera queda
-    /// borrado (también en la operación original) y lo que sigue, intacto
-    /// y anotado como no tocado.
-    #[test]
-    fn recovery_of_an_interrupted_free() {
-        let fx = Fx::new();
-        let paths = fx.files(2);
-        let approved = fx.approved(&paths, Action::Trash);
+    /// `paths` en la Papelera y una liberación de todo cortada justo
+    /// después de escribir sus intenciones; devuelve la operación original
+    /// y el plan.
+    fn interrupted_free(fx: &Fx, paths: &[PathBuf]) -> (String, FreePlan) {
+        let approved = fx.approved(paths, Action::Trash);
         let r = execute_batched(&approved, &fx.ctx(), &fx.lock(), 8).expect("ejecutar");
         let op = r.op_id.expect("op");
         let (records, _) = read_journal(&fx.history).expect("journal");
@@ -1865,6 +1885,16 @@ mod batch_tests {
             .expect("intent");
         }
         j.sync().expect("sync");
+        (op, plan)
+    }
+
+    /// Un corte a mitad de liberar: lo que ya no está en la Papelera queda
+    /// borrado (también en la operación original) y lo que sigue, intacto
+    /// y anotado como no tocado.
+    #[test]
+    fn recovery_of_an_interrupted_free() {
+        let fx = Fx::new();
+        let (op, plan) = interrupted_free(&fx, &fx.files(2));
         // Se llegó a borrar el primero; el corte, antes del resto.
         fs::remove_file(&plan.ready[0].path).expect("rm");
         recover_incomplete(&fx.ctx(), &fx.lock()).expect("recover");
@@ -1879,6 +1909,55 @@ mod batch_tests {
         let saved = fs::read_to_string(fx.history.manifests_dir.join(format!("{op}.json")))
             .expect("manifiesto");
         assert!(saved.contains("\"deleted\""), "{saved}");
+    }
+
+    /// I2: una carpeta cuyo borrado se cortó a medias no se da por borrada
+    /// ni por intacta: en las dos operaciones queda en paradero incierto.
+    #[test]
+    fn a_folder_deleted_halfway_is_unknown_in_both_operations() {
+        let fx = Fx::new();
+        let (op, plan) = interrupted_free(&fx, &fx.files(1));
+        let dir = &plan.ready[1].path;
+        assert!(dir.is_dir(), "{dir:?}");
+        // `remove_at` llegó a borrar un hijo de la carpeta.
+        fs::remove_file(dir.join("a.log")).expect("rm");
+        recover_incomplete(&fx.ctx(), &fx.lock()).expect("recover");
+        let partial = |s: &ItemState| matches!(s, ItemState::Unknown { detail: Some(d) } if d.contains("contenido parcial"));
+        let freed = states(&fx, "op-free");
+        assert_eq!(freed[&1], not_moved());
+        assert!(partial(&freed[&2]), "{:?}", freed[&2]);
+        let original = states(&fx, &op);
+        assert_eq!(original[&1], ItemState::Trashed);
+        assert!(partial(&original[&2]), "{:?}", original[&2]);
+        assert!(dir.join("b.log").exists());
+    }
+
+    /// I2 (PoC C del revisor): si la recuperación no puede mirar en la
+    /// Papelera (sin permiso), nada se da por borrado: la liberación queda
+    /// en paradero incierto con el motivo y la operación original sigue en
+    /// la Papelera.
+    #[test]
+    fn recovery_that_cannot_look_in_the_trash_deletes_nothing_on_paper() {
+        let fx = Fx::new();
+        let (op, plan) = interrupted_free(&fx, &fx.files(2));
+        let trash_dir = plan.ready[0].path.parent().expect("Papelera").to_path_buf();
+        fs::set_permissions(&trash_dir, fs::Permissions::from_mode(0o000)).expect("chmod");
+        let r = recover_incomplete(&fx.ctx(), &fx.lock());
+        fs::set_permissions(&trash_dir, fs::Permissions::from_mode(0o755)).expect("chmod");
+        r.expect("recover");
+        let freed = states(&fx, "op-free");
+        for (i, s) in &freed {
+            assert!(
+                matches!(s, ItemState::Unknown { detail: Some(d) } if d.contains("no se pudo comprobar")),
+                "elemento {i}: {s:?}"
+            );
+        }
+        let original = states(&fx, &op);
+        assert!(
+            original.values().all(|s| *s == ItemState::Trashed),
+            "{original:?}"
+        );
+        assert!(plan.ready.iter().all(|it| it.path.exists()));
     }
 
     /// Un lote cortado: todas sus intenciones en el disco y ningún
@@ -1972,17 +2051,11 @@ mod batch_tests {
         let st = states(&fx, "op-borrado");
         assert_eq!(st[&1], ItemState::Deleted);
         assert_eq!(st[&2], not_moved());
-        assert_eq!(st[&3], not_moved());
-        let (records, _) = read_journal(&fx.history).expect("journal");
-        let detail = records.iter().find_map(|r| match &r.event {
-            Event::ItemReconciled {
-                item: 3, detail, ..
-            } => detail.clone(),
-            _ => None,
-        });
+        // I2: ni borrada ni intacta; en paradero incierto, y se dice.
         assert!(
-            detail.is_some_and(|d| d.contains("puede faltar parte de su contenido")),
-            "la carpeta a medio borrar debe decirlo"
+            matches!(&st[&3], ItemState::Unknown { detail: Some(d) } if d.contains("contenido parcial")),
+            "la carpeta a medio borrar debe decirlo: {:?}",
+            st[&3]
         );
     }
 }
