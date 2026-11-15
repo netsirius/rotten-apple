@@ -375,6 +375,9 @@ fn set_writes_through_a_canonical_config_linked_to_a_dotfile() {
     symlink(&dotfile, config(&fx)).expect("ln");
     fs::create_dir_all(link(&fx).parent().expect("padre")).expect("mkdir");
     symlink(&dotfile, link(&fx)).expect("ln");
+    // Los temporales se crean junto al fichero de dotfiles: ahí se limpian.
+    let orphan = fx.p("dotfiles/.config.toml.4242.0.tmp");
+    fs::write(&orphan, "a medias").expect("write");
     let (code, doc) = fx.run(&["doctor", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
     assert_eq!(doc["report"]["config_link"]["state"], "linked");
@@ -383,6 +386,10 @@ fn set_writes_through_a_canonical_config_linked_to_a_dotfile() {
     assert_eq!(code, 0, "{doc:#}");
     assert_eq!(doc["changed"], true);
     assert_eq!(doc["link"]["state"], "linked");
+    assert!(
+        describe(&orphan).is_none(),
+        "el temporal huérfano sigue ahí"
+    );
 
     assert_eq!(
         fs::read_link(config(&fx)).expect("sigue siendo enlace"),
@@ -509,21 +516,29 @@ fn unknown_keys_outside_exclusions_are_tolerated_and_warned() {
     let fx = fixture();
     fs::write(
         config(&fx),
-        "schema_version = 1\ntheme = \"dark\"\n\n[journal]\nretention_days = 30\n\n[exclusions]\n",
+        "schema_version = 1\ntheme = \"dark\"\nexclude_backups_note = \"x\"\n\n[journal]\nretention_days = 30\n\n[exclusions]\n",
     )
     .expect("write");
     let (code, doc) = fx.run(&["doctor", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
+    // `exclude_backups_note` no se parece a `exclusions` (lleva `_`): es una
+    // clave desconocida más.
     assert_eq!(
         doc["report"]["config_unknown_keys"],
-        json!(["journal", "theme"])
+        json!(["exclude_backups_note", "journal", "theme"])
     );
     let (_, text) = human(&fx, "en_US.UTF-8", &["doctor"]);
-    assert!(text.contains("journal, theme"), "{text}");
+    assert!(
+        text.contains("exclude_backups_note, journal, theme"),
+        "{text}"
+    );
     let (code, doc) = fx.run(&["scan", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
     let warnings = doc["warnings"].to_string();
-    assert!(warnings.contains("journal, theme"), "{doc:#}");
+    assert!(
+        warnings.contains("exclude_backups_note, journal, theme"),
+        "{doc:#}"
+    );
     let (code, doc) = fx.run(&["clean", "--dry-run", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
 
@@ -534,9 +549,132 @@ fn unknown_keys_outside_exclusions_are_tolerated_and_warned() {
     assert!(text.contains("retention_days = 30"), "{text}");
 
     // Fail-closed: una exclusión en una sección mal escrita no se ignora.
-    fs::write(config(&fx), "[exclusion]\npaths = [\"~/Library/Logs\"]\n").expect("write");
-    let (code, doc) = fx.run(&["clean", "--dry-run", "--json"]);
-    assert_eq!((code, &doc["error"]["code"]), (5, &json!("config_corrupt")));
+    // Una clave con tilde va entre comillas en TOML.
+    for section in ["exclusion", "\"exclusión\"", "exclude"] {
+        fs::write(
+            config(&fx),
+            format!("[{section}]\npaths = [\"~/Library/Logs\"]\n"),
+        )
+        .expect("write");
+        let (code, doc) = fx.run(&["clean", "--dry-run", "--json"]);
+        assert_eq!(
+            (code, &doc["error"]["code"]),
+            (5, &json!("config_corrupt")),
+            "{section}"
+        );
+    }
+}
+
+/// Toma el cerrojo de ejecución como lo haría otro ejecutor en marcha.
+fn hold_exec_lock(fx: &Fx) -> fs::File {
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(fx.state.join("exec.lock"))
+        .expect("lock");
+    lock.try_lock().expect("tomar el cerrojo");
+    lock
+}
+
+/// Con otro ejecutor en marcha, `config set` y `exclude add|remove` salen
+/// con `6` (el mismo error que `clean`) y no cambian nada: así dos
+/// escrituras a la vez no pierden una de las dos. `--dry-run` no escribe y
+/// no necesita el cerrojo.
+#[test]
+fn set_refuses_while_another_executor_runs() {
+    let fx = fixture();
+    let (code, doc) = fx.run(&["config", "set", "language", "en", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    let orphan = fx.state.join(".config.toml.4242.0.tmp");
+    fs::write(&orphan, "a medias").expect("write");
+    let before = tree(&fx.state);
+    let link_before = describe(&link(&fx));
+
+    let lock = hold_exec_lock(&fx);
+    for args in [
+        &["config", "set", "language", "es", "--json"][..],
+        &["exclude", "add", "~/Library/Logs/old-app", "--json"],
+        &["exclude", "remove", "~/Library/Logs/old-app", "--json"],
+    ] {
+        let (code, doc) = fx.run(args);
+        assert_eq!(
+            (code, &doc["error"]["code"]),
+            (6, &json!("locked")),
+            "{args:?}: {doc:#}"
+        );
+        assert_eq!(tree(&fx.state), before, "{args:?}: algo cambió");
+        assert_eq!(describe(&link(&fx)), link_before, "{args:?}");
+    }
+    let (_, text) = human(&fx, "en_US.UTF-8", &["config", "set", "language", "es"]);
+    assert!(text.contains("another Rotten Apple process"), "{text}");
+
+    for args in [
+        &["config", "set", "language", "es", "--dry-run", "--json"][..],
+        &[
+            "exclude",
+            "add",
+            "~/Library/Logs/old-app",
+            "--dry-run",
+            "--json",
+        ],
+    ] {
+        let (code, doc) = fx.run(args);
+        assert_eq!(code, 0, "{args:?}: {doc:#}");
+        assert_eq!(doc["dry_run"], true, "{args:?}");
+        assert_eq!(doc["changed"], true, "{args:?}");
+        assert_eq!(tree(&fx.state), before, "{args:?}: algo cambió");
+    }
+    drop(lock);
+
+    let (code, doc) = fx.run(&["config", "set", "language", "es", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    let text = fs::read_to_string(config(&fx)).expect("read");
+    assert!(text.contains("language = \"es\""), "{text}");
+    assert!(
+        describe(&orphan).is_none(),
+        "el temporal huérfano sigue ahí"
+    );
+}
+
+/// Un corte deja un temporal `.config.toml.<pid>.<n>.tmp`; el siguiente
+/// `config set` (con el cerrojo tomado) lo borra. Solo ficheros regulares
+/// con esa forma exacta: un enlace con nombre de temporal se deja (y su
+/// destino no se toca nunca), igual que `.config.toml.swp` de un editor o
+/// la propia configuración.
+#[test]
+fn the_next_set_removes_an_orphan_temp_but_never_follows_links() {
+    let fx = fixture();
+    let (code, doc) = fx.run(&["config", "set", "language", "en", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    let orphan = fx.state.join(".config.toml.4242.0.tmp");
+    fs::write(&orphan, "a medias").expect("write");
+    let precious = fx.p("Documents/precious.txt");
+    fs::create_dir_all(precious.parent().expect("padre")).expect("mkdir");
+    fs::write(&precious, "no tocar").expect("write");
+    let trap = fx.state.join(".config.toml.7.1.tmp");
+    symlink(&precious, &trap).expect("ln");
+    let swap = fx.state.join(".config.toml.swp");
+    fs::write(&swap, "vim").expect("write");
+
+    // `--dry-run` no limpia: no toma el cerrojo.
+    let (code, doc) = fx.run(&["config", "set", "language", "es", "--dry-run", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert!(describe(&orphan).is_some());
+
+    // Se limpia aunque el valor no cambie.
+    let (code, doc) = fx.run(&["config", "set", "language", "en", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert_eq!(doc["changed"], false);
+    assert!(
+        describe(&orphan).is_none(),
+        "el temporal huérfano sigue ahí"
+    );
+    assert_eq!(fs::read_link(&trap).expect("el enlace sigue"), precious);
+    assert_eq!(fs::read_to_string(&precious).expect("read"), "no tocar");
+    assert_eq!(fs::read_to_string(&swap).expect("read"), "vim");
+    let text = fs::read_to_string(config(&fx)).expect("read");
+    assert!(text.contains("language = \"en\""), "{text}");
 }
 
 /// M1: con la configuración corrupta, el mensaje del JSON es una línea; el

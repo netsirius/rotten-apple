@@ -314,7 +314,7 @@
           "additionalProperties": false,
           "properties": {
             "code": {
-              "description": "Código estable del error (no depende del idioma): unknown_config_key, read_only_config_key, invalid_config_value (2); config_corrupt, config_link_conflict (5); y los comunes.",
+              "description": "Código estable del error (no depende del idioma): unknown_config_key, read_only_config_key, invalid_config_value (2); config_corrupt, config_link_conflict (5); locked (6: otro ejecutor tiene el cerrojo; solo set sin --dry-run lo toma); y los comunes.",
               "type": "string",
               "pattern": "^[a-z][a-z_]*$"
             },

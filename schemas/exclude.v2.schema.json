@@ -46,7 +46,7 @@
           "additionalProperties": false,
           "properties": {
             "code": {
-              "description": "Código estable del error (no depende del idioma).",
+              "description": "Código estable del error (no depende del idioma). locked (6): otro ejecutor tiene el cerrojo; add y remove sin --dry-run lo toman.",
               "type": "string",
               "pattern": "^[a-z][a-z_]*$"
             },

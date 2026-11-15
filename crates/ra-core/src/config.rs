@@ -134,8 +134,21 @@ impl Core {
     /// forma atómica y, sin `dry_run`, crea el enlace si en su ruta no hay
     /// nada. Con la configuración corrupta o con otra cosa en la ruta del
     /// enlace no cambia nada (5).
+    ///
+    /// Sin `dry_run` toma el cerrojo de ejecución antes de leer (otro
+    /// ejecutor en marcha: [`CoreError::Locked`], 6, sin cambiar nada), así
+    /// que dos `set` a la vez no pierden ninguno de los dos cambios. Con el
+    /// cerrojo tomado borra los temporales que dejó una escritura cortada.
+    /// `dry_run` no escribe y no lo toma.
     pub fn config_set(&self, key: &str, raw: &str, dry_run: bool) -> Result<ConfigSet, CoreError> {
         let env = self.env();
+        let _lock = if dry_run {
+            None
+        } else {
+            let lock = self.lock()?;
+            Config::remove_stale_temps(&env.config_path);
+            Some(lock)
+        };
         let mut config = self.writable_config()?;
         let before = config.clone();
         let value = config.set(key, raw)?;

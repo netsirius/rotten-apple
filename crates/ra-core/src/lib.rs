@@ -349,6 +349,10 @@ impl Core {
         dry_run: bool,
     ) -> Result<(Exclusion, bool), CoreError> {
         let ex = Exclusion::parse(raw).map_err(CoreError::InvalidExclusion)?;
+        // Como `config set`: sin `dry_run`, el cerrojo de ejecución antes de
+        // leer, para no perder un cambio concurrente ni dejar que su limpieza
+        // de temporales borre el de esta escritura.
+        let _lock = if dry_run { None } else { Some(self.lock()?) };
         let mut config = self.writable_config()?;
         let changed = if add {
             config.add(&ex)

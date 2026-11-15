@@ -10,8 +10,9 @@
 //!   nueva, por ejemplo) se toleran, se conservan al reescribir el fichero y
 //!   se avisan (07 §2). En `[exclusions]` no: una clave mal escrita ahí
 //!   dejaría una exclusión sin aplicar, así que falla cerrado. Tampoco una
-//!   clave de primer nivel que contenga «exclu» (`[exclusion]`,
-//!   `[exclusiones]`): parece esa sección mal escrita.
+//!   clave de primer nivel que se parezca a `exclusions` (`[exclusion]`,
+//!   `[exclusiones]`, `[exclude]`): parece esa sección mal escrita (ver
+//!   `looks_like_exclusions`).
 //!
 //! Las exclusiones prevalecen sobre cualquier regla. Una ruta excluida
 //! bloquea también a sus ancestros: mover la carpeta que la contiene la
@@ -230,6 +231,57 @@ impl Config {
         }
         fs::File::open(dir)?.sync_all()
     }
+
+    /// Borra los temporales que dejó un [`Config::save`] cortado a medias
+    /// en la carpeta donde se escribe `path` (la del final de la cadena si es
+    /// un enlace, la misma que usa `save`). Devuelve cuántos ha borrado.
+    ///
+    /// Solo se puede llamar con el cerrojo de ejecución tomado y con todos
+    /// los escritores de la configuración tomándolo también: si no, podría
+    /// borrar el temporal de un escritor vivo.
+    ///
+    /// Solo toca ficheros regulares (sin seguir enlaces: un enlace con nombre
+    /// de temporal se deja tal cual, y su destino también) cuyo nombre tenga
+    /// exactamente la forma de [`new_temp`], `.config.toml.<pid>.<n>.tmp`,
+    /// y nunca el propio fichero de configuración. Es de mejor esfuerzo: un
+    /// error no impide guardar.
+    pub fn remove_stale_temps(path: &Path) -> usize {
+        let Ok(target) = write_target(path) else {
+            return 0;
+        };
+        let Some(dir) = target.parent() else {
+            return 0;
+        };
+        let Ok(entries) = fs::read_dir(dir) else {
+            return 0;
+        };
+        let mut removed = 0;
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p == target || !entry.file_name().to_str().is_some_and(is_temp_name) {
+                continue;
+            }
+            let regular = fs::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_file());
+            if regular && fs::remove_file(&p).is_ok() {
+                removed += 1;
+            }
+        }
+        removed
+    }
+}
+
+/// `true` si `name` tiene la forma exacta de los temporales de
+/// [`new_temp`]: `.config.toml.<dígitos>.<dígitos>.tmp`.
+fn is_temp_name(name: &str) -> bool {
+    let Some(mid) = name
+        .strip_prefix(".config.toml.")
+        .and_then(|r| r.strip_suffix(".tmp"))
+    else {
+        return false;
+    };
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    mid.split_once('.')
+        .is_some_and(|(pid, n)| digits(pid) && digits(n))
 }
 
 /// El fichero que hay que reescribir para cambiar `path`: el propio `path`
@@ -256,7 +308,8 @@ fn write_target(path: &Path) -> io::Result<PathBuf> {
 }
 
 /// Temporal con un nombre que no existía (`create_new`): nunca se escribe
-/// sobre otro fichero ni a través de un enlace.
+/// sobre otro fichero ni a través de un enlace. Si cambia la forma del
+/// nombre, hay que cambiar también `is_temp_name`.
 fn new_temp(dir: &Path) -> io::Result<(PathBuf, fs::File)> {
     use std::sync::atomic::{AtomicU32, Ordering};
     static SEQ: AtomicU32 = AtomicU32::new(0);
@@ -276,6 +329,43 @@ fn new_temp(dir: &Path) -> io::Result<(PathBuf, fs::File)> {
             Err(e) => return Err(e),
         }
     }
+}
+
+/// `true` si una clave desconocida de primer nivel parece `[exclusions]`
+/// mal escrita (heurística por similitud, decidida por el autor el
+/// 2026-11-15). Se compara en minúsculas y por caracteres, no por bytes, para
+/// que `exclusión` cuente una sola letra cambiada:
+///
+/// - a distancia de edición ≤ 3 de `exclusions` (`exclusion`, `exclusiones`,
+///   `exclusión`, `exlcusions`, `Exclusions `…), o
+/// - empieza por `exclu` y no lleva separadores `-` ni `_` (`exclude`,
+///   `excluded`, `excludes`).
+///
+/// El resto (`exclude_backups_note`, `exclude-notes`, `theme`…) es una clave
+/// desconocida más: se tolera y se avisa. Falsos positivos aceptados a
+/// sabiendas, porque fallar cerrado aquí solo obliga a revisar el fichero:
+/// `inclusions` (2), `extensions`, `expansions`, `executions` y
+/// `conclusions` (3) se dan por erratas.
+fn looks_like_exclusions(key: &str) -> bool {
+    const TARGET: &str = "exclusions";
+    let key = key.to_lowercase();
+    edit_distance(&key, TARGET) <= 3 || (key.starts_with("exclu") && !key.contains(['-', '_']))
+}
+
+/// Distancia de Levenshtein entre dos cadenas, por caracteres.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0; b.len() + 1];
+    for (i, ca) in a.chars().enumerate() {
+        cur[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let sub = prev[j] + usize::from(ca != *cb);
+            cur[j + 1] = sub.min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
 }
 
 /// Estado de la configuración tras intentar cargarla.
@@ -301,11 +391,7 @@ impl ConfigState {
         // Una sección desconocida que parece `[exclusions]` mal escrita
         // (`[exclusion]`, `[exclusiones]`…) dejaría exclusiones sin aplicar:
         // falla cerrado aunque el resto de claves desconocidas se toleren.
-        if let Some(k) = config
-            .unknown
-            .keys()
-            .find(|k| k.to_lowercase().contains("exclu"))
-        {
+        if let Some(k) = config.unknown.keys().find(|k| looks_like_exclusions(k)) {
             return Self::corrupt(
                 path,
                 format!("unknown key «{k}» (is it a misspelled [exclusions]?)"),
@@ -520,6 +606,130 @@ mod tests {
             assert!(matches!(s, ConfigState::Corrupt { .. }), "{bad:?} → {s:?}");
             assert!(s.exclusions(Path::new(HOME)).is_err());
         }
+    }
+
+    /// Heurística por similitud en las dos direcciones. `inclusions` y los
+    /// demás nombres a distancia ≤ 3 son falsos positivos aceptados
+    /// (fail-closed): se documentan aquí para que un cambio los haga visibles.
+    #[test]
+    fn misspelled_exclusions_are_detected_by_similarity() {
+        for k in [
+            "exclusions",
+            "Exclusions",
+            "EXCLUSIONS",
+            "Exclusions ",
+            "exclusion",
+            "exclusiones",
+            "exclusión",
+            "Exclusión",
+            "exlcusions",
+            "exclusons",
+            "excluions",
+            // Solo por la regla del prefijo (están a más de 3).
+            "exclude",
+            "excluded",
+            "excludes",
+            "excluir",
+            // Falsos positivos aceptados.
+            "inclusions",
+            "extensions",
+            "expansions",
+            "executions",
+            "conclusions",
+        ] {
+            assert!(looks_like_exclusions(k), "{k:?} debería ser una errata");
+        }
+        for k in [
+            "exclude_backups_note",
+            "exclude-notes",
+            "exclusions_note",
+            "ui",
+            "theme",
+            "journal",
+            "language",
+            "notifications",
+            "selections",
+        ] {
+            assert!(!looks_like_exclusions(k), "{k:?} debería tolerarse");
+        }
+        assert_eq!(edit_distance("exclusión", "exclusions"), 2);
+        assert_eq!(edit_distance("inclusions", "exclusions"), 2);
+        assert_eq!(edit_distance("", "abc"), 3);
+    }
+
+    #[test]
+    fn misspelled_exclusions_make_the_config_corrupt() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let p = dir.path().join("config.toml");
+        for (text, corrupt) in [
+            // Una clave con tilde va entre comillas en TOML.
+            ("[\"exclusión\"]\npaths = []\n", true),
+            ("[exclude]\npaths = []\n", true),
+            ("\"Exclusions \" = {}\n", true),
+            ("exclude_backups_note = \"x\"\n", false),
+            ("[exclude-notes]\nx = 1\n", false),
+        ] {
+            fs::write(&p, text).expect("write");
+            let s = ConfigState::load(&p, Path::new(HOME));
+            match s {
+                ConfigState::Corrupt { reason, .. } => {
+                    assert!(corrupt, "{text:?} → {reason}");
+                    assert!(
+                        reason.contains("is it a misspelled [exclusions]?"),
+                        "{reason}"
+                    );
+                }
+                ConfigState::Loaded(c) => {
+                    assert!(!corrupt, "{text:?} debería ser corrupta");
+                    assert_eq!(c.unknown_keys().len(), 1, "{text:?}");
+                }
+                ConfigState::Missing => panic!("{text:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn stale_temps_are_removed_without_following_links() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = fs::canonicalize(dir.path()).expect("canon");
+        let cfg = base.join("config.toml");
+        fs::write(&cfg, "schema_version = 1\n").expect("write");
+        fs::write(base.join(".config.toml.123.0.tmp"), b"a medias").expect("write");
+        fs::write(base.join(".config.toml.swp"), b"vim").expect("write");
+        fs::write(base.join(".config.toml.x"), b"otro").expect("write");
+        fs::write(base.join(".config.toml.1.tmp"), b"otro").expect("write");
+        fs::create_dir(base.join(".config.toml.9.9.tmp")).expect("mkdir");
+        let outside = tempfile::tempdir().expect("tempdir");
+        let precious = outside.path().join("precious");
+        fs::write(&precious, b"no tocar").expect("write");
+        symlink(&precious, base.join(".config.toml.7.1.tmp")).expect("symlink");
+
+        assert_eq!(Config::remove_stale_temps(&cfg), 1);
+        assert!(!base.join(".config.toml.123.0.tmp").exists());
+        for kept in [
+            ".config.toml.swp",
+            ".config.toml.x",
+            ".config.toml.1.tmp",
+            ".config.toml.9.9.tmp",
+            ".config.toml.7.1.tmp",
+            "config.toml",
+        ] {
+            assert!(fs::symlink_metadata(base.join(kept)).is_ok(), "{kept}");
+        }
+        assert_eq!(fs::read(&precious).expect("read"), b"no tocar");
+
+        // Nunca la propia configuración, aunque su nombre tenga la forma de
+        // un temporal (el destino de un enlace de dotfiles, por ejemplo).
+        let odd = base.join(".config.toml.5.5.tmp");
+        fs::write(&odd, "schema_version = 1\n").expect("write");
+        let link = base.join("enlace.toml");
+        symlink(&odd, &link).expect("symlink");
+        assert_eq!(Config::remove_stale_temps(&link), 0);
+        assert!(odd.exists());
+
+        // Sin carpeta no hay nada que hacer.
+        assert_eq!(Config::remove_stale_temps(&base.join("no/existe.toml")), 0);
     }
 
     #[test]
