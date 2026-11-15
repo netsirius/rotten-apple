@@ -271,15 +271,21 @@ impl Core {
         let (records, _) = ra_history::read_journal(&self.history_paths())?;
         let op = match op {
             Some(o) => o.to_owned(),
-            None => ra_history::list_ops(&records)
-                .into_iter()
-                .find(|o| matches!(o.undo_state, UndoState::Restorable | UndoState::Partial))
+            None => last_restorable_in(&records)
                 .map(|o| o.op_id)
                 .ok_or(CoreError::NothingToUndo)?,
         };
         let plan = ra_history::prepare_undo(&records, &op, items)?;
         let dry_run = ra_exec::dry_run_undo(&plan);
         Ok(UndoPreview { plan, dry_run })
+    }
+
+    /// La última operación que aún tiene algo en la Papelera (se puede
+    /// deshacer entera o en parte): la que `undo` deshace por defecto y la
+    /// que «Liberar ahora» del menú libera. `None` si no hay ninguna.
+    pub fn last_restorable(&self) -> Result<Option<OpSummary>, CoreError> {
+        let (records, _) = ra_history::read_journal(&self.history_paths())?;
+        Ok(last_restorable_in(&records))
     }
 
     /// Restaura los elementos del plan de deshacer.
@@ -396,6 +402,20 @@ fn unknown_keys_warning(config: &ConfigState, path: &Path) -> Option<String> {
         )),
         _ => None,
     }
+}
+
+/// Ver [`Core::last_restorable`]: la más reciente en `Restorable` o `Partial`.
+fn last_restorable_in(records: &[ra_history::Record]) -> Option<OpSummary> {
+    ra_history::list_ops(records)
+        .into_iter()
+        .find(|o| matches!(o.undo_state, UndoState::Restorable | UndoState::Partial))
+}
+
+/// Descarta lo tecleado en la terminal de stdin que aún no se ha leído
+/// (antes de una confirmación, para que una tecla pulsada de antemano no
+/// conteste por la persona). Sin terminal no hace nada.
+pub fn discard_pending_input() {
+    ra_platform::tty::discard_pending_input();
 }
 
 /// `true` si el proceso corre como root (RF-CLI-06).

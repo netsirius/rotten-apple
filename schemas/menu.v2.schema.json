@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netsirius/rotten-apple/schemas/menu.v2.schema.json",
+  "title": "rotten --json, sin subcomando (schema_version 2)",
+  "description": "`rotten` sin subcomando abre el menú interactivo (T-16), que solo existe en una terminal y no tiene salida JSON. Con --json y sin subcomando no hay nada que ejecutar: el documento de error común con `subcommand_required` y código 2.",
+  "oneOf": [
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "error": {
+      "type": "object",
+      "required": ["schema_version", "command", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 2 },
+        "command": { "const": "menu" },
+        "error": {
+          "type": "object",
+          "required": ["code", "exit_code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "description": "Código estable del error (no depende del idioma): `subcommand_required`.",
+              "type": "string",
+              "pattern": "^[a-z][a-z_]*$"
+            },
+            "exit_code": { "enum": [1, 2, 3, 4, 5, 6] },
+            "message": { "description": "Mensaje en inglés, igual en cualquier idioma.", "type": "string" },
+            "detail": {
+              "description": "Opcional: lo que no cabe en una línea del mensaje. Se omite si no hay.",
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

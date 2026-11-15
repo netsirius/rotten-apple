@@ -416,14 +416,14 @@ cli-heading-usage = Usage:
 cli-heading-commands = Commands
 cli-heading-arguments = Arguments
 cli-heading-options = Options
-cli-about = Rotten Apple: clean your Mac without fear. Everything goes to the Trash and can be undone.
+cli-about = Rotten Apple: clean your Mac without fear. Everything goes to the Trash and can be undone. Without a command, in a terminal, opens the interactive menu.
 cli-arg-json = JSON output (automatic when the output is not a terminal)
-cli-arg-yes = Run without asking
+cli-arg-yes = Run without asking (the interactive menu always asks)
 cli-arg-quiet = Less text
 cli-arg-no_color = No colours (also with NO_COLOR)
 cli-arg-debug = Detailed technical log, also on standard error
 cli-arg-lang = Language of the output for people (es or en)
-cli-arg-allow_root = Allow running as root (RF-CLI-06)
+cli-arg-allow_root = Allow running as root
 cli-arg-help = Print help
 cli-arg-version = Print version
 cli-cmd-help = Print this message or the help of the given subcommand(s)
@@ -472,3 +472,41 @@ cli-value-subcommand = COMMAND
 cli-cmd-completion = Completion script for zsh, bash or fish
 cli-cmd-completion-arg-shell = The shell: zsh, bash or fish
 cli-value-shell = SHELL
+
+## Interactive menu: `rotten` without a subcommand (T-16)
+
+menu-title = Rotten Apple
+menu-scan = Scan
+menu-scan-desc = What can be cleaned, by category. Same as «rotten scan».
+menu-clean = Clean
+menu-clean-desc = Reviews the plan and moves what is preselected to the Trash, after you confirm. Same as «rotten clean».
+menu-undo = Undo the last operation
+menu-undo-desc = Puts back what the last operation sent to the Trash, after you confirm. Same as «rotten undo».
+menu-free = Free up now
+menu-free-desc = Deletes from the Trash, for good, what the last operation that still has something in the Trash sent there, after you review and confirm. Same as «rotten free <operation>».
+menu-history = History
+menu-history-desc = Past operations and whether they can still be undone. Same as «rotten history».
+menu-trash = Show the Trash
+menu-trash-desc = What is in the Trash, by volume. Same as «rotten trash».
+menu-trash-empty = Empty the Trash
+menu-trash-empty-desc = Empties the whole Trash, after you review and confirm (cannot be undone). Same as «rotten trash empty».
+menu-exclude = Exclusions
+menu-exclude-desc = What is never touched. Same as «rotten exclude list».
+menu-doctor = Diagnostics
+menu-doctor-desc = Permissions, platform, configuration and journal integrity. Same as «rotten doctor».
+menu-config = Where the configuration is
+menu-config-desc = The path of the configuration file and its link in ~/.config/rotten/. Same as «rotten config path».
+menu-quit = Quit
+menu-quit-desc = Closes the menu (also with q or Esc).
+menu-keys = ↑↓ or j/k: move · Enter: choose · u: undo · q: quit
+menu-pause = Enter: back to the menu · q: quit
+menu-free-nothing = No operation has items in the Trash to free up.
+menu-free-which = Operation: { $op }  { $date }  { $kind ->
+    [clean] clean
+    [trash_put] trash put
+    [free] free
+    [trash_empty] empty Trash
+   *[undo] undo
+}
+menu-needs-subcommand = without a subcommand, rotten opens the interactive menu, which needs a terminal and has no JSON output: give a command (rotten --help)
+menu-terminal-error = could not set up the terminal for the menu: { $detail }

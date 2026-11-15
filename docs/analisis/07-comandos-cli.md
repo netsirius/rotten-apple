@@ -23,7 +23,7 @@
 
 | Mole | Rotten Apple | Qué mejora o cambia | Dónde está en la GUI | Fase |
 |---|---|---|---|---|
-| `mo` (menú interactivo) | `rotten` (menú interactivo en terminal) | Mismas teclas de navegación (flechas y estilo Vim) | La app entera | MVP |
+| `mo` (menú interactivo) | `rotten` sin subcomando (menú interactivo en terminal) | Mismas teclas de navegación (flechas y estilo Vim). Se abre solo con stdin y stdout en una terminal; si no, la ayuda por stderr y `2`. Cada opción llama a su subcomando, que enseña el plan y pregunta: el menú ignora `--yes` y `--quiet`. `rotten --json` sin subcomando da `subcommand_required` (`2`): el menú no tiene salida JSON. | La app entera | MVP |
 | `mo clean` · `--dry-run` `--debug` | `rotten clean` · `--dry-run` `--debug` `--category <id>` `--include-review` `--permanent` | **Papelera por defecto** (Mole borra para siempre). **Nunca vacía `~/.Trash`** (Mole la vacía por defecto). Solo lo «Seguro» sin `--include-review`. | Limpieza | MVP |
 | `mo clean --whitelist` | `rotten exclude add\|list\|remove <ruta\|regla>` | Exclusiones compartidas con la GUI. Si el fichero está corrupto, se aborta (fail-closed), como Mole. | Ajustes › Exclusiones; «Excluir siempre…» en cada detalle | MVP |
 | `mo uninstall` · `--dry-run` `--with-data` `--permanent` `--list` | `rotten uninstall <app…>` · los mismos flags; `--list` devuelve JSON (`name`, `bundle_id`, `source`, `path`, `size`) | `--with-data` nunca incluye Documentos ni fototecas. Igual que Mole, lista las referencias en configuraciones de shell y MCP sin editarlas. | Aplicaciones › Desinstalar | MVP |
@@ -116,10 +116,10 @@ Amplía la higiene de secretos del doc 03 §6, H1–H9, a petición del autor.
 | Flag | Efecto |
 |---|---|
 | `--dry-run` | Muestra el plan sin cambiar nada |
-| `--json` | Salida JSON (automática si la salida va a una tubería) |
-| `--yes` | Permite ejecutar sin interacción |
+| `--json` | Salida JSON (automática si la salida va a una tubería). Sin subcomando, `rotten --json` sale con `subcommand_required` (`2`): el menú no tiene salida JSON |
+| `--yes` | Permite ejecutar sin interacción. El menú (`rotten` sin subcomando) lo ignora: siempre pregunta |
 | `--permanent` | Borra sin pasar por la Papelera. Solo en `clean`, `uninstall`, `purge` e `installer`; pide `--yes` |
-| `--debug` · `--quiet` · `--no-color` | Verbosidad y formato |
+| `--debug` · `--quiet` · `--no-color` | Verbosidad y formato. El menú ignora `--quiet`: el plan siempre se ve antes de confirmar |
 | `--lang es\|en` | Idioma de la salida |
 
 ## 5. Códigos de salida

@@ -33,6 +33,9 @@ blake3 = "1.8"
 clap = { version = "4.5", features = ["derive", "string"] }
 # Scripts de autocompletado de `rotten completion` (T-14; MIT o Apache-2.0).
 clap_complete = "4.6"
+# Teclas y modo raw del menú interactivo (T-16; MIT). La misma versión que
+# usa `ratatui`, para que sus tipos de eventos coincidan.
+crossterm = "0.29"
 # Mensajes del CLI con plurales (T-03, Project Fluent; MIT o Apache-2.0).
 fluent-bundle = "0.16"
 globset = "0.4"
@@ -43,9 +46,16 @@ libc = "0.2"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSError", "NSFileManager", "NSString", "NSURL"] }
 plist = "1.7"
-rustix = { version = "1.0", features = ["fs", "process"] }
+# Dibujo del menú interactivo (T-16; MIT). Sin las features por defecto:
+# solo el backend de crossterm.
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
+# `termios`: `tcflush` antes de cada confirmación (T-16), sin `unsafe`.
+rustix = { version = "1.0", features = ["fs", "process", "termios"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# SIGTERM y SIGHUP con el menú interactivo abierto (T-16; MIT o Apache-2.0).
+# Ya venía con `crossterm`: la misma versión.
+signal-hook = "0.3"
 thiserror = "2.0"
 toml = "0.9"
 unic-langid = "0.9"

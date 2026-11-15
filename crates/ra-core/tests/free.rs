@@ -162,6 +162,42 @@ fn trash_put(core: &Core, paths: &[PathBuf]) -> String {
     r.op_id.expect("op")
 }
 
+/// `last_restorable` (lo que libera «Liberar ahora» en el menú y deshace
+/// `undo` sin operación): con dos operaciones y la última ya liberada, es
+/// la anterior, no la última del historial.
+#[test]
+fn the_last_restorable_skips_an_operation_already_freed() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = fs::canonicalize(tmp.path()).expect("canon");
+    let (home, trash, state) = (root.join("home"), root.join("trash"), root.join("state"));
+    for d in [&home, &trash, &state] {
+        fs::create_dir_all(d).expect("mkdir");
+    }
+    let core = Core::with_apps(
+        Env::new(home.clone(), state, TrashBackend::Dir(trash.clone())),
+        Box::new(BTreeSet::<String>::new()),
+    )
+    .expect("core");
+    assert!(core.last_restorable().expect("historial").is_none());
+    let (a, b) = (home.join("a.log"), home.join("b.log"));
+    make(&a, false, 100);
+    make(&b, false, 100);
+    let first = trash_put(&core, std::slice::from_ref(&a));
+    let second = trash_put(&core, std::slice::from_ref(&b));
+    let last = core.last_restorable().expect("historial").expect("op");
+    assert_eq!(last.op_id, second);
+    let p = core
+        .prepare_free(std::slice::from_ref(&second))
+        .expect("plan");
+    core.free(&p.plan, &p.plan.plan_hash, "test")
+        .expect("liberar");
+    let last = core.last_restorable().expect("historial").expect("op");
+    assert_eq!(last.op_id, first);
+    // La misma que deshace `undo` sin operación.
+    let undo = core.prepare_undo(None, None).expect("undo");
+    assert_eq!(undo.plan.undo_of, first);
+}
+
 /// Si el journal cambia entre la revisión y la ejecución, el plan ya no es
 /// el revisado: no se borra nada y el error es de seguridad (5).
 #[test]
