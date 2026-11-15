@@ -1,13 +1,9 @@
-//! Terminal de stdin.
-
 /// Descarta la entrada de la terminal de stdin recibida y aún no leída
-/// (`tcflush(STDIN, TCIFLUSH)`). Si stdin no es una terminal, `tcflush`
-/// falla con `ENOTTY` y no pasa nada: no hay nada que descartar.
-#[allow(unsafe_code)]
+/// (`tcflush(STDIN, TCIFLUSH)`, con `rustix`, sin `unsafe`). Si stdin no es
+/// una terminal, `tcflush` falla con `ENOTTY` y no pasa nada: no hay nada
+/// que descartar.
 pub fn discard_pending_input() {
-    // SAFETY: `tcflush` solo recibe un descriptor y una constante; no toca
-    // memoria del proceso. Un descriptor que no es una terminal da error.
-    let _ = unsafe { libc::tcflush(libc::STDIN_FILENO, libc::TCIFLUSH) };
+    let _ = rustix::termios::tcflush(std::io::stdin(), rustix::termios::QueueSelector::IFlush);
 }
 
 #[cfg(test)]

@@ -49,7 +49,8 @@ plist = "1.7"
 # Dibujo del menú interactivo (T-16; MIT). Sin las features por defecto:
 # solo el backend de crossterm.
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
-rustix = { version = "1.0", features = ["fs", "process"] }
+# `termios`: `tcflush` antes de cada confirmación (T-16), sin `unsafe`.
+rustix = { version = "1.0", features = ["fs", "process", "termios"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # SIGTERM y SIGHUP con el menú interactivo abierto (T-16; MIT o Apache-2.0).
