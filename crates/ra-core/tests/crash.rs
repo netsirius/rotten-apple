@@ -90,20 +90,22 @@ fn rotten_bin() -> PathBuf {
     if let Some(p) = std::env::var_os("ROTTEN_BIN") {
         return p.into();
     }
-    // target/<perfil>/deps/crash-<hash> → target/<perfil>/rotten
+    // El binario está en target/<perfil>/rotten. El ejecutable de la prueba
+    // vive debajo, a una profundidad que depende de la versión de cargo:
+    // target/<perfil>/deps/crash-<hash>, o target/<perfil>/build/ra-core/
+    // <hash>/crash-<hash> con el nuevo `build-dir`. Se sube hasta encontrarlo.
     let exe = std::env::current_exe().expect("current_exe");
-    let bin = exe
-        .parent()
-        .and_then(Path::parent)
-        .expect("target/<perfil>")
-        .join("rotten");
-    assert!(
-        bin.is_file(),
-        "no está el binario {}: ejecuta `cargo build -p rotten` (o \
-         `cargo test --workspace`, que lo compila) o define ROTTEN_BIN",
-        bin.display()
-    );
-    bin
+    exe.ancestors()
+        .skip(1)
+        .map(|dir| dir.join("rotten"))
+        .find(|bin| bin.is_file())
+        .unwrap_or_else(|| {
+            panic!(
+                "no está el binario rotten encima de {}: ejecuta `cargo build -p rotten` \
+                 (o `cargo test --workspace`, que lo compila) o define ROTTEN_BIN",
+                exe.display()
+            )
+        })
 }
 
 struct World {
