@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Marca y estados de la manzana</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; gap: 40px; background: radial-gradient(60% 460px at 50% -140px, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 100%), linear-gradient(180deg, #000240 0px, #000000 620px); font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div style="display: flex; align-items: center; gap: 36px;">
+    <dc-import name="Apple" estado="podrida" variante="icono" size="220" hint-size="220px,220px"></dc-import>
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <h1 style="margin: 0; font-size: 72px; font-weight: 600; letter-spacing: -0.035em; line-height: 1;">Rotten Apple</h1>
+      <p style="margin: 0; font-size: 22px; color: rgba(255,255,255,0.75);">Limpieza honesta para tu Mac.</p>
+      <p style="margin: 6px 0 0; max-width: 620px; font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.55);">Icono en estilo de app de macOS: una manzana con volumen y mal aspecto. No usa la silueta mordida del logo de Apple, que es marca registrada.</p>
+    </div>
+  </div>
+  <section aria-labelledby="est-t" style="display: flex; flex-direction: column; gap: 18px;">
+    <h2 id="est-t" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(255,255,255,0.55);">La manzana refleja el estado de tu Mac</h2>
+    <div style="display: flex; align-items: stretch; gap: 18px;">
+      <div style="flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; border-radius: 20px; background: rgba(255,255,255,0.05);">
+        <dc-import name="Apple" estado="podrida" size="190" hint-size="190px,190px"></dc-import>
+        <span style="font-size: 20px; font-weight: 600; color: #D9B98A;">Podrida</span>
+        <span style="font-size: 13.5px; line-height: 1.45; text-align: center; color: rgba(255,255,255,0.72);">Más de 8 GB seguros por limpiar, o menos del 10 % de disco libre, o un aviso de seguridad urgente (P0).</span>
+      </div>
+      <div style="display: flex; align-items: center; font-size: 28px; color: rgba(255,255,255,0.35);" aria-hidden="true">→</div>
+      <div style="flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; border-radius: 20px; background: rgba(255,255,255,0.05);">
+        <dc-import name="Apple" estado="regular" size="190" hint-size="190px,190px"></dc-import>
+        <span style="font-size: 20px; font-weight: 600; color: #FFC27A;">A medias</span>
+        <span style="font-size: 13.5px; line-height: 1.45; text-align: center; color: rgba(255,255,255,0.72);">Entre 2 y 8 GB por limpiar, elementos de inicio nuevos, avisos P1 o un proceso disparado.</span>
+      </div>
+      <div style="display: flex; align-items: center; font-size: 28px; color: rgba(255,255,255,0.35);" aria-hidden="true">→</div>
+      <div style="flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; border-radius: 20px; background: rgba(255,255,255,0.05);">
+        <dc-import name="Apple" estado="sana" size="190" hint-size="190px,190px"></dc-import>
+        <span style="font-size: 20px; font-weight: 600; color: #5FED83;">Sana</span>
+        <span style="font-size: 13.5px; line-height: 1.45; text-align: center; color: rgba(255,255,255,0.72);">Menos de 2 GB por limpiar, más del 15 % de disco libre y sin avisos P0 ni P1.</span>
+      </div>
+    </div>
+    <p style="margin: 0; font-size: 13px; color: rgba(255,255,255,0.55);">Los criterios se muestran siempre junto a la manzana (Monitor, barra de menús). Sin puntuaciones opacas.</p>
+  </section>
+  <div style="display: flex; gap: 48px; align-items: flex-start;">
+    <section aria-label="Paleta" style="display: flex; gap: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.7);"><span style="width: 64px; height: 44px; border-radius: 10px; background: #000240; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2);"></span>#000240</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.7);"><span style="width: 64px; height: 44px; border-radius: 10px; background: #574EFF;"></span>#574EFF</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.7);"><span style="width: 64px; height: 44px; border-radius: 10px; background: #E6B7FE;"></span>#E6B7FE</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.7);"><span style="width: 64px; height: 44px; border-radius: 10px; background: #5FED83;"></span>#5FED83</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.7);"><span style="width: 64px; height: 44px; border-radius: 10px; background: #FFC27A;"></span>#FFC27A</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.7);"><span style="width: 64px; height: 44px; border-radius: 10px; background: #FF9AAA;"></span>#FF9AAA</div>
+    </section>
+    <section aria-label="Tipografía" style="display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 30px; font-weight: 400;">Instrument Sans — interfaz</span>
+      <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 16px; color: #E6B7FE;">Commit Mono — rutas, tamaños y comandos</span>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

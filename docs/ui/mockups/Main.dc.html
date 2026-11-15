@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Escaneo inteligente</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:31</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 38%, rgba(87,78,255,0.50) 0%, rgba(87,78,255,0) 70%), radial-gradient(45% 55% at 88% 100%, rgba(230,183,254,0.20) 0%, rgba(230,183,254,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="panel" mode="{{mode}}" on-mode="{{setMode}}" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <div style="position: absolute; top: 20px; right: 28px; display: flex; align-items: center; gap: 12px; font-size: 13px; color: rgba(255,255,255,0.6);">
+        <sc-if value="{{scanned}}" hint-placeholder-val="{{false}}">
+          <button type="button" onClick="{{reset}}" style="min-height: 32px; padding: 0 14px; border: 1px solid rgba(255,255,255,0.25); border-radius: 999px; background: transparent; color: #FFFFFF; font: inherit; font-size: 13px; cursor: pointer;">Analizar de nuevo</button>
+        </sc-if>
+        <sc-if value="{{notScanned}}" hint-placeholder-val="{{true}}">
+          <span>Último análisis: hace 3 días</span>
+        </sc-if>
+      </div>
+      <div style="height: 610px; display: flex; align-items: center; gap: 40px; padding: 0 56px 0 40px;">
+        <div style="flex: 0 0 320px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+          <dc-import name="Apple" estado="{{apple}}" size="320" hint-size="320px,320px"></dc-import>
+          <span style="padding: 5px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); font-size: 12.5px; color: rgba(255,255,255,0.78);">{{appleCaption}}</span>
+        </div>
+        <sc-if value="{{notScanned}}" hint-placeholder-val="{{true}}">
+          <section aria-labelledby="intro-t" style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 18px;">
+            <h1 id="intro-t" style="margin: 0; font-size: 46px; font-weight: 400; letter-spacing: -0.025em; line-height: 1.05;">Escaneo inteligente</h1>
+            <p style="margin: 0; max-width: 440px; font-size: 18px; line-height: 1.45; color: rgba(255,255,255,0.75);">Un repaso rápido y seguro. Solo propone lo que se regenera solo; lo demás lo decides tú.</p>
+            <ul style="margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 16px;">
+              <sc-for list="{{features}}" as="f" hint-placeholder-count="3">
+                <li style="display: flex; align-items: center; gap: 16px; font-size: 17px; font-weight: 600;">
+                  <span style="{{f.tile}}" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="{{f.d}}"></path></svg></span>
+                  {{f.label}}
+                </li>
+              </sc-for>
+            </ul>
+          </section>
+        </sc-if>
+        <sc-if value="{{scanned}}" hint-placeholder-val="{{false}}">
+          <section aria-labelledby="res-t" style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+            <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #5FED83;">Análisis completado · 6 s</span>
+            <h1 id="res-t" style="margin: 0; font-size: 44px; font-weight: 400; letter-spacing: -0.025em; line-height: 1.08;"><span style="font-weight: 600;">9,3 GB</span> listos para limpiar</h1>
+            <p style="margin: 0; max-width: 460px; font-size: 16px; line-height: 1.5; color: rgba(255,255,255,0.72);">Archivos que se regeneran solos. Verás la lista antes y podrás deshacerlo.</p>
+            <div style="margin-top: 14px; display: flex; flex-direction: column;">
+              <sc-for list="{{results}}" as="r" hint-placeholder-count="4">
+                <sc-if value="{{r.hasLink}}" hint-placeholder-val="{{true}}">
+                  <a href="{{r.href}}" style="display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); color: #FFFFFF; text-decoration: none;">
+                    <span style="{{r.tile}}" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="{{r.d}}"></path></svg></span>
+                    <span style="flex-grow: 1; font-size: 15.5px; font-weight: 600;">{{r.label}}</span>
+                    <span style="{{r.valueStyle}}">{{r.value}}</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                  </a>
+                </sc-if>
+                <sc-if value="{{r.noLink}}" hint-placeholder-val="{{false}}">
+                  <div style="display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                    <span style="{{r.tile}}" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="{{r.d}}"></path></svg></span>
+                    <span style="flex-grow: 1; font-size: 15.5px; font-weight: 600;">{{r.label}}</span>
+                    <span style="{{r.valueStyle}}">{{r.value}}</span>
+                    <span style="width: 16px;"></span>
+                  </div>
+                </sc-if>
+              </sc-for>
+            </div>
+          </section>
+        </sc-if>
+      </div>
+      <sc-if value="{{notScanned}}" hint-placeholder-val="{{true}}">
+        <button type="button" onClick="{{scan}}" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font: inherit; font-size: 19px; font-weight: 600; cursor: pointer;">Analizar</button>
+      </sc-if>
+      <sc-if value="{{scanned}}" hint-placeholder-val="{{false}}">
+        <a href="Revision.dc.html" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font-size: 19px; font-weight: 600; text-decoration: none;">Limpiar</a>
+      </sc-if>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.55);">{{caption}}</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"startMode":{"editor":"enum","options":["simple","dev"],"default":"simple"},"startState":{"editor":"enum","options":["portada","resultado"],"default":"portada"},"manzana":{"editor":"enum","options":["podrida","regular","sana"],"default":"podrida"},"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const mode = st.mode ?? this.props.startMode ?? 'simple';
+    const scanned = st.scanned ?? ((this.props.startState ?? 'portada') === 'resultado');
+    const isDev = mode === 'dev';
+    const tile = (g, size) => 'flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: ' + size + 'px; height: ' + size + 'px; border-radius: ' + Math.round(size * 0.29) + 'px; background: linear-gradient(160deg, ' + g + '); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);';
+    const I = {
+      lim: 'M12 3v4 M12 17v4 M3 12h4 M17 12h4 M6 6l2.5 2.5 M15.5 15.5L18 18 M6 18l2.5-2.5 M15.5 8.5L18 6',
+      app: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M15 16l4 4 M19 16l-4 4',
+      man: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z',
+      dev: 'M8 7l-5 5 5 5 M16 7l5 5-5 5',
+      vul: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z M12 8v5 M12 16v.5',
+      bin: 'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13'
+    };
+    const G = { lim: '#8FF5AC, #1E9E52', app: '#9CC2FF, #3A6CF0', man: '#9BEAF5, #1D8EA8', dev: '#B9B4FF, #4338CA', vul: '#FFB0BC, #D23455', bin: '#C8C8D8, #5D5D78' };
+    const features = [
+      { label: 'Limpieza segura', d: I.lim, tile: tile(G.lim, 38) },
+      { label: 'Apps y restos olvidados', d: I.app, tile: tile(G.app, 38) },
+      { label: 'Inicio y mantenimiento', d: I.man, tile: tile(G.man, 38) }
+    ];
+    if (isDev) features.push({ label: 'Proyectos y dependencias', d: I.dev, tile: tile(G.dev, 38) });
+    const val = (accent) => 'font-family: \'Commit Mono\', ui-monospace, Menlo, monospace; font-size: 14px; ' + (accent ? 'color: ' + accent + ';' : 'color: rgba(255,255,255,0.75);');
+    const mkR = (k, label, value, href, accent) => ({ label: label, value: value, href: href || '', hasLink: !!href, noLink: !href, d: I[k], tile: tile(G[k], 34), valueStyle: val(accent) });
+    const results = [
+      mkR('lim', 'Limpieza', '9,3 GB', 'Limpieza.dc.html', '#5FED83'),
+      mkR('app', 'Aplicaciones', '6 sin usar en un año', 'Desinstalador.dc.html'),
+      mkR('man', 'Mantenimiento', '3 elementos de inicio nuevos', '')
+    ];
+    if (isDev) {
+      results.push(mkR('dev', 'Desarrollo', '36,8 GB', 'Dev.dc.html', '#C9C6FF'));
+      results.push(mkR('vul', 'Dependencias', '1 urgente', 'Seguridad.dc.html', '#FF9AAA'));
+    }
+    results.push(mkR('bin', 'Papelera', '2,2 GB · vaciarla es aparte', ''));
+    const apple = this.props.manzana ?? 'podrida';
+    const appleCaption = { podrida: 'Manzana podrida · hay basura que se puede quitar', regular: 'A medias · quedan cosas por revisar', sana: 'Manzana sana · todo en orden' }[apple];
+    return {
+      apple: apple,
+      appleCaption: scanned ? appleCaption : 'Último análisis: ' + appleCaption.toLowerCase(),
+      mode: mode,
+      scanned: scanned,
+      notScanned: !scanned,
+      features: features,
+      results: results,
+      caption: scanned ? 'Verás la lista antes · todo va a la Papelera y se puede deshacer' : 'Sin conexión · nada sale de tu Mac',
+      setMode: (m) => this.setState({ mode: m }),
+      scan: () => this.setState({ scanned: true }),
+      reset: () => this.setState({ scanned: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

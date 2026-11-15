@@ -1,0 +1,31 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "catalog_version": "2026.11.0",
+  "categories": [
+    {
+      "bytes_allocated": 8192,
+      "cloned_entries": 0,
+      "hardlinked_entries": 0,
+      "id": "CAT-03",
+      "items": 2,
+      "preselected_bytes": 8192,
+      "preselected_items": 2,
+      "preselected_reclaimable_bytes": 8192,
+      "reclaimable_bytes": 8192,
+      "requires": [],
+      "scan_status": "complete",
+      "skipped_items": 1,
+      "title_en": "Logs and crash reports",
+      "title_es": "Registros e informes de fallos"
+    }
+  ],
+  "command": "scan",
+  "config": "missing",
+  "home": "[HOME]",
+  "scan_status": "complete",
+  "schema_version": 2,
+  "volume": "[volume]"
+}

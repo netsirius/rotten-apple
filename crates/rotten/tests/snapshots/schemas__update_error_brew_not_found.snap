@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "update",
+  "error": {
+    "code": "brew_not_found",
+    "exit_code": 1,
+    "message": "brew not found at [HOME]/homebrew/bin/brew"
+  },
+  "schema_version": 2
+}

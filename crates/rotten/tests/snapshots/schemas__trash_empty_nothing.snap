@@ -1,0 +1,35 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "action": "empty",
+  "command": "trash",
+  "dry_run": false,
+  "plan": {
+    "items": [],
+    "plan_hash": "[plan_hash]",
+    "totals": {
+      "bytes": 0,
+      "items": 0
+    },
+    "trash_dirs": [
+      "[TRASH]"
+    ]
+  },
+  "report": {
+    "bytes_done": 0,
+    "done": 0,
+    "dry_run": false,
+    "failed": 0,
+    "items": [],
+    "skipped": 0,
+    "would": 0
+  },
+  "schema_version": 2,
+  "space": {
+    "estimated_bytes": 0,
+    "measured_bytes": null,
+    "volumes": []
+  }
+}

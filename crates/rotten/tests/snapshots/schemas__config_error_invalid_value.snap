@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "config",
+  "error": {
+    "code": "invalid_config_value",
+    "exit_code": 2,
+    "message": "invalid value «fr» for «language»: expected one of: system, es, en"
+  },
+  "schema_version": 2
+}

@@ -1,0 +1,145 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "action": "empty",
+  "command": "trash",
+  "dry_run": false,
+  "plan": {
+    "items": [
+      {
+        "bytes": 4096,
+        "digest": "[digest]",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 1,
+        "of": {
+          "item": 3,
+          "op": "[op]"
+        },
+        "path": "[TRASH]/com.example.closed.savedState"
+      },
+      {
+        "bytes": 4096,
+        "digest": "[digest]",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "file",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 2,
+        "path": "[TRASH]/de-otra-app.txt"
+      },
+      {
+        "bytes": 4096,
+        "digest": "[digest]",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "file",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 3,
+        "of": {
+          "item": 1,
+          "op": "[op]"
+        },
+        "path": "[TRASH]/install.log"
+      },
+      {
+        "bytes": 4096,
+        "digest": "[digest]",
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 4,
+        "of": {
+          "item": 2,
+          "op": "[op]"
+        },
+        "path": "[TRASH]/old-app"
+      }
+    ],
+    "plan_hash": "[plan_hash]",
+    "totals": {
+      "bytes": 16384,
+      "items": 4
+    },
+    "trash_dirs": [
+      "[TRASH]"
+    ]
+  },
+  "report": {
+    "bytes_done": 16384,
+    "done": 4,
+    "dry_run": false,
+    "failed": 0,
+    "items": [
+      {
+        "bytes": 4096,
+        "item_id": 1,
+        "outcome": "done",
+        "path": "[TRASH]/com.example.closed.savedState"
+      },
+      {
+        "bytes": 4096,
+        "item_id": 2,
+        "outcome": "done",
+        "path": "[TRASH]/de-otra-app.txt"
+      },
+      {
+        "bytes": 4096,
+        "item_id": 3,
+        "outcome": "done",
+        "path": "[TRASH]/install.log"
+      },
+      {
+        "bytes": 4096,
+        "item_id": 4,
+        "outcome": "done",
+        "path": "[TRASH]/old-app"
+      }
+    ],
+    "op_id": "[op_id]",
+    "skipped": 0,
+    "would": 0
+  },
+  "schema_version": 2,
+  "space": {
+    "estimated_bytes": 16384,
+    "measured_bytes": "[measured_bytes]",
+    "volumes": [
+      {
+        "free_after": "[free_after]",
+        "free_before": "[free_before]",
+        "freed_bytes": "[freed_bytes]",
+        "path": "[TRASH]"
+      }
+    ]
+  }
+}

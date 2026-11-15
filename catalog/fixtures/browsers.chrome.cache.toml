@@ -1,0 +1,28 @@
+# Fixture de la regla browsers.chrome.cache (CAT-08).
+
+[[entry]]
+path = "Library/Caches/Google/Chrome/Default/Cache/Cache_Data/f_000001"
+size = 1000
+age_days = 2
+
+[[entry]]
+path = "Library/Caches/Google/Chrome/Profile 1/Cache/x"
+size = 10
+age_days = 2
+
+[[entry]] # Bloqueado: contiene almacenamiento local.
+path = "Library/Caches/Google/Chrome/Profile 2/Local Storage/leveldb/x"
+age_days = 2
+
+[[entry]] # Negativo: nombre prohibido.
+path = "Library/Caches/Google/Chrome/Cookies"
+age_days = 2
+
+[[entry]] # Negativo: datos del perfil.
+path = "Library/Application Support/Google/Chrome/Default/Cookies"
+age_days = 2
+
+[expect]
+candidates = ["Library/Caches/Google/Chrome/Default", "Library/Caches/Google/Chrome/Profile 1"]
+blocked = ["Library/Caches/Google/Chrome/Profile 2"]
+preselected = ["Library/Caches/Google/Chrome/Default", "Library/Caches/Google/Chrome/Profile 1"]

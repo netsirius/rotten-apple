@@ -1,0 +1,20 @@
+# Fixture de la regla saved-application-state (CAT-10).
+running_apps = ["com.example.open"]
+
+[[entry]]
+path = "Library/Saved Application State/com.example.closed.savedState/windows.plist"
+size = 600
+age_days = 3
+
+[[entry]] # Bloqueado: la app está abierta.
+path = "Library/Saved Application State/com.example.open.savedState/windows.plist"
+age_days = 3
+
+[[entry]] # Negativo: no es un .savedState.
+path = "Library/Saved Application State/notes.txt"
+age_days = 3
+
+[expect]
+candidates = ["Library/Saved Application State/com.example.closed.savedState"]
+blocked = ["Library/Saved Application State/com.example.open.savedState"]
+preselected = ["Library/Saved Application State/com.example.closed.savedState"]

@@ -1,0 +1,18 @@
+# Fixture de la regla browsers.safari.cache (CAT-08).
+
+[[entry]]
+path = "Library/Caches/com.apple.Safari/Cache.db"
+size = 10000
+age_days = 1
+
+[[entry]] # Negativo: otra caché.
+path = "Library/Caches/com.example.other/x"
+age_days = 30
+
+[[entry]] # Negativo: historial (protegido).
+path = "Library/Safari/History.db"
+age_days = 30
+
+[expect]
+candidates = ["Library/Caches/com.apple.Safari"]
+preselected = ["Library/Caches/com.apple.Safari"]

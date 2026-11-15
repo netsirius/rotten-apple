@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Manzana de Rotten Apple</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: {{px}}; height: {{px}}; display: flex; align-items: center; justify-content: center;">
+  <svg width="{{size}}" height="{{size}}" viewBox="0 0 300 300" role="img" aria-label="{{label}}">
+    <defs>
+      <linearGradient id="{{ids.bg}}" x1="0" y1="0" x2="0.4" y2="1">
+        <stop offset="0" stop-color="#2E1F8F"></stop>
+        <stop offset="1" stop-color="#000240"></stop>
+      </linearGradient>
+      <radialGradient id="{{ids.body}}" cx="38%" cy="30%" r="78%">
+        <stop offset="0" stop-color="{{c.b0}}"></stop>
+        <stop offset="0.35" stop-color="{{c.b1}}"></stop>
+        <stop offset="0.7" stop-color="{{c.b2}}"></stop>
+        <stop offset="1" stop-color="{{c.b3}}"></stop>
+      </radialGradient>
+      <linearGradient id="{{ids.leaf}}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="{{c.l0}}"></stop>
+        <stop offset="1" stop-color="{{c.l1}}"></stop>
+      </linearGradient>
+      <radialGradient id="{{ids.glow}}" cx="50%" cy="50%" r="50%">
+        <stop offset="0" stop-color="{{c.glow}}" stop-opacity="{{c.glowOp}}"></stop>
+        <stop offset="1" stop-color="{{c.glow}}" stop-opacity="0"></stop>
+      </radialGradient>
+    </defs>
+    <g opacity="{{v.icon}}">
+      <rect x="14" y="14" width="272" height="272" rx="64" fill="{{urls.bg}}"></rect>
+      <rect x="15" y="15" width="270" height="270" rx="63" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2"></rect>
+    </g>
+    <circle cx="150" cy="160" r="145" fill="{{urls.glow}}" opacity="{{v.glow}}"></circle>
+    <g transform="{{groupTransform}}">
+      <ellipse cx="150" cy="276" rx="92" ry="11" fill="#000000" fill-opacity="0.35"></ellipse>
+      <path d="M150 92 C128 76 70 72 58 132 C46 196 92 262 124 262 C136 262 140 256 150 256 C160 256 164 262 176 262 C208 262 254 196 242 132 C230 72 172 76 150 92 Z" fill="{{urls.body}}"></path>
+      <ellipse cx="106" cy="128" rx="24" ry="38" transform="rotate(-24 106 128)" fill="#FFFFFF" fill-opacity="{{c.hl}}"></ellipse>
+      <g opacity="{{v.spots}}" fill="#5A3A1E">
+        <ellipse cx="196" cy="170" rx="11" ry="9" fill-opacity="0.55"></ellipse>
+        <ellipse cx="116" cy="214" rx="7" ry="6" fill-opacity="0.5"></ellipse>
+      </g>
+      <g opacity="{{v.rot}}">
+        <ellipse cx="192" cy="158" rx="28" ry="23" fill="#2B1A0C" fill-opacity="0.72"></ellipse>
+        <ellipse cx="186" cy="152" rx="12" ry="9" fill="#4A2F17" fill-opacity="0.8"></ellipse>
+        <ellipse cx="108" cy="208" rx="19" ry="15" fill="#2B1A0C" fill-opacity="0.6"></ellipse>
+        <ellipse cx="208" cy="226" rx="12" ry="10" fill="#2B1A0C" fill-opacity="0.6"></ellipse>
+        <ellipse cx="86" cy="150" rx="9" ry="8" fill="#2B1A0C" fill-opacity="0.5"></ellipse>
+        <circle cx="150" cy="200" r="9" fill="#170E06"></circle>
+        <path d="M150 200 C162 190 176 194 178 206" stroke="#9BD36A" stroke-width="7" stroke-linecap="round" fill="none"></path>
+        <circle cx="179" cy="207" r="2" fill="#170E06"></circle>
+        <ellipse cx="236" cy="96" rx="3.4" ry="2.6" fill="#170E06"></ellipse>
+        <ellipse cx="233" cy="91" rx="3.4" ry="2" fill="#FFFFFF" fill-opacity="0.65"></ellipse>
+        <ellipse cx="240" cy="91" rx="3.4" ry="2" fill="#FFFFFF" fill-opacity="0.65"></ellipse>
+        <ellipse cx="256" cy="122" rx="3" ry="2.3" fill="#170E06"></ellipse>
+        <ellipse cx="253" cy="118" rx="3" ry="1.8" fill="#FFFFFF" fill-opacity="0.65"></ellipse>
+        <ellipse cx="259" cy="118" rx="3" ry="1.8" fill="#FFFFFF" fill-opacity="0.65"></ellipse>
+      </g>
+      <path d="{{stem}}" stroke="{{c.stem}}" stroke-width="7" stroke-linecap="round" fill="none"></path>
+      <path d="{{leaf}}" fill="{{urls.leaf}}"></path>
+      <g opacity="{{v.sparkle}}">
+        <path d="M250 74 l5 13 13 5 -13 5 -5 13 -5 -13 -13 -5 13 -5z" fill="#FFFFFF" fill-opacity="0.9"></path>
+        <path d="M60 214 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z" fill="#E6B7FE"></path>
+        <path d="M240 218 l2.5 6 6 2.5 -6 2.5 -2.5 6 -2.5 -6 -6 -2.5 6 -2.5z" fill="#5FED83"></path>
+      </g>
+    </g>
+  </svg>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"estado":{"editor":"enum","options":["podrida","regular","sana"],"default":"podrida"},"variante":{"editor":"enum","options":["ilustracion","icono"],"default":"ilustracion"},"size":{"editor":"int","min":16,"max":600,"default":320},"$preview":{"width":320,"height":320}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const estado = this.props.estado ?? 'podrida';
+    const variante = this.props.variante ?? 'ilustracion';
+    const size = Number(this.props.size ?? 320);
+    const isIcon = variante === 'icono';
+    const C = {
+      sana: { b0: '#F6E6FF', b1: '#D2B4FF', b2: '#7C66FF', b3: '#3A2BD4', l0: '#C2FFD3', l1: '#1E9E52', glow: '#8C85FF', glowOp: 0.55, hl: 0.42, stem: '#2A1F66' },
+      regular: { b0: '#E9DDEE', b1: '#BBA7CC', b2: '#7E6B94', b3: '#463A5C', l0: '#DCE9A2', l1: '#7A8E38', glow: '#8C85FF', glowOp: 0.28, hl: 0.26, stem: '#3A2E3E' },
+      podrida: { b0: '#D9B98A', b1: '#A98557', b2: '#6E4D2C', b3: '#3B2614', l0: '#B59B5E', l1: '#5E4A22', glow: '#C27612', glowOp: 0.16, hl: 0.12, stem: '#2B1A0C' }
+    };
+    const leaf = {
+      sana: 'M160 58 C176 36 206 34 222 46 C206 66 178 70 160 58 Z',
+      regular: 'M161 60 C180 46 208 50 220 64 C202 78 176 76 161 60 Z',
+      podrida: 'M164 64 C184 66 204 82 206 108 C186 102 170 86 164 64 Z'
+    };
+    const stem = {
+      sana: 'M150 92 C150 70 156 56 168 44',
+      regular: 'M150 92 C150 72 157 60 168 50',
+      podrida: 'M150 92 C150 78 160 68 172 64'
+    };
+    const labels = { sana: 'Manzana sana', regular: 'Manzana a medias', podrida: 'Manzana podrida' };
+    const uid = 'ra-' + estado + '-' + variante + '-' + size;
+    const ids = { bg: uid + '-bg', body: uid + '-body', leaf: uid + '-leaf', glow: uid + '-glow' };
+    return {
+      size: size,
+      px: size + 'px',
+      label: isIcon ? 'Icono de Rotten Apple' : labels[estado],
+      c: C[estado],
+      ids: ids,
+      urls: { bg: 'url(#' + ids.bg + ')', body: 'url(#' + ids.body + ')', leaf: 'url(#' + ids.leaf + ')', glow: 'url(#' + ids.glow + ')' },
+      leaf: leaf[estado],
+      stem: stem[estado],
+      groupTransform: isIcon ? 'translate(150 154) scale(0.74) translate(-150 -160)' : 'translate(0 0)',
+      v: {
+        icon: isIcon ? 1 : 0,
+        glow: isIcon ? 0 : 1,
+        spots: estado === 'regular' ? 1 : 0,
+        rot: estado === 'podrida' ? 1 : 0,
+        sparkle: estado === 'sana' && !isIcon ? 1 : 0
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

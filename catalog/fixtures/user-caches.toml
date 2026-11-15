@@ -1,0 +1,52 @@
+# Fixture de la regla user-caches (CAT-01).
+running_apps = ["com.example.running"]
+
+[[entry]] # Positivo: caché antigua de una app cerrada.
+path = "Library/Caches/com.example.editor/data.bin"
+size = 4096
+age_days = 30
+
+[[entry]] # Positivo: caché sin bundle ID.
+path = "Library/Caches/SomeTool/cache.db"
+size = 100
+age_days = 10
+
+[[entry]] # Bloqueado: modificada hace menos de 7 días.
+path = "Library/Caches/com.example.fresh/x"
+age_days = 1
+
+[[entry]] # Bloqueado: su app está abierta.
+path = "Library/Caches/com.example.running/x"
+age_days = 30
+
+[[entry]] # Negativo: caché con estado.
+path = "Library/Caches/com.apple.bird/x"
+age_days = 30
+
+[[entry]] # Negativo: navegador (CAT-08).
+path = "Library/Caches/Google/Chrome/Default/Cache/x"
+age_days = 30
+
+[[entry]] # Negativo: Zona Desarrollador (D-03).
+path = "Library/Caches/Homebrew/downloads/x"
+age_days = 30
+
+[[entry]] # Negativo: fuera de la raíz.
+path = "Library/Application Support/com.example.editor/state.db"
+age_days = 30
+
+[[entry]]
+path = "Documents/tesis.docx"
+age_days = 30
+
+# Un enlace dentro de la caché es candidato como enlace (no se sigue). Se
+# acaba de crear, así que sale bloqueado por antigüedad.
+[[symlink]]
+path = "Library/Caches/com.example.link"
+target = "Documents"
+
+[expect]
+candidates = ["Library/Caches/SomeTool", "Library/Caches/com.example.editor"]
+blocked = ["Library/Caches/com.example.fresh", "Library/Caches/com.example.link", "Library/Caches/com.example.running"]
+# La lista permitida está vacía hasta V-18: nada preseleccionado.
+preselected = []

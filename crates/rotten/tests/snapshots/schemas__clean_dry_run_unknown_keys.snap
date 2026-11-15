@@ -1,0 +1,86 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "clean",
+  "dry_run": true,
+  "plan": {
+    "action": "trash",
+    "catalog_version": "2026.11.0",
+    "created_at": "[created_at]",
+    "home": "[HOME]",
+    "items": [
+      {
+        "action": "trash",
+        "apps": [
+          "com.example.closed"
+        ],
+        "bytes_allocated": 4096,
+        "category": "CAT-10",
+        "fingerprint": {
+          "bytes_allocated": 4096,
+          "bytes_logical": 596,
+          "crosses_device": false,
+          "digest": "[digest]",
+          "entries": 2,
+          "newest_mtime": "[newest_mtime]"
+        },
+        "identity": {
+          "ctime": "[ctime]",
+          "ctime_nsec": "[ctime_nsec]",
+          "dev": "[dev]",
+          "ino": "[ino]",
+          "kind": "dir",
+          "mtime": "[mtime]",
+          "mtime_nsec": "[mtime_nsec]",
+          "size": "[size]"
+        },
+        "item_id": 1,
+        "kind": "dir",
+        "path": "[HOME]/Library/Saved Application State/com.example.closed.savedState",
+        "preselected": true,
+        "regenerable": true,
+        "reversible": true,
+        "risk": "safe",
+        "rule": {
+          "id": "saved-application-state",
+          "version": 1
+        }
+      }
+    ],
+    "not_selected": {},
+    "origin": "rules",
+    "plan_hash": "[plan_hash]",
+    "plan_id": "[plan_id]",
+    "schema": "rotten.plan.v2",
+    "schema_version": 2,
+    "skipped": [],
+    "totals": {
+      "bytes_allocated": 4096,
+      "irreversible_items": 0,
+      "items": 1
+    }
+  },
+  "report": {
+    "bytes_done": 0,
+    "done": 0,
+    "dry_run": true,
+    "failed": 0,
+    "items": [
+      {
+        "action": "would_trash",
+        "bytes": 4096,
+        "item_id": 1,
+        "outcome": "would",
+        "path": "[HOME]/Library/Saved Application State/com.example.closed.savedState"
+      }
+    ],
+    "skipped": 0,
+    "would": 1
+  },
+  "schema_version": 2,
+  "warnings": [
+    "[HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml has keys this version does not know and ignores: exclude_backups_note, theme"
+  ]
+}

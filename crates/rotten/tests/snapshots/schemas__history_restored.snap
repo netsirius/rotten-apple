@@ -1,0 +1,42 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "history",
+  "journal_problems": [],
+  "operations": [
+    {
+      "by": "cli",
+      "bytes_done": 12288,
+      "finished_at": "[finished_at]",
+      "items_done": 3,
+      "items_failed": 0,
+      "items_skipped": 0,
+      "kind": "undo",
+      "mode": "restore",
+      "op_id": "[op_id]",
+      "restorable_items": 0,
+      "started_at": "[started_at]",
+      "status": "completed",
+      "undo_of": "[undo_of]",
+      "undo_state": "not_applicable"
+    },
+    {
+      "by": "cli",
+      "bytes_done": 12288,
+      "finished_at": "[finished_at]",
+      "items_done": 3,
+      "items_failed": 0,
+      "items_skipped": 0,
+      "kind": "clean",
+      "mode": "trash",
+      "op_id": "[op_id]",
+      "restorable_items": 0,
+      "started_at": "[started_at]",
+      "status": "completed",
+      "undo_state": "restored"
+    }
+  ],
+  "schema_version": 2
+}

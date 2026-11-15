@@ -1,0 +1,46 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-11-01T12:00:00Z"},
+  "title": "rotten-apple — Mockups UI",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Onboarding.dc.html": {"x": 0, "y": 0, "w": 1360, "h": 904, "title": "1 · Bienvenida y permisos", "is_interactive": true},
+    "Main.dc.html": {"x": 1440, "y": 0, "w": 1360, "h": 904, "title": "2 · Escaneo inteligente (portada → resultado)", "is_interactive": true},
+    "Limpieza.dc.html": {"x": 2880, "y": 0, "w": 1360, "h": 904, "title": "3 · Limpieza · Sistema", "is_interactive": true},
+    "Instaladores.dc.html": {"x": 4320, "y": 0, "w": 1360, "h": 904, "title": "4 · Limpieza · Instaladores", "is_interactive": true},
+    "Revision.dc.html": {"x": 5760, "y": 0, "w": 1360, "h": 904, "title": "5 · Revisión antes de limpiar", "is_interactive": true},
+    "Informe.dc.html": {"x": 7200, "y": 0, "w": 1360, "h": 904, "title": "6 · Listo: la manzana, sana", "is_interactive": true},
+    "Historial.dc.html": {"x": 8640, "y": 0, "w": 1360, "h": 904, "title": "7 · Historial y deshacer", "is_interactive": true},
+    "Desinstalador.dc.html": {"x": 0, "y": 1364, "w": 1360, "h": 904, "title": "8 · Aplicaciones · Desinstalar", "is_interactive": true},
+    "Adelgazar.dc.html": {"x": 1440, "y": 1364, "w": 1360, "h": 904, "title": "9 · Aplicaciones · Adelgazar", "is_interactive": true},
+    "Espacio.dc.html": {"x": 2880, "y": 1364, "w": 1360, "h": 904, "title": "10 · Espacio", "is_interactive": true},
+    "Privacidad.dc.html": {"x": 4320, "y": 1364, "w": 1360, "h": 904, "title": "11 · Privacidad y rastreo", "is_interactive": true},
+    "Mantenimiento.dc.html": {"x": 5760, "y": 1364, "w": 1360, "h": 904, "title": "12 · Mantenimiento y arranque", "is_interactive": true},
+    "Monitor.dc.html": {"x": 7200, "y": 1364, "w": 1360, "h": 904, "title": "13 · Monitor", "is_interactive": true},
+    "MenuBar.dc.html": {"x": 8640, "y": 1364, "w": 1360, "h": 904, "title": "14 · Barra de menús", "is_interactive": true},
+    "Dev.dc.html": {"x": 0, "y": 2728, "w": 1360, "h": 904, "title": "15 · Desarrollo · Proyectos y cachés", "is_interactive": true},
+    "DevComando.dc.html": {"x": 1440, "y": 2728, "w": 1360, "h": 904, "title": "16 · Comando oficial con simulación", "is_interactive": true},
+    "Seguridad.dc.html": {"x": 2880, "y": 2728, "w": 1360, "h": 904, "title": "17 · Dependencias (vulnerabilidades)", "is_interactive": true},
+    "Secretos.dc.html": {"x": 4320, "y": 2728, "w": 1360, "h": 904, "title": "18 · Secretos (fugas de credenciales)", "is_interactive": true},
+    "IA.dc.html": {"x": 5760, "y": 2728, "w": 1360, "h": 904, "title": "19 · Organizar con IA (opcional)", "is_interactive": true},
+    "Ajustes.dc.html": {"x": 7200, "y": 2728, "w": 1360, "h": 904, "title": "20 · Ajustes", "is_interactive": true},
+    "Mapa.dc.html": {"x": 0, "y": 4092, "w": 1360, "h": 1100, "title": "Mapa de funcionalidades"},
+    "Marca.dc.html": {"x": 1440, "y": 4092, "w": 1360, "h": 904, "title": "Marca y estados de la manzana"},
+    "Sidebar.dc.html": {"x": 2880, "y": 4092, "w": 240, "h": 800, "title": "Componente · Barra lateral", "is_interactive": true},
+    "Apple.dc.html": {"x": 3200, "y": 4092, "w": 320, "h": 320, "title": "Componente · Manzana"}
+  },
+  "order": [
+    "Onboarding.dc.html", "Main.dc.html", "Limpieza.dc.html", "Instaladores.dc.html", "Revision.dc.html", "Informe.dc.html", "Historial.dc.html",
+    "Desinstalador.dc.html", "Adelgazar.dc.html", "Espacio.dc.html", "Privacidad.dc.html", "Mantenimiento.dc.html", "Monitor.dc.html", "MenuBar.dc.html",
+    "Dev.dc.html", "DevComando.dc.html", "Seguridad.dc.html", "Secretos.dc.html", "IA.dc.html", "Ajustes.dc.html",
+    "Mapa.dc.html", "Marca.dc.html", "Sidebar.dc.html", "Apple.dc.html"
+  ],
+  "notes": {
+    "row1": {"x": 0, "y": -300, "text": "Flujo principal · limpiar sin miedo", "kind": "title1", "maxW": 10000},
+    "row2": {"x": 0, "y": 1064, "text": "Módulos para todos", "kind": "title1", "maxW": 10000},
+    "row3": {"x": 0, "y": 2428, "text": "Desarrollo, seguridad, IA y ajustes", "kind": "title1", "maxW": 8560},
+    "row4": {"x": 0, "y": 3792, "text": "Mapa de funcionalidades, marca y componentes", "kind": "title1", "maxW": 3520}
+  },
+  "designSystems": []
+}

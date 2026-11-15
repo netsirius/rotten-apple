@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Bienvenida y permisos</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:28</span>
+  </div>
+  <div style="position: absolute; left: 240px; top: 130px; width: 880px; height: 660px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; padding: 18px 64px 28px; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(70% 60% at 50% 0%, rgba(87,78,255,0.50) 0%, rgba(87,78,255,0) 70%), linear-gradient(170deg, #000240 0%, #03032A 60%, #0D0848 100%);">
+    <div style="align-self: stretch; display: flex; gap: 8px;" aria-hidden="true">
+      <span style="display: block; width: 12px; height: 12px; border-radius: 50%; background: #FF5F57;"></span>
+      <span style="display: block; width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E;"></span>
+      <span style="display: block; width: 12px; height: 12px; border-radius: 50%; background: #28C840;"></span>
+    </div>
+    <div style="margin-top: 18px;">
+      <dc-import name="Apple" estado="podrida" variante="icono" size="104" hint-size="104px,104px"></dc-import>
+    </div>
+    <h1 style="margin: 26px 0 0; font-size: 36px; font-weight: 400; letter-spacing: -0.025em; text-align: center;">Dale acceso total al disco</h1>
+    <p style="margin: 12px 0 0; max-width: 560px; font-size: 16px; line-height: 1.5; text-align: center; color: rgba(255,255,255,0.75);">macOS protege la Biblioteca, Mail y Safari. Sin este permiso solo vemos parte de las cachés. macOS no deja que las apps lo pidan: lo activas tú.</p>
+    <ol style="margin: 30px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 520px;">
+      <li style="display: flex; align-items: center; gap: 14px; font-size: 15px; color: rgba(255,255,255,0.88);"><span style="flex: 0 0 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.10); display: flex; align-items: center; justify-content: center; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 13px;">1</span>Abre Ajustes del Sistema con el botón de abajo.</li>
+      <li style="display: flex; align-items: center; gap: 14px; font-size: 15px; color: rgba(255,255,255,0.88);"><span style="flex: 0 0 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.10); display: flex; align-items: center; justify-content: center; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 13px;">2</span>Activa Rotten Apple en «Acceso total al disco».</li>
+      <li style="display: flex; align-items: center; gap: 14px; font-size: 15px; color: rgba(255,255,255,0.88);"><span style="flex: 0 0 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.10); display: flex; align-items: center; justify-content: center; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 13px;">3</span>Vuelve aquí: lo comprobamos al momento (macOS puede pedir reabrir la app).</li>
+    </ol>
+    <div style="margin-top: 32px; display: flex; flex-direction: column; align-items: center; gap: 14px;">
+      <button type="button" style="min-height: 44px; padding: 0 26px; border: 0; border-radius: 10px; background: #574EFF; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 30px -12px rgba(87,78,255,0.9);">Abrir Ajustes del Sistema</button>
+      <a href="Main.dc.html" style="font-size: 14px; font-weight: 600;">Seguir con análisis limitado</a>
+    </div>
+    <p style="margin: auto 0 0; font-size: 12.5px; color: rgba(255,255,255,0.55);">Sin telemetría · Código abierto · Todo a la Papelera primero · IA apagada</p>
+    <div role="img" aria-label="Paso 3 de 5" style="margin-top: 14px; display: flex; gap: 8px;">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.3);"></span>
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.3);"></span>
+      <span style="width: 22px; height: 7px; border-radius: 999px; background: #E6B7FE;"></span>
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.3);"></span>
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.3);"></span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

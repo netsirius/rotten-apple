@@ -1,0 +1,11 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "action": "get",
+  "command": "config",
+  "key": "language",
+  "schema_version": 2,
+  "value": "system"
+}

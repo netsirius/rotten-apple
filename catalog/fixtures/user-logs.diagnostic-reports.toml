@@ -1,0 +1,19 @@
+# Fixture de la regla user-logs.diagnostic-reports (CAT-03).
+
+[[entry]]
+path = "Library/Logs/DiagnosticReports/Editor-2026-09-01.ips"
+size = 8000
+age_days = 60
+
+[[entry]] # Bloqueado: informe reciente.
+path = "Library/Logs/DiagnosticReports/Editor-2026-10-30.ips"
+age_days = 2
+
+[[entry]] # Negativo: fuera de la raíz.
+path = "Library/Logs/other.log"
+age_days = 30
+
+[expect]
+candidates = ["Library/Logs/DiagnosticReports/Editor-2026-09-01.ips"]
+blocked = ["Library/Logs/DiagnosticReports/Editor-2026-10-30.ips"]
+preselected = ["Library/Logs/DiagnosticReports/Editor-2026-09-01.ips"]

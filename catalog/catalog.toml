@@ -1,0 +1,25 @@
+# Catálogo de reglas de Rotten Apple (ADR-05).
+#
+# Las reglas son datos, no código. Va incrustado en el binario: no hay
+# catálogo remoto en MVP ni en v1 (D-06). Cada regla tiene un fixture en
+# `fixtures/<id>.toml` con casos positivos y negativos; `cargo test -p
+# ra-catalog` falla si falta alguno o si no coincide.
+
+schema = 1
+catalog_version = "2026.11.0"
+
+[[category]]
+id = "CAT-01"
+title = { es = "Archivos temporales de apps", en = "App caches" }
+
+[[category]]
+id = "CAT-03"
+title = { es = "Registros e informes de fallos", en = "Logs and crash reports" }
+
+[[category]]
+id = "CAT-08"
+title = { es = "Cachés de navegadores", en = "Browser caches" }
+
+[[category]]
+id = "CAT-10"
+title = { es = "Estado guardado de ventanas", en = "Saved window state" }

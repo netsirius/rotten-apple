@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Organizar con IA</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:46</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), radial-gradient(50% 60% at 85% 100%, rgba(230,183,254,0.26) 0%, rgba(230,183,254,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="ia" mode="simple" ai="on" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="display: flex; align-items: flex-end; gap: 16px; padding: 44px 48px 18px;">
+        <div style="flex-grow: 1;">
+          <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Organizar con IA</h1>
+          <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">Escritorio: 64 archivos sueltos → 5 carpetas. La IA solo propone; tú decides.</p>
+        </div>
+        <div role="tablist" aria-label="Qué organizar" style="display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.07);">
+          <button type="button" role="tab" aria-selected="true" style="min-height: 32px; padding: 0 16px; border: 0; border-radius: 9px; background: #574EFF; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Escritorio</button>
+          <button type="button" role="tab" aria-selected="false" style="min-height: 32px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent; color: rgba(255,255,255,0.75); font: inherit; font-size: 14px; cursor: pointer;">Descargas</button>
+          <button type="button" role="tab" aria-selected="false" style="min-height: 32px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent; color: rgba(255,255,255,0.75); font: inherit; font-size: 14px; cursor: pointer;">Marcadores</button>
+        </div>
+      </header>
+      <div style="display: flex; gap: 28px; padding: 0 48px; height: 440px;">
+        <section aria-label="Plan propuesto" style="flex: 1 1 auto; min-width: 0; overflow: auto; display: flex; flex-direction: column;">
+          <div style="display: flex; gap: 16px; padding: 0 12px 8px; font-size: 12.5px; color: rgba(255,255,255,0.6);"><span><span style="color: #5FED83;">●</span> regla fija, sin IA</span><span><span style="color: #E6B7FE;">●</span> sugerido por IA</span></div>
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="7">
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <input type="checkbox" checked="{{g.on}}" disabled="{{g.fixed}}" onChange="{{g.toggle}}" aria-label="Aplicar {{g.name}}" style="width: 17px; height: 17px; margin: 0; accent-color: #574EFF;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{g.iconColor}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+                <span style="flex-grow: 1; min-width: 0; font-size: 15.5px; font-weight: 600;">{{g.name}}</span>
+                <span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 13px; color: rgba(255,255,255,0.75);">{{g.count}}</span>
+              </div>
+              <span style="padding-left: 65px; font-size: 13px; line-height: 1.45; color: rgba(255,255,255,0.6);">{{g.why}}</span>
+              <span style="padding-left: 65px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; color: rgba(255,255,255,0.7);">{{g.example}}</span>
+            </div>
+          </sc-for>
+        </section>
+        <aside aria-labelledby="sent-t" style="flex: 0 0 330px; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 18px; background: rgba(230,183,254,0.07); box-shadow: inset 0 0 0 1px rgba(230,183,254,0.18);">
+          <h2 id="sent-t" style="margin: 0; font-size: 17px; font-weight: 600;">Qué se ha enviado</h2>
+          <dl style="margin: 0; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 14px;"><dt style="color: rgba(255,255,255,0.65);">Proveedor</dt><dd style="margin: 0;">Claude · tu clave</dd></div>
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 14px;"><dt style="color: rgba(255,255,255,0.65);">Modelo</dt><dd style="margin: 0; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 12.5px;">claude-sonnet-5-5</dd></div>
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 14px;"><dt style="color: rgba(255,255,255,0.65);">Coste estimado</dt><dd style="margin: 0;">≈ 0,02 US$</dd></div>
+          </dl>
+          <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.45; color: rgba(255,255,255,0.85);">
+            <li style="display: flex; gap: 8px;"><span style="color: #5FED83;" aria-hidden="true">+</span>Nombre, tipo, tamaño, fechas y ruta dentro del Escritorio</li>
+            <li style="display: flex; gap: 8px;"><span style="color: #5FED83;" aria-hidden="true">+</span>Dominio de origen, si es captura y carpetas existentes</li>
+            <li style="display: flex; gap: 8px;"><span style="color: #FF9AAA;" aria-hidden="true">−</span>Nunca el contenido ni tu nombre de usuario</li>
+          </ul>
+          <a href="#peticion" style="font-size: 13.5px; font-weight: 600;">Ver la petición exacta</a>
+          <p style="margin: auto 0 0; font-size: 12.5px; line-height: 1.45; color: rgba(255,255,255,0.6);">¿Nada fuera del Mac? Elige un modelo local (Ollama, LM Studio) en Ajustes › IA.</p>
+        </aside>
+      </div>
+      <a href="Historial.dc.html" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font-size: 19px; font-weight: 600; text-decoration: none;">Aplicar</a>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.6);"><span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; color: #FFFFFF;">{{ops}}</span> cambios · nada se borra · se puede deshacer</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const defs = [
+      { id: 'cap', name: 'Capturas/2026-10', n: 24, kind: 'rule', why: 'Por nombre y origen: capturas de pantalla de octubre.', ex: 'Captura de pantalla 2026-10-12 a las 10.41.22.png', on: true },
+      { id: 'fac', name: 'Facturas y recibos', n: 8, kind: 'ai', why: 'Por el nombre parecen facturas. Propone nombres más claros.', ex: 'factura_oct (1).pdf  →  Factura octubre 2026.pdf', on: true },
+      { id: 'fot', name: 'Fotos', n: 11, kind: 'rule', why: 'Por tipo: imágenes HEIC y JPG de cámara.', ex: 'IMG_4410.HEIC', on: true },
+      { id: 'ref', name: 'Reforma de casa', n: 6, kind: 'ai', why: 'Agrupa por tema: presupuestos, planos y fotos de la reforma.', ex: 'presupuesto reforma v3 FINAL.docx  →  Presupuesto reforma v3.docx', on: true },
+      { id: 'web', name: 'Proyecto web portfolio', n: 7, kind: 'ai', why: 'Bocetos y textos con el mismo nombre de proyecto.', ex: 'portfolio-hero-v2.fig', on: true },
+      { id: 'ins', name: 'Instaladores → revisar en Limpieza', n: 3, kind: 'rule', why: 'Archivos .dmg y .pkg. No se mueven: se proponen para limpiar con su propia revisión.', ex: 'setup-node-v20.pkg', on: false },
+      { id: 'sin', name: 'Se quedan en el Escritorio', n: 5, kind: 'none', why: 'Sin una carpeta clara. Mejor no tocarlos.', ex: 'Untitled.txt', on: false, fixed: true }
+    ];
+    const checks = st.checks || {};
+    const isOn = (d) => (checks[d.id] === undefined ? d.on : checks[d.id]);
+    const color = { rule: '#5FED83', ai: '#E6B7FE', none: 'rgba(255,255,255,0.45)' };
+    const renames = { fac: 3, ref: 2 };
+    let ops = 0;
+    const groups = defs.map((d) => {
+      const on = isOn(d);
+      if (on && d.id !== 'ins') ops += d.n + (renames[d.id] || 0);
+      return {
+        name: d.name, why: d.why, example: d.ex, count: d.n + ' arch.', on: on, fixed: !!d.fixed, iconColor: color[d.kind],
+        toggle: () => { const n = Object.assign({}, checks); n[d.id] = !on; this.setState({ checks: n }); }
+      };
+    });
+    return { groups: groups, ops: ops };
+  }
+}
+</script>
+</body>
+</html>

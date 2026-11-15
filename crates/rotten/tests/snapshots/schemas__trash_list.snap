@@ -1,0 +1,32 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "action": "list",
+  "command": "trash",
+  "readable": true,
+  "schema_version": 2,
+  "volumes": [
+    {
+      "by_operation": [
+        {
+          "bytes": 12288,
+          "items": 3,
+          "op_id": "[op_id]"
+        }
+      ],
+      "others": {
+        "bytes": 4096,
+        "items": 1
+      },
+      "partial": false,
+      "path": "[TRASH]",
+      "readable": true,
+      "total": {
+        "bytes": 16384,
+        "items": 4
+      }
+    }
+  ]
+}

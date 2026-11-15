@@ -1,0 +1,18 @@
+# Fixture de la regla browsers.firefox.cache (CAT-08).
+
+[[entry]]
+path = "Library/Caches/Firefox/Profiles/abc.default-release/cache2/entries/0A1B"
+size = 5000
+age_days = 4
+
+[[entry]] # Negativo: otra carpeta del perfil.
+path = "Library/Caches/Firefox/Profiles/abc.default-release/startupCache/x"
+age_days = 4
+
+[[entry]] # Negativo: datos del perfil.
+path = "Library/Application Support/Firefox/Profiles/abc.default-release/cookies.sqlite"
+age_days = 4
+
+[expect]
+candidates = ["Library/Caches/Firefox/Profiles/abc.default-release/cache2"]
+preselected = ["Library/Caches/Firefox/Profiles/abc.default-release/cache2"]

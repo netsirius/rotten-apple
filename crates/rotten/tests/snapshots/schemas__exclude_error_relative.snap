@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "exclude",
+  "error": {
+    "code": "invalid_exclusion",
+    "exit_code": 2,
+    "message": "invalid exclusion: the path is not absolute: relativa/ruta"
+  },
+  "schema_version": 2
+}

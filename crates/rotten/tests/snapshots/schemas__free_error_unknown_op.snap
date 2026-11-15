@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "free",
+  "error": {
+    "code": "unknown_operation",
+    "exit_code": 1,
+    "message": "operation no-such-op does not exist"
+  },
+  "schema_version": 2
+}

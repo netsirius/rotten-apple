@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "clean",
+  "error": {
+    "code": "config_link_conflict",
+    "exit_code": 5,
+    "message": "[HOME]/.config/rotten/config.toml is a file, not the link to the configuration ([HOME]/Library/Application Support/io.github.netsirius.RottenApple/config.toml): nothing is done until it is moved away"
+  },
+  "schema_version": 2
+}

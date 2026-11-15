@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Limpieza · Instaladores</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&amp;display=swap">
+<style>
+@font-face{font-family:"Commit Mono";src:url("/_blob/39ac0b959ac963a46465b07e82f09eff") format("woff2");font-weight:200 700;font-style:normal;font-display:swap}
+body{margin:0;background:#05051A}
+a{color:#C9C6FF}a:hover{color:#FFFFFF}
+:focus-visible{outline:2px solid #E6B7FE;outline-offset:3px}
+</style>
+</helmet>
+<div style="width: 1360px; height: 904px; position: relative; overflow: hidden; background: radial-gradient(900px 600px at 18% 12%, rgba(87,78,255,0.30), rgba(87,78,255,0) 70%), radial-gradient(800px 600px at 88% 92%, rgba(230,183,254,0.16), rgba(230,183,254,0) 70%), #05051A; font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #FFFFFF;">
+  <div aria-hidden="true" style="height: 26px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: rgba(0,0,0,0.5); font-size: 13px; color: rgba(255,255,255,0.9);">
+    <span style="font-weight: 700;">Rotten Apple</span><span>Archivo</span><span>Edición</span><span>Ver</span><span>Ventana</span><span>Ayuda</span>
+    <span style="margin-left: auto; color: rgba(255,255,255,0.8);">dom 1 nov · 10:33</span>
+  </div>
+  <div style="position: absolute; left: 40px; top: 66px; width: 1280px; height: 800px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 50px 120px -20px rgba(0,0,0,0.8); background: radial-gradient(60% 75% at 72% 30%, rgba(87,78,255,0.42) 0%, rgba(87,78,255,0) 70%), radial-gradient(40% 50% at 30% 100%, rgba(255,208,138,0.10) 0%, rgba(255,208,138,0) 70%), linear-gradient(155deg, #000240 0%, #03032A 50%, #0D0848 100%);">
+    <div style="flex: 0 0 240px; display: flex;">
+      <dc-import name="Sidebar" current="limpieza" mode="simple" hint-size="100%,800px"></dc-import>
+    </div>
+    <main style="flex: 1 1 auto; min-width: 0; height: 800px; position: relative; overflow: hidden;">
+      <header style="display: flex; align-items: flex-end; gap: 16px; padding: 44px 48px 18px;">
+        <div style="flex-grow: 1;">
+          <h1 style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.025em;">Limpieza</h1>
+          <p style="margin: 8px 0 0; font-size: 16px; color: rgba(255,255,255,0.72);">Instaladores olvidados en Descargas, Escritorio, Homebrew, iCloud, Mail y Telegram.</p>
+        </div>
+        <div role="tablist" aria-label="Tipo de limpieza" style="display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.07);">
+          <a href="Limpieza.dc.html" role="tab" aria-selected="false" style="display: flex; align-items: center; min-height: 32px; padding: 0 16px; border-radius: 9px; color: rgba(255,255,255,0.75); font-size: 14px; text-decoration: none;">Sistema</a>
+          <span role="tab" aria-selected="true" style="display: flex; align-items: center; min-height: 32px; padding: 0 16px; border-radius: 9px; background: #574EFF; color: #FFFFFF; font-size: 14px; font-weight: 600;">Instaladores</span>
+        </div>
+      </header>
+      <section aria-label="Instaladores" style="height: 440px; overflow: auto; padding: 0 48px; display: flex; flex-direction: column;">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+          <label style="display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 6px 12px; border-radius: 14px; cursor: pointer;">
+            <input type="checkbox" checked="{{r.on}}" onChange="{{r.toggle}}" style="width: 17px; height: 17px; margin: 0; accent-color: #574EFF;">
+            <span style="{{r.tile}}" aria-hidden="true">{{r.ext}}</span>
+            <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 15px; font-weight: 600;">{{r.name}}</span>
+              <span style="font-size: 12.5px; color: rgba(255,255,255,0.6);">{{r.source}} · {{r.age}}</span>
+            </span>
+            <sc-if value="{{r.installed}}" hint-placeholder-val="{{false}}">
+              <span style="flex-shrink: 0; padding: 2px 9px; border-radius: 999px; background: rgba(95,237,131,0.12); color: #5FED83; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 11px;">ya instalada</span>
+            </sc-if>
+            <span style="width: 74px; text-align: right; font-family: 'Commit Mono', ui-monospace, Menlo, monospace; font-size: 14px;">{{r.size}}</span>
+          </label>
+        </sc-for>
+      </section>
+      <a href="Revision.dc.html" style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 116px; height: 116px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: radial-gradient(circle at 35% 30%, #9C96FF 0%, #574EFF 55%, #3A2FD8 100%); box-shadow: 0 0 0 10px rgba(87,78,255,0.16), 0 24px 60px -12px rgba(87,78,255,0.95); color: #FFFFFF; font-size: 19px; font-weight: 600; text-decoration: none;">Limpiar</a>
+      <p style="position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.6);"><span style="font-family: 'Commit Mono', ui-monospace, Menlo, monospace; color: #FFFFFF;">{{total}}</span> seleccionados · nada viene marcado · a la Papelera</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":904}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const checks = st.checks || {};
+    const G = { dmg: '#9CC2FF, #3A6CF0', pkg: '#FFD08A, #C27612', zip: '#C8C8D8, #5D5D78', iso: '#F0CFFF, #A55BD8', xip: '#B9B4FF, #4338CA' };
+    const list = [
+      { id: 'a', name: 'VSCode-darwin-arm64.zip', ext: 'zip', source: 'Descargas', age: 'hace 5 meses', size: '182 MB', gb: 0.18, installed: true },
+      { id: 'b', name: 'Docker.dmg', ext: 'dmg', source: 'Descargas', age: 'hace 8 meses', size: '612 MB', gb: 0.61, installed: true },
+      { id: 'c', name: 'setup-node-v20.pkg', ext: 'pkg', source: 'Escritorio', age: 'hace 1 año', size: '74 MB', gb: 0.07, installed: true },
+      { id: 'd', name: 'Xcode_16.2.xip', ext: 'xip', source: 'Descargas', age: 'hace 10 meses', size: '3,0 GB', gb: 3.0, installed: false },
+      { id: 'e', name: 'ubuntu-24.04-desktop-arm64.iso', ext: 'iso', source: 'Descargas', age: 'hace 1 año', size: '2,9 GB', gb: 2.9, installed: false },
+      { id: 'f', name: 'Zoom.pkg', ext: 'pkg', source: 'Adjunto de Mail', age: 'hace 2 años', size: '98 MB', gb: 0.1, installed: false },
+      { id: 'g', name: 'Figma.dmg', ext: 'dmg', source: 'Telegram', age: 'hace 6 meses', size: '210 MB', gb: 0.21, installed: true }
+    ];
+    let total = 0;
+    const rows = list.map((r) => {
+      const on = !!checks[r.id];
+      if (on) total += r.gb;
+      return {
+        name: r.name, ext: r.ext.toUpperCase(), source: r.source, age: r.age, size: r.size, installed: r.installed, on: on,
+        tile: 'flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(160deg, ' + G[r.ext] + '); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35); font-family: \'Commit Mono\', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 600;',
+        toggle: () => { const n = Object.assign({}, checks); n[r.id] = !on; this.setState({ checks: n }); }
+      };
+    });
+    return { rows: rows, total: total.toFixed(1).replace('.', ',') + ' GB' };
+  }
+}
+</script>
+</body>
+</html>
