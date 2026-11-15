@@ -128,7 +128,7 @@ Amplía la higiene de secretos del doc 03 §6, H1–H9, a petición del autor.
 
 Con la configuración corrupta o con otra cosa en la ruta del enlace `~/.config/rotten/config.toml` (RF-SEG-05 c), las acciones destructivas abortan con `5` sin tocar nada, también con `--dry-run`: `clean`, `trash put`, `free`, `trash empty` y los cambios de configuración (`exclude add|remove`, `config set`). `undo` no: devolver algo a su sitio no depende de la configuración. Si `config set` guarda la configuración pero no puede crear el enlace (p. ej. `~/.config/rotten` es un fichero), sale con `4`.
 
-`config set` sin `--dry-run` y `exclude add|remove` cuando van a escribir (sin `--dry-run` y si cambia algo) toman el cerrojo de ejecución, como `clean`: si hay otro ejecutor activo salen con `6` sin cambiar nada. El cerrojo no espera; un script que los encadene debe repetir ante un `6`. Si caben varios códigos, el orden es `2` > `5` > `6`: la clave, el valor o la exclusión y el estado de la configuración se validan antes de tomar el cerrojo, y una negativa con `2` o `5` no crea `exec.lock`.
+`config set` sin `--dry-run` y `exclude add|remove` cuando van a escribir (sin `--dry-run` y si cambia algo) toman el cerrojo de ejecución, como `clean`: si hay otro ejecutor activo salen con `6` sin cambiar nada. El cerrojo no espera a otro ejecutor (solo reintenta unos 100 ms); un script que los encadene debe repetir ante un `6`. Si caben varios códigos, el orden es `2` > `5` > `6`: la clave, el valor o la exclusión y el estado de la configuración se validan antes de tomar el cerrojo, y una negativa con `2` o `5` no crea `exec.lock`.
 
 Con `--dry-run`, el código es el que tendría la ejecución: `4` si la simulación ya prevé omisiones (decisión del autor del 2026-11-08, 08 §2.1).
 
