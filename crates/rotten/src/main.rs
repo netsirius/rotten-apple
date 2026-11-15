@@ -199,12 +199,16 @@ impl Ui {
 
 fn main() -> ExitCode {
     // El idioma, antes de analizar los argumentos: la ayuda ya sale en él.
+    // `--lang` > `language` de la configuración (RF-AJU-07) > `LANG`.
     let argv: Vec<OsString> = std::env::args_os().collect();
     let lossy: Vec<String> = argv
         .iter()
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
-    let lang = Lang::detect(args::lang_flag(&lossy).as_deref());
+    let lang = match args::lang_flag(&lossy) {
+        Some(flag) => Lang::detect(Some(&flag)),
+        None => cmd::config::early_lang().unwrap_or_else(|| Lang::detect(None)),
+    };
     let i18n = I18n::new(lang);
     let no_color_env = style::no_color_env();
     let mut definition = args::localized(&i18n);
@@ -279,13 +283,6 @@ fn run(mut ui: Ui, cli: Cli, command: &str) -> Exit {
         }
     };
     ui.home = env.home.clone();
-    // RF-AJU-07: sin `--lang`, el idioma de la configuración manda sobre
-    // `LANG` (la ayuda de clap ya salió con `LANG`: se genera antes).
-    if cli.lang.is_none()
-        && let Some(lang) = cmd::config::configured_lang(&env)
-    {
-        ui.i18n = I18n::new(lang);
-    }
     techlog::set_home(&env.home);
     techlog::env(&env, ui.i18n.lang().code(), ui.json);
     // `update` no usa el estado de la app (T-15).

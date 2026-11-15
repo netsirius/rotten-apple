@@ -5,7 +5,8 @@
 //! - La salida es siempre el script, también en una tubería (`rotten
 //!   completion zsh > _rotten` es el uso normal): no hay versión JSON, como
 //!   en `--version` y `--help`.
-//! - Las descripciones salen en el idioma de la ayuda (`--lang`, `LANG`).
+//! - Las descripciones salen en el idioma de la ayuda: `--lang`, si no el
+//!   `language` de la configuración y si no `LANG`.
 //! - No necesita la carpeta personal ni el núcleo: funciona aunque falte
 //!   `HOME` o la configuración esté corrupta, y no deja nada en el log.
 //!

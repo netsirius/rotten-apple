@@ -68,6 +68,23 @@ pub fn configured_lang(env: &Env) -> Option<Lang> {
     }
 }
 
+/// El idioma de la configuración antes de analizar los argumentos, para
+/// que la ayuda de clap ya salga en él (sin `--lang`, manda sobre `LANG`).
+///
+/// Nunca falla ni deja nada: ni crea carpetas ni pasa por `Core`. Sin
+/// carpeta personal, con la configuración corrupta, ilegible o que no es
+/// un fichero normal (un FIFO bloquearía la lectura), `None`: manda `LANG`
+/// y el error, si lo hay, lo dirá el comando. Solo lee la configuración,
+/// no su enlace en `~/.config/rotten/`, igual que [`configured_lang`].
+pub fn early_lang() -> Option<Lang> {
+    let env = Env::from_env().ok()?;
+    let regular = std::fs::metadata(&env.config_path).is_ok_and(|m| m.is_file());
+    if !regular {
+        return None;
+    }
+    configured_lang(&env)
+}
+
 /// Las claves que esta versión no conoce (se ignoran y se conservan).
 pub fn unknown_keys_line(ui: &Ui, config_path: &Path, keys: &[String]) -> String {
     tr!(
