@@ -636,11 +636,19 @@ fn clean(
         Ok(p) => p,
         Err(e) => return ui.core_error("clean", &e),
     };
+    // Claves desconocidas en la configuración: una exclusión con un nombre
+    // que no se reconoce se ignora, y quien limpia tiene que verlo.
+    let with_warnings = |doc: Value| cmd::config::with_config_warnings(core, doc);
+    if !ui.json {
+        cmd::config::unknown_keys_note(ui, core);
+    }
     if dry_run {
         if ui.json {
             ui.emit(
                 "clean",
-                json!({ "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
+                with_warnings(
+                    json!({ "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
+                ),
             );
         } else {
             print_plan(ui, core, &preview.plan, &preview.dry_run);
@@ -653,7 +661,9 @@ fn clean(
         if ui.json {
             ui.emit(
                 "clean",
-                json!({ "dry_run": false, "plan": preview.plan, "report": ExecReport::default() }),
+                with_warnings(
+                    json!({ "dry_run": false, "plan": preview.plan, "report": ExecReport::default() }),
+                ),
             );
         } else {
             print_plan(ui, core, &preview.plan, &preview.dry_run);
@@ -683,7 +693,7 @@ fn clean(
     if ui.json {
         ui.emit(
             "clean",
-            json!({ "dry_run": false, "plan": plan_json, "report": report }),
+            with_warnings(json!({ "dry_run": false, "plan": plan_json, "report": report })),
         );
     } else {
         print_problems(ui, &report);

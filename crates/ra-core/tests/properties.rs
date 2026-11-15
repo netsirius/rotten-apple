@@ -403,7 +403,8 @@ proptest! {
     }
 
     /// 3 (T-13): `config set` nunca reescribe una configuración corrupta ni
-    /// crea el enlace, con cualquier clave y valor.
+    /// crea el enlace, con cualquier clave y valor. Con una clave o un valor
+    /// inválidos sale antes con el error de uso (2 > 5, como en `clean`).
     #[test]
     fn config_set_never_rewrites_a_corrupt_config(
         garbage in prop_oneof![
@@ -422,7 +423,12 @@ proptest! {
         let config = w.state.join("config.toml");
         fs::write(&config, &garbage).expect("corromper");
         prop_assume!(matches!(w.core.config_state(), ra_core::ConfigState::Corrupt { .. }));
-        prop_assert_eq!(w.core.config_set(key, &value, dry_run).err().map(|e| e.code()), Some("config_corrupt"));
+        let err = w.core.config_set(key, &value, dry_run).expect_err("se niega");
+        if ra_safety::Config::default().set(key, &value).is_ok() {
+            prop_assert_eq!(err.code(), "config_corrupt");
+        } else {
+            prop_assert_eq!(err.class(), ra_core::ErrorClass::Usage, "{}", err.code());
+        }
         prop_assert_eq!(fs::read_to_string(&config).expect("config"), garbage, "no se reescribe");
         let link = w.core.env().config_link_path.clone().expect("el enlace aplica");
         prop_assert!(fs::symlink_metadata(&link).is_err(), "no se crea el enlace");

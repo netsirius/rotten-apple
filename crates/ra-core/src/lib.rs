@@ -170,17 +170,20 @@ impl Core {
                 .to_string(),
             );
         }
-        if let ConfigState::Loaded(c) = &config
-            && !c.unknown.is_empty()
-        {
-            report.warnings.push(format!(
-                "{} has keys this version does not know and ignores: {}",
-                self.env.config_path.display(),
-                c.unknown_keys().join(", ")
-            ));
-        }
+        report
+            .warnings
+            .extend(unknown_keys_warning(&config, &self.env.config_path));
         scan::add_volume(&mut report, &self.env.home);
         Ok(report)
+    }
+
+    /// El aviso de claves desconocidas de la configuración (en inglés, el
+    /// del JSON), si las hay. Lo dan `scan` y `clean`: una exclusión escrita
+    /// con un nombre que no se reconoce se ignora, y quien limpia debe verlo.
+    pub fn config_warnings(&self) -> Vec<String> {
+        unknown_keys_warning(&self.config_state(), &self.env.config_path)
+            .into_iter()
+            .collect()
     }
 
     /// Construye el plan y lo simula (la revisión). Aborta si las
@@ -348,19 +351,50 @@ impl Core {
         add: bool,
         dry_run: bool,
     ) -> Result<(Exclusion, bool), CoreError> {
+        // Como `config set`: 2 > 5 > 6. Se valida solo leyendo (una negativa
+        // no crea `exec.lock`); sin `dry_run`, el cerrojo de ejecución (no
+        // espera: 6 si otro lo tiene) y se relee y valida otra vez con él
+        // tomado, para no pisar un cambio concurrente ni dejar que otra
+        // limpieza de temporales borre el de esta escritura.
         let ex = Exclusion::parse(raw).map_err(CoreError::InvalidExclusion)?;
-        let mut config = self.writable_config()?;
-        let changed = if add {
-            config.add(&ex)
-        } else {
-            config.remove(&ex)
-        };
-        if changed && !dry_run {
-            // Se valida contra la carpeta personal antes de guardar.
-            Exclusions::compile(&config, &self.env.home).map_err(CoreError::InvalidExclusion)?;
+        let (_, changed) = self.prepare_exclusion(&ex, add)?;
+        if dry_run || !changed {
+            return Ok((ex, changed));
+        }
+        let lock = self.lock()?;
+        let (config, changed) = self.prepare_exclusion(&ex, add)?;
+        if changed {
+            self.remove_stale_temps(&lock);
             config.save(&self.env.config_path)?;
         }
         Ok((ex, changed))
+    }
+
+    /// La configuración con la exclusión añadida o quitada, y si cambia.
+    /// Solo lee. Se valida contra la carpeta personal, como al cargarla.
+    fn prepare_exclusion(&self, ex: &Exclusion, add: bool) -> Result<(Config, bool), CoreError> {
+        let mut config = self.writable_config()?;
+        let changed = if add {
+            config.add(ex)
+        } else {
+            config.remove(ex)
+        };
+        if changed {
+            Exclusions::compile(&config, &self.env.home).map_err(CoreError::InvalidExclusion)?;
+        }
+        Ok((config, changed))
+    }
+}
+
+/// «`config.toml` tiene claves que esta versión no conoce», si las tiene.
+fn unknown_keys_warning(config: &ConfigState, path: &Path) -> Option<String> {
+    match config {
+        ConfigState::Loaded(c) if !c.unknown.is_empty() => Some(format!(
+            "{} has keys this version does not know and ignores: {}",
+            path.display(),
+            c.unknown_keys().join(", ")
+        )),
+        _ => None,
     }
 }
 

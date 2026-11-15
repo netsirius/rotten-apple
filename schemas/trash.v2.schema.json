@@ -24,6 +24,11 @@
     "file_kind": { "enum": ["file", "dir", "symlink", "other"] },
     "flag_violation": { "enum": ["immutable", "append_only", "restricted", "no_unlink", "firmlink", "dataless"] },
 
+    "warnings": {
+      "description": "Opcional (trash put): avisos en inglés sobre la configuración, como el de claves desconocidas (una exclusión con un nombre que no se reconoce se ignora). Se omite si no hay.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "dry_run": {
       "type": "object",
       "required": ["schema_version", "command", "action", "dry_run", "plan", "report"],
@@ -37,7 +42,8 @@
         "report": {
           "description": "Simulación de lo que haría (outcome «would»). En v1 se llamaba «preview».",
           "$ref": "#/$defs/exec_report"
-        }
+        },
+        "warnings": { "$ref": "#/$defs/warnings" }
       }
     },
     "executed": {
@@ -50,7 +56,8 @@
         "action": { "const": "put" },
         "dry_run": { "const": false },
         "plan": { "$ref": "#/$defs/plan" },
-        "report": { "$ref": "#/$defs/exec_report" }
+        "report": { "$ref": "#/$defs/exec_report" },
+        "warnings": { "$ref": "#/$defs/warnings" }
       }
     },
 

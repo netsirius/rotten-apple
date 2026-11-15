@@ -10,8 +10,9 @@
 //!   nueva, por ejemplo) se toleran, se conservan al reescribir el fichero y
 //!   se avisan (07 §2). En `[exclusions]` no: una clave mal escrita ahí
 //!   dejaría una exclusión sin aplicar, así que falla cerrado. Tampoco una
-//!   clave de primer nivel que contenga «exclu» (`[exclusion]`,
-//!   `[exclusiones]`): parece esa sección mal escrita.
+//!   clave de primer nivel que se parezca a `exclusions` (`[exclusion]`,
+//!   `[exclusiones]`, `[exclude]`): parece esa sección mal escrita (ver
+//!   `looks_like_exclusions`).
 //!
 //! Las exclusiones prevalecen sobre cualquier regla. Una ruta excluida
 //! bloquea también a sus ancestros: mover la carpeta que la contiene la
@@ -230,6 +231,63 @@ impl Config {
         }
         fs::File::open(dir)?.sync_all()
     }
+
+    /// Los temporales que dejó un [`Config::save`] cortado a medias en la
+    /// carpeta donde se escribe `path` (la del final de la cadena si es un
+    /// enlace, la misma que usa `save`). Solo los lista: borrarlos es cosa de
+    /// quien tenga el cerrojo de ejecución (`ra-core`, que exige el cerrojo
+    /// como testigo), porque si no podría borrar el de un escritor vivo.
+    ///
+    /// Solo ficheros regulares (sin seguir enlaces: un enlace con nombre de
+    /// temporal no sale, ni su destino) cuyo nombre tenga exactamente la
+    /// forma de [`new_temp`], `.config.toml.<pid>.<n>.tmp`, y nunca el propio
+    /// fichero de configuración. La configuración se reconoce por su
+    /// identidad (dispositivo e inodo), no por el texto de la ruta: en un
+    /// volumen que no distingue mayúsculas, un enlace a
+    /// `.CONFIG.TOML.5.5.TMP` lleva al fichero `.config.toml.5.5.tmp`. Es de
+    /// mejor esfuerzo: un error deja la lista vacía o más corta.
+    pub fn stale_temps(path: &Path) -> Vec<PathBuf> {
+        use std::os::unix::fs::MetadataExt;
+        let Ok(target) = write_target(path) else {
+            return Vec::new();
+        };
+        let Some(dir) = target.parent() else {
+            return Vec::new();
+        };
+        let Ok(entries) = fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        let config_id = fs::metadata(&target).ok().map(|m| (m.dev(), m.ino()));
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            if !entry.file_name().to_str().is_some_and(is_temp_name) {
+                continue;
+            }
+            let p = entry.path();
+            let Ok(m) = fs::symlink_metadata(&p) else {
+                continue;
+            };
+            if p != target && m.file_type().is_file() && config_id != Some((m.dev(), m.ino())) {
+                out.push(p);
+            }
+        }
+        out.sort();
+        out
+    }
+}
+
+/// `true` si `name` tiene la forma exacta de los temporales de
+/// [`new_temp`]: `.config.toml.<dígitos>.<dígitos>.tmp`.
+fn is_temp_name(name: &str) -> bool {
+    let Some(mid) = name
+        .strip_prefix(".config.toml.")
+        .and_then(|r| r.strip_suffix(".tmp"))
+    else {
+        return false;
+    };
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    mid.split_once('.')
+        .is_some_and(|(pid, n)| digits(pid) && digits(n))
 }
 
 /// El fichero que hay que reescribir para cambiar `path`: el propio `path`
@@ -256,7 +314,8 @@ fn write_target(path: &Path) -> io::Result<PathBuf> {
 }
 
 /// Temporal con un nombre que no existía (`create_new`): nunca se escribe
-/// sobre otro fichero ni a través de un enlace.
+/// sobre otro fichero ni a través de un enlace. Si cambia la forma del
+/// nombre, hay que cambiar también `is_temp_name`.
 fn new_temp(dir: &Path) -> io::Result<(PathBuf, fs::File)> {
     use std::sync::atomic::{AtomicU32, Ordering};
     static SEQ: AtomicU32 = AtomicU32::new(0);
@@ -276,6 +335,77 @@ fn new_temp(dir: &Path) -> io::Result<(PathBuf, fs::File)> {
             Err(e) => return Err(e),
         }
     }
+}
+
+/// `true` si una clave desconocida de primer nivel parece `[exclusions]`
+/// mal escrita (heurística por similitud, decidida por el autor el
+/// 2026-11-15). Se compara en minúsculas y por caracteres, no por bytes, para
+/// que `exclusión` cuente una sola letra cambiada:
+///
+/// - a distancia de edición ≤ 3 de `exclusions` (`exclusion`, `exclusiones`,
+///   `exclusión`, `exlcusions`, `Exclusions `…), o
+/// - empieza por `exclu` y no lleva separadores `-` ni `_` (`exclude`,
+///   `excluded`, `excludes`), o
+/// - contiene `exclu` (con o sin separadores) y su valor tiene forma de
+///   exclusiones (ver `shaped_like_exclusions`: `exclude_paths = ["~/x"]`,
+///   `exclude_path = "~/x"`, `exclude_dirs = [{ path = "~/x" }]`,
+///   `excluded_paths`, `exclusion_list`, `user_exclusions`…). Sin esta
+///   regla, una exclusión así se ignoraría en silencio y `clean` borraría lo
+///   que el usuario quería conservar.
+///
+/// El resto (`exclude_backups_note = "x"`, `[exclude-notes]` con otras
+/// claves, `theme`…) es una clave desconocida más: se tolera y se avisa.
+/// Falsos positivos aceptados a sabiendas, porque fallar cerrado aquí solo
+/// obliga a revisar el fichero: `inclusions` (2), `exceptions`,
+/// `extensions`, `expansions`, `executions` y `conclusions` (3) se dan por
+/// erratas, y también `excluded_extensions = [".log"]` (lleva `exclu` y una
+/// lista con una cadena).
+fn looks_like_exclusions(key: &str, value: &toml::Value) -> bool {
+    const TARGET: &str = "exclusions";
+    let key = key.to_lowercase();
+    edit_distance(&key, TARGET) <= 3
+        || (key.starts_with("exclu") && !key.contains(['-', '_']))
+        || (key.contains("exclu") && shaped_like_exclusions(value))
+}
+
+/// `true` si `value` podría llevar exclusiones:
+///
+/// - una cadena con forma de ruta (empieza por `~/` o `/`);
+/// - una lista con al menos una cadena, aunque mezcle otros tipos
+///   (`["~/x", 1]`);
+/// - una lista con alguna tabla que tenga `path` o `paths`
+///   (`[{ path = "~/x" }]`);
+/// - una tabla con alguna de las claves de `[exclusions]`.
+///
+/// Una lista vacía no: no hay nada que se pueda dejar de aplicar.
+fn shaped_like_exclusions(value: &toml::Value) -> bool {
+    const LISTS: [&str; 5] = ["paths", "globs", "rules", "categories", "bundle_ids"];
+    match value {
+        toml::Value::String(v) => v.starts_with("~/") || v.starts_with('/'),
+        toml::Value::Array(items) => items.iter().any(|item| match item {
+            toml::Value::String(_) => true,
+            toml::Value::Table(t) => t.contains_key("path") || t.contains_key("paths"),
+            _ => false,
+        }),
+        toml::Value::Table(t) => LISTS.iter().any(|k| t.contains_key(*k)),
+        _ => false,
+    }
+}
+
+/// Distancia de Levenshtein entre dos cadenas, por caracteres.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0; b.len() + 1];
+    for (i, ca) in a.chars().enumerate() {
+        cur[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let sub = prev[j] + usize::from(ca != *cb);
+            cur[j + 1] = sub.min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
 }
 
 /// Estado de la configuración tras intentar cargarla.
@@ -301,10 +431,10 @@ impl ConfigState {
         // Una sección desconocida que parece `[exclusions]` mal escrita
         // (`[exclusion]`, `[exclusiones]`…) dejaría exclusiones sin aplicar:
         // falla cerrado aunque el resto de claves desconocidas se toleren.
-        if let Some(k) = config
+        if let Some((k, _)) = config
             .unknown
-            .keys()
-            .find(|k| k.to_lowercase().contains("exclu"))
+            .iter()
+            .find(|(k, v)| looks_like_exclusions(k, v))
         {
             return Self::corrupt(
                 path,
@@ -520,6 +650,193 @@ mod tests {
             assert!(matches!(s, ConfigState::Corrupt { .. }), "{bad:?} → {s:?}");
             assert!(s.exclusions(Path::new(HOME)).is_err());
         }
+    }
+
+    /// Heurística por similitud en las dos direcciones. `inclusions` y los
+    /// demás nombres a distancia ≤ 3 son falsos positivos aceptados
+    /// (fail-closed): se documentan aquí para que un cambio los haga visibles.
+    #[test]
+    fn misspelled_exclusions_are_detected_by_similarity() {
+        // Un valor sin forma de exclusiones: decide solo el nombre.
+        let note = toml::Value::String("x".into());
+        for k in [
+            "exclusions",
+            "Exclusions",
+            "EXCLUSIONS",
+            "Exclusions ",
+            "exclusion",
+            "exclusiones",
+            "exclusión",
+            "Exclusión",
+            "exlcusions",
+            "exclusons",
+            "excluions",
+            // Solo por la regla del prefijo (están a más de 3).
+            "exclude",
+            "excluded",
+            "excludes",
+            "excluir",
+            // Falsos positivos aceptados.
+            "inclusions",
+            "exceptions",
+            "extensions",
+            "expansions",
+            "executions",
+            "conclusions",
+        ] {
+            assert!(
+                looks_like_exclusions(k, &note),
+                "{k:?} debería ser una errata"
+            );
+        }
+        for k in [
+            "exclude_backups_note",
+            "exclude-notes",
+            "exclusions_note",
+            "ui",
+            "theme",
+            "journal",
+            "language",
+            "notifications",
+            "selections",
+        ] {
+            assert!(!looks_like_exclusions(k, &note), "{k:?} debería tolerarse");
+        }
+        // Con separadores o con `exclu` en medio, decide la forma del valor.
+        let list: toml::Value = toml::Value::Array(vec!["~/Library/Logs/x".into()]);
+        let mixed = toml::Value::Array(vec!["~/x".into(), 1.into()]);
+        let path = toml::Value::String("~/Documents/keep".into());
+        let abs = toml::Value::String("/Users/ana/keep".into());
+        let table: toml::Value = toml::from_str("paths = [\"~/x\"]").expect("tabla");
+        let tables: toml::Value =
+            toml::from_str::<toml::Table>("v = [{ path = \"~/x\" }]").expect("tabla")["v"].clone();
+        let other_table: toml::Value = toml::from_str("x = 1").expect("tabla");
+        let other_tables: toml::Value =
+            toml::from_str::<toml::Table>("v = [{ x = 1 }]").expect("tabla")["v"].clone();
+        let numbers = toml::Value::Array(vec![1.into()]);
+        let empty = toml::Value::Array(Vec::new());
+        for k in [
+            "exclude_paths",
+            "excluded_paths",
+            "exclusion_list",
+            "user_exclusions",
+            "exclude-notes",
+        ] {
+            for v in [&list, &mixed, &path, &abs, &table, &tables] {
+                assert!(looks_like_exclusions(k, v), "{k:?} = {v} es una errata");
+            }
+            for v in [&note, &other_table, &other_tables, &numbers, &empty] {
+                assert!(!looks_like_exclusions(k, v), "{k:?} = {v} se tolera");
+            }
+        }
+        // Falso positivo aceptado: lleva `exclu` y una lista con una cadena.
+        let log = toml::Value::Array(vec![".log".into()]);
+        assert!(looks_like_exclusions("excluded_extensions", &log));
+        // Sin `exclu`, ni una lista de cadenas la hace sospechosa.
+        assert!(!looks_like_exclusions("ignored_paths", &list));
+        assert_eq!(edit_distance("exclusión", "exclusions"), 2);
+        assert_eq!(edit_distance("inclusions", "exclusions"), 2);
+        assert_eq!(edit_distance("", "abc"), 3);
+    }
+
+    #[test]
+    fn misspelled_exclusions_make_the_config_corrupt() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let p = dir.path().join("config.toml");
+        for (text, corrupt) in [
+            // Una clave con tilde va entre comillas en TOML.
+            ("[\"exclusión\"]\npaths = []\n", true),
+            ("[exclude]\npaths = []\n", true),
+            ("\"Exclusions \" = {}\n", true),
+            ("exclude_backups_note = \"x\"\n", false),
+            ("[exclude-notes]\nx = 1\n", false),
+            ("exclude_paths = [\"~/Library/Logs/x\"]\n", true),
+            ("excluded_paths = [\"~/Library/Logs/x\"]\n", true),
+            ("exclusion_list = [\"~/Library/Logs/x\"]\n", true),
+            ("user_exclusions = [\"~/Library/Logs/x\"]\n", true),
+            ("[user_exclusions]\npaths = [\"~/x\"]\n", true),
+            ("exclude_path = \"~/Documents/keep\"\n", true),
+            ("exclude_paths = [\"~/x\", 1]\n", true),
+            ("exclude_dirs = [{ path = \"~/x\" }]\n", true),
+            ("excluded_extensions = [\".log\"]\n", true),
+        ] {
+            fs::write(&p, text).expect("write");
+            let s = ConfigState::load(&p, Path::new(HOME));
+            match s {
+                ConfigState::Corrupt { reason, .. } => {
+                    assert!(corrupt, "{text:?} → {reason}");
+                    assert!(
+                        reason.contains("is it a misspelled [exclusions]?"),
+                        "{reason}"
+                    );
+                }
+                ConfigState::Loaded(c) => {
+                    assert!(!corrupt, "{text:?} debería ser corrupta");
+                    assert_eq!(c.unknown_keys().len(), 1, "{text:?}");
+                }
+                ConfigState::Missing => panic!("{text:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn stale_temps_are_listed_without_following_links() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = fs::canonicalize(dir.path()).expect("canon");
+        let cfg = base.join("config.toml");
+        fs::write(&cfg, "schema_version = 1\n").expect("write");
+        fs::write(base.join(".config.toml.123.0.tmp"), b"a medias").expect("write");
+        fs::write(base.join(".config.toml.swp"), b"vim").expect("write");
+        fs::write(base.join(".config.toml.x"), b"otro").expect("write");
+        fs::write(base.join(".config.toml.1.tmp"), b"otro").expect("write");
+        fs::create_dir(base.join(".config.toml.9.9.tmp")).expect("mkdir");
+        let outside = tempfile::tempdir().expect("tempdir");
+        let precious = outside.path().join("precious");
+        fs::write(&precious, b"no tocar").expect("write");
+        symlink(&precious, base.join(".config.toml.7.1.tmp")).expect("symlink");
+
+        assert_eq!(
+            Config::stale_temps(&cfg),
+            vec![base.join(".config.toml.123.0.tmp")]
+        );
+
+        // Nunca la propia configuración, aunque su nombre tenga la forma de
+        // un temporal (el destino de un enlace de dotfiles, por ejemplo).
+        let odd = base.join(".config.toml.5.5.tmp");
+        fs::write(&odd, "schema_version = 1\n").expect("write");
+        let link = base.join("enlace.toml");
+        symlink(&odd, &link).expect("symlink");
+        assert!(!Config::stale_temps(&link).contains(&odd));
+
+        // Ni aunque el enlace la nombre con otras mayúsculas: en un volumen
+        // que no las distingue es el mismo fichero (se compara la identidad,
+        // no el texto de la ruta).
+        let upper = base.join(".CONFIG.TOML.5.5.TMP");
+        if upper.exists() {
+            let link_upper = base.join("enlace-mayusculas.toml");
+            symlink(&upper, &link_upper).expect("symlink");
+            assert!(!Config::stale_temps(&link_upper).contains(&odd));
+        } else {
+            eprintln!("volumen sensible a mayúsculas: se omite ese caso");
+        }
+
+        // Sin carpeta no hay nada que hacer.
+        assert!(Config::stale_temps(&base.join("no/existe.toml")).is_empty());
+    }
+
+    /// Ida y vuelta: lo que crea `new_temp` lo reconoce `is_temp_name`.
+    #[test]
+    fn new_temp_names_are_recognised() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (tmp, file) = new_temp(dir.path()).expect("temporal");
+        drop(file);
+        let name = tmp.file_name().and_then(|n| n.to_str()).expect("nombre");
+        assert!(is_temp_name(name), "{name}");
+        assert_eq!(
+            Config::stale_temps(&dir.path().join("config.toml")),
+            vec![tmp]
+        );
     }
 
     #[test]
