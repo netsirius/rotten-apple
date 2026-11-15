@@ -508,6 +508,30 @@ fn the_configured_language_applies_unless_lang_is_given() {
     assert!(text.contains("Configuración:"), "{text}");
 }
 
+/// `rotten --help` con un tope de 20 s: su código, o `None` si no terminó.
+fn help_bounded(fx: &Fx) -> Option<i32> {
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_rotten"))
+        .arg("--help")
+        .env("ROTTEN_HOME", &fx.home)
+        .env_remove("ROTTEN_STATE_DIR")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("ejecutar");
+    let started = std::time::Instant::now();
+    loop {
+        if let Some(s) = child.try_wait().expect("esperar") {
+            return s.code();
+        }
+        if started.elapsed() > std::time::Duration::from_secs(20) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 /// La ayuda de clap (y el autocompletado, que sale de ella) también sigue
 /// `language` (08 §2.4): `--lang` > configuración > `LANG`. Leerla no
 /// puede fallar ni dejar nada: corrupta, ilegible o sin carpeta personal,
@@ -554,30 +578,24 @@ fn help_follows_the_configured_language() {
         .status()
         .expect("mkfifo");
     assert!(mkfifo.success());
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_rotten"))
-        .arg("--help")
-        .env("ROTTEN_HOME", &fx.home)
-        .env_remove("ROTTEN_STATE_DIR")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("ejecutar");
-    let started = std::time::Instant::now();
-    let status = loop {
-        if let Some(s) = child.try_wait().expect("esperar") {
-            break Some(s);
-        }
-        if started.elapsed() > std::time::Duration::from_secs(20) {
-            let _ = child.kill();
-            break None;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    };
     assert_eq!(
-        status.and_then(|s| s.code()),
+        help_bounded(&fx),
         Some(0),
         "--help se bloqueó o falló con un FIFO en la configuración"
     );
+    fs::remove_file(config(&fx)).expect("rm");
+    // Ni uno enorme (3 GB disperso: leerlo entero tardaría minutos). Más
+    // de 1 MiB no es una configuración: manda `LANG`.
+    let big = fs::File::create(config(&fx)).expect("create");
+    std::io::Write::write_all(&mut &big, b"language = \"es\"\n").expect("write");
+    big.set_len(3 << 30).expect("set_len");
+    drop(big);
+    assert_eq!(
+        help_bounded(&fx),
+        Some(0),
+        "--help se bloqueó o falló con una configuración enorme"
+    );
+    assert!(english(&help(en, &["--help"])));
     fs::remove_file(config(&fx)).expect("rm");
 
     // Sin carpeta personal: `LANG`.

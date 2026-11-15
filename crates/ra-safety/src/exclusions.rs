@@ -424,7 +424,13 @@ impl ConfigState {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return ConfigState::Missing,
             Err(e) => return Self::corrupt(path, format!("cannot be read: {e}")),
         };
-        let config: Config = match toml::from_str(&text) {
+        Self::from_text(path, &text, home)
+    }
+
+    /// Como [`ConfigState::load`], con el texto ya leído de `path` (quien
+    /// lo lee decide cómo: el CLI lo hace sin bloquearse para la ayuda).
+    pub fn from_text(path: &Path, text: &str, home: &Path) -> Self {
+        let config: Config = match toml::from_str(text) {
             Ok(c) => c,
             Err(e) => return Self::corrupt(path, format!("invalid TOML: {e}")),
         };

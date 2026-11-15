@@ -12,7 +12,7 @@
 //! `5` configuración corrupta (`get` y `set`) u otra cosa en la ruta del
 //! enlace (`set`).
 //!
-//! También: el idioma de la configuración (RF-AJU-07, [`configured_lang`])
+//! También: el idioma de la configuración (RF-AJU-07, [`early_lang`])
 //! y los avisos de `scan` y `doctor` sobre el enlace y las claves que esta
 //! versión no conoce.
 
@@ -57,8 +57,8 @@ pub fn expected(i: &I18n, e: &Expected) -> String {
 /// El idioma fijado en la configuración (`language = "es"|"en"`), si la hay
 /// y se puede leer; con `system`, sin valor o corrupta, `None` (manda
 /// `LANG`).
-pub fn configured_lang(env: &Env) -> Option<Lang> {
-    match ConfigState::load(&env.config_path, &env.home) {
+fn lang_of(state: &ConfigState) -> Option<Lang> {
+    match state {
         ConfigState::Loaded(c) => match c.language {
             Some(Language::Es) => Some(Lang::Es),
             Some(Language::En) => Some(Lang::En),
@@ -68,21 +68,43 @@ pub fn configured_lang(env: &Env) -> Option<Lang> {
     }
 }
 
+/// Tamaño máximo de la configuración para leer el idioma antes de la ayuda.
+const EARLY_LANG_MAX: u64 = 1024 * 1024;
+
 /// El idioma de la configuración antes de analizar los argumentos, para
 /// que la ayuda de clap ya salga en él (sin `--lang`, manda sobre `LANG`).
 ///
-/// Nunca falla ni deja nada: ni crea carpetas ni pasa por `Core`. Sin
-/// carpeta personal, con la configuración corrupta, ilegible o que no es
-/// un fichero normal (un FIFO bloquearía la lectura), `None`: manda `LANG`
-/// y el error, si lo hay, lo dirá el comando. Solo lee la configuración,
-/// no su enlace en `~/.config/rotten/`, igual que [`configured_lang`].
+/// Nunca falla, ni se bloquea, ni deja nada: ni crea carpetas ni pasa por
+/// `Core`. Abre `config.toml` con `O_NONBLOCK` (un FIFO no espera a un
+/// escritor), comprueba sobre ese mismo descriptor que es un fichero normal
+/// de [`EARLY_LANG_MAX`] como mucho (uno enorme tardaría minutos en leerse)
+/// y lee de él, así que no hay carrera entre la comprobación y la lectura.
+/// Sin carpeta personal, o con la configuración corrupta, ilegible,
+/// demasiado grande o que no es un fichero normal, `None`: manda `LANG` y
+/// el error, si lo hay, lo dirá el comando. Solo lee la configuración, no
+/// su enlace en `~/.config/rotten/`, como el resto de comandos.
 pub fn early_lang() -> Option<Lang> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+
     let env = Env::from_env().ok()?;
-    let regular = std::fs::metadata(&env.config_path).is_ok_and(|m| m.is_file());
-    if !regular {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(&env.config_path)
+        .ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() || meta.len() > EARLY_LANG_MAX {
         return None;
     }
-    configured_lang(&env)
+    let mut text = String::new();
+    file.take(EARLY_LANG_MAX + 1)
+        .read_to_string(&mut text)
+        .ok()?;
+    if text.len() as u64 > EARLY_LANG_MAX {
+        return None;
+    }
+    lang_of(&ConfigState::from_text(&env.config_path, &text, &env.home))
 }
 
 /// Las claves que esta versión no conoce (se ignoran y se conservan).
