@@ -606,13 +606,7 @@ fn clean(
     };
     // Claves desconocidas en la configuración: una exclusión con un nombre
     // que no se reconoce se ignora, y quien limpia tiene que verlo.
-    let warnings = core.config_warnings();
-    let with_warnings = |mut doc: Value| {
-        if !warnings.is_empty() {
-            doc["warnings"] = json!(warnings);
-        }
-        doc
-    };
+    let with_warnings = |doc: Value| cmd::config::with_config_warnings(core, doc);
     if !ui.json {
         cmd::config::unknown_keys_note(ui, core);
     }

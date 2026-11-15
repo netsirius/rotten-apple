@@ -281,6 +281,26 @@ fn trash_put() {
     );
 }
 
+/// `trash put` aplica las exclusiones del usuario: como `clean`, avisa de
+/// las claves desconocidas de la configuración en `warnings`.
+#[test]
+fn trash_put_warns_about_unknown_config_keys() {
+    let fx = fixture();
+    fs::write(
+        fx.state.join("config.toml"),
+        "schema_version = 1\nexclude_backups_note = \"x\"\ntheme = \"dark\"\n",
+    )
+    .expect("write");
+    let cache = fx.p("Library/Caches/com.example.editor");
+    let cache = cache.to_str().expect("ruta UTF-8");
+    check(
+        &fx,
+        "trash_put_dry_run_unknown_keys",
+        &["trash", "put", cache, "--dry-run", "--json"],
+        0,
+    );
+}
+
 #[test]
 fn free() {
     let fx = fixture();

@@ -22,7 +22,7 @@ use ra_core::{
     ConfigLink, ConfigState, Core, Env, Expected, Language, LinkError, LinkFound, LinkState,
     SettingValue,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::args::ConfigCmd;
 use crate::i18n::{I18n, Lang, tr};
@@ -89,7 +89,20 @@ pub fn scan_notes(ui: &Ui, core: &Core) {
     unknown_keys_note(ui, core);
 }
 
-/// El aviso de claves desconocidas, si las hay (`scan` y `clean`).
+/// Añade al documento JSON los avisos de la configuración (`warnings`), si
+/// los hay. Lo usan los comandos que aplican las exclusiones del usuario
+/// (`clean` y `trash put`): una exclusión con un nombre que no se reconoce se
+/// ignora, y quien mueve cosas tiene que verlo.
+pub fn with_config_warnings(core: &Core, mut doc: Value) -> Value {
+    let warnings = core.config_warnings();
+    if !warnings.is_empty() {
+        doc["warnings"] = json!(warnings);
+    }
+    doc
+}
+
+/// El aviso de claves desconocidas, si las hay (`scan`, `clean` y
+/// `trash put`).
 pub fn unknown_keys_note(ui: &Ui, core: &Core) {
     if let ConfigState::Loaded(c) = core.config_state()
         && !c.unknown.is_empty()

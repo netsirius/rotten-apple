@@ -347,18 +347,19 @@ fn new_temp(dir: &Path) -> io::Result<(PathBuf, fs::File)> {
 /// - empieza por `exclu` y no lleva separadores `-` ni `_` (`exclude`,
 ///   `excluded`, `excludes`), o
 /// - contiene `exclu` (con o sin separadores) y su valor tiene forma de
-///   exclusiones: una lista de cadenas o una tabla con `paths`, `globs`,
-///   `rules`, `categories` o `bundle_ids` (`exclude_paths = ["~/x"]`,
-///   `excluded_paths`, `exclusion_list`, `user_exclusions`). Sin esta regla,
-///   una exclusión así se ignoraría en silencio y `clean` borraría lo que
-///   el usuario quería conservar.
+///   exclusiones (ver `shaped_like_exclusions`: `exclude_paths = ["~/x"]`,
+///   `exclude_path = "~/x"`, `exclude_dirs = [{ path = "~/x" }]`,
+///   `excluded_paths`, `exclusion_list`, `user_exclusions`…). Sin esta
+///   regla, una exclusión así se ignoraría en silencio y `clean` borraría lo
+///   que el usuario quería conservar.
 ///
 /// El resto (`exclude_backups_note = "x"`, `[exclude-notes]` con otras
 /// claves, `theme`…) es una clave desconocida más: se tolera y se avisa.
 /// Falsos positivos aceptados a sabiendas, porque fallar cerrado aquí solo
 /// obliga a revisar el fichero: `inclusions` (2), `exceptions`,
 /// `extensions`, `expansions`, `executions` y `conclusions` (3) se dan por
-/// erratas.
+/// erratas, y también `excluded_extensions = [".log"]` (lleva `exclu` y una
+/// lista con una cadena).
 fn looks_like_exclusions(key: &str, value: &toml::Value) -> bool {
     const TARGET: &str = "exclusions";
     let key = key.to_lowercase();
@@ -367,12 +368,25 @@ fn looks_like_exclusions(key: &str, value: &toml::Value) -> bool {
         || (key.contains("exclu") && shaped_like_exclusions(value))
 }
 
-/// `true` si `value` podría llevar exclusiones: una lista de cadenas
-/// (también vacía) o una tabla con alguna de las claves de `[exclusions]`.
+/// `true` si `value` podría llevar exclusiones:
+///
+/// - una cadena con forma de ruta (empieza por `~/` o `/`);
+/// - una lista con al menos una cadena, aunque mezcle otros tipos
+///   (`["~/x", 1]`);
+/// - una lista con alguna tabla que tenga `path` o `paths`
+///   (`[{ path = "~/x" }]`);
+/// - una tabla con alguna de las claves de `[exclusions]`.
+///
+/// Una lista vacía no: no hay nada que se pueda dejar de aplicar.
 fn shaped_like_exclusions(value: &toml::Value) -> bool {
     const LISTS: [&str; 5] = ["paths", "globs", "rules", "categories", "bundle_ids"];
     match value {
-        toml::Value::Array(items) => items.iter().all(toml::Value::is_str),
+        toml::Value::String(v) => v.starts_with("~/") || v.starts_with('/'),
+        toml::Value::Array(items) => items.iter().any(|item| match item {
+            toml::Value::String(_) => true,
+            toml::Value::Table(t) => t.contains_key("path") || t.contains_key("paths"),
+            _ => false,
+        }),
         toml::Value::Table(t) => LISTS.iter().any(|k| t.contains_key(*k)),
         _ => false,
     }
@@ -690,10 +704,17 @@ mod tests {
         }
         // Con separadores o con `exclu` en medio, decide la forma del valor.
         let list: toml::Value = toml::Value::Array(vec!["~/Library/Logs/x".into()]);
-        let empty = toml::Value::Array(Vec::new());
+        let mixed = toml::Value::Array(vec!["~/x".into(), 1.into()]);
+        let path = toml::Value::String("~/Documents/keep".into());
+        let abs = toml::Value::String("/Users/ana/keep".into());
         let table: toml::Value = toml::from_str("paths = [\"~/x\"]").expect("tabla");
+        let tables: toml::Value =
+            toml::from_str::<toml::Table>("v = [{ path = \"~/x\" }]").expect("tabla")["v"].clone();
         let other_table: toml::Value = toml::from_str("x = 1").expect("tabla");
+        let other_tables: toml::Value =
+            toml::from_str::<toml::Table>("v = [{ x = 1 }]").expect("tabla")["v"].clone();
         let numbers = toml::Value::Array(vec![1.into()]);
+        let empty = toml::Value::Array(Vec::new());
         for k in [
             "exclude_paths",
             "excluded_paths",
@@ -701,13 +722,16 @@ mod tests {
             "user_exclusions",
             "exclude-notes",
         ] {
-            for v in [&list, &empty, &table] {
+            for v in [&list, &mixed, &path, &abs, &table, &tables] {
                 assert!(looks_like_exclusions(k, v), "{k:?} = {v} es una errata");
             }
-            for v in [&note, &other_table, &numbers] {
+            for v in [&note, &other_table, &other_tables, &numbers, &empty] {
                 assert!(!looks_like_exclusions(k, v), "{k:?} = {v} se tolera");
             }
         }
+        // Falso positivo aceptado: lleva `exclu` y una lista con una cadena.
+        let log = toml::Value::Array(vec![".log".into()]);
+        assert!(looks_like_exclusions("excluded_extensions", &log));
         // Sin `exclu`, ni una lista de cadenas la hace sospechosa.
         assert!(!looks_like_exclusions("ignored_paths", &list));
         assert_eq!(edit_distance("exclusión", "exclusions"), 2);
@@ -731,6 +755,10 @@ mod tests {
             ("exclusion_list = [\"~/Library/Logs/x\"]\n", true),
             ("user_exclusions = [\"~/Library/Logs/x\"]\n", true),
             ("[user_exclusions]\npaths = [\"~/x\"]\n", true),
+            ("exclude_path = \"~/Documents/keep\"\n", true),
+            ("exclude_paths = [\"~/x\", 1]\n", true),
+            ("exclude_dirs = [{ path = \"~/x\" }]\n", true),
+            ("excluded_extensions = [\".log\"]\n", true),
         ] {
             fs::write(&p, text).expect("write");
             let s = ConfigState::load(&p, Path::new(HOME));

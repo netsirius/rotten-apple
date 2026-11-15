@@ -552,6 +552,22 @@ fn unknown_keys_outside_exclusions_are_tolerated_and_warned() {
         text.contains("exclude_backups_note, journal, theme"),
         "{text}"
     );
+    // Y `trash put`, que también aplica las exclusiones del usuario.
+    let cache = fx.p("Library/Caches/com.example.editor");
+    let cache = cache.to_str().expect("ruta UTF-8");
+    let (code, doc) = fx.run(&["trash", "put", cache, "--dry-run", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    assert!(
+        doc["warnings"]
+            .to_string()
+            .contains("exclude_backups_note, journal, theme"),
+        "{doc:#}"
+    );
+    let (_, text) = human(&fx, "en_US.UTF-8", &["trash", "put", cache, "--dry-run"]);
+    assert!(
+        text.contains("exclude_backups_note, journal, theme"),
+        "{text}"
+    );
 
     let (code, doc) = fx.run(&["config", "set", "language", "es", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
@@ -575,6 +591,9 @@ fn unknown_keys_outside_exclusions_are_tolerated_and_warned() {
         ("excluded_paths = [\"~/Library/Logs\"]\n", true),
         ("exclusion_list = [\"~/Library/Logs\"]\n", true),
         ("user_exclusions = [\"~/Library/Logs\"]\n", true),
+        ("exclude_path = \"~/Documents/keep\"\n", true),
+        ("exclude_paths = [\"~/x\", 1]\n", true),
+        ("exclude_dirs = [{path=\"~/x\"}]\n", true),
         ("exclude_backups_note = \"x\"\n", false),
     ] {
         fs::write(config(&fx), toml_text).expect("write");

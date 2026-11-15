@@ -213,6 +213,12 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
         Ok(p) => p,
         Err(e) => return ui.core_error(COMMAND, &e),
     };
+    // Las exclusiones del usuario se aplican aquí también: como en `clean`,
+    // se avisa de las claves desconocidas de la configuración.
+    let with_warnings = |doc: Value| crate::cmd::config::with_config_warnings(core, doc);
+    if !ui.json {
+        crate::cmd::config::unknown_keys_note(ui, core);
+    }
     // Cada ruta la ha pedido el usuario: si alguna se queda fuera del plan,
     // la operación no está completa. Una ruta repetida o dentro de otra
     // elegida no cuenta: se mueve con la que la contiene.
@@ -226,7 +232,9 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
         if ui.json {
             ui.emit(
                 COMMAND,
-                json!({ "action": "put", "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
+                with_warnings(
+                    json!({ "action": "put", "dry_run": true, "plan": preview.plan, "report": preview.dry_run }),
+                ),
             );
         } else {
             print_plan(ui, core, &preview.plan, &preview.dry_run);
@@ -243,7 +251,9 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
         if ui.json {
             ui.emit(
                 COMMAND,
-                json!({ "action": "put", "dry_run": false, "plan": preview.plan, "report": ExecReport::default() }),
+                with_warnings(
+                    json!({ "action": "put", "dry_run": false, "plan": preview.plan, "report": ExecReport::default() }),
+                ),
             );
         } else {
             print_plan(ui, core, &preview.plan, &preview.dry_run);
@@ -273,7 +283,9 @@ fn put(ui: &Ui, core: &Core, paths: &[PathBuf], dry_run: bool) -> Exit {
     if ui.json {
         ui.emit(
             COMMAND,
-            json!({ "action": "put", "dry_run": false, "plan": plan_json, "report": report }),
+            with_warnings(
+                json!({ "action": "put", "dry_run": false, "plan": plan_json, "report": report }),
+            ),
         );
     } else {
         print_problems(ui, &report);
