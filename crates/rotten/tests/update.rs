@@ -10,7 +10,9 @@
 //! - `Cargo.lock`: ningún crate de red en el árbol de dependencias de
 //!   `rotten` (salvo `mio`, solo a través de `crossterm`: T-16).
 //! - El binario enlazado no importa `socket`, `connect` ni la resolución de
-//!   nombres, ni enlaza `CFNetwork` o `Network.framework`.
+//!   nombres, ni enlaza `CFNetwork` o `Network.framework`. De la familia de
+//!   sockets solo admite, por nombre, las de un par de sockets locales
+//!   AF_UNIX que usa `crossterm` para las señales (T-16).
 //! - En ejecución: con `PATH` lleno de trampas (`curl`, `wget`, `git`, `nc`,
 //!   `ssh`, `brew`) que dejan una marca si se ejecutan, `update` no lanza
 //!   ninguna, y `--dry-run` tampoco el `brew` del prefijo.
@@ -326,18 +328,19 @@ const NETWORK_CRATES: &[&str] = &[
     "hickory-resolver",
 ];
 
-/// Crates de [`NETWORK_CRATES`] que se aceptan solo a través de estos
-/// padres, revisados a propósito. `mio` entra con el menú interactivo
-/// (T-16): `crossterm` lo usa para esperar teclas de la terminal y
-/// señales. Se compila con su feature `net` (la activa `signal-hook-mio`),
-/// pero nada de `rotten` la usa: la prueba 2/3 comprueba que el binario no
-/// importa funciones de sockets ni de resolución de nombres. Si otro crate
-/// trae `mio`, falla.
+/// Crates de [`NETWORK_CRATES`] que se aceptan solo si **todos** los que
+/// los traen están en esta lista, revisada a propósito. `mio` entra con el
+/// menú interactivo (T-16): `crossterm` lo usa para esperar teclas de la
+/// terminal y `signal-hook-mio` para las señales. Se compila con su feature
+/// `net` (la activa `signal-hook-mio`), y el binario importa unas pocas
+/// funciones de socket local por eso (la prueba 2/3 las admite por nombre
+/// y prohíbe el resto). Sus dependencias se recorren igual: un `socket2`
+/// que llegue por `mio` también falla.
 const ALLOWED_VIA: &[(&str, &[&str])] = &[("mio", &["crossterm", "signal-hook-mio"])];
 
 /// Sin red (1/3): ningún crate de red en el árbol de dependencias de
 /// `rotten` según `Cargo.lock` (incluye las de desarrollo: más estricto),
-/// salvo los de [`ALLOWED_VIA`] por los padres revisados.
+/// salvo los de [`ALLOWED_VIA`] cuando solo los traen los padres revisados.
 #[test]
 fn no_network_crates_in_the_dependency_tree() {
     let lock = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock");
@@ -356,29 +359,32 @@ fn no_network_crates_in_the_dependency_tree() {
             .map(|d| d.split(' ').next().expect("nombre").to_owned());
         deps.entry(name).or_default().extend(list);
     }
+    // El árbol entero, con los padres por los que llega cada crate.
+    let mut parents: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut seen = BTreeSet::new();
     let mut stack = vec!["rotten".to_owned()];
     while let Some(n) = stack.pop() {
         if seen.insert(n.clone()) {
-            let allowed = |d: &String| {
-                ALLOWED_VIA
-                    .iter()
-                    .any(|(c, parents)| d == c && parents.contains(&n.as_str()))
-            };
-            stack.extend(
-                deps.get(&n)
-                    .into_iter()
-                    .flatten()
-                    .filter(|d| !allowed(d))
-                    .cloned(),
-            );
+            for d in deps.get(&n).into_iter().flatten() {
+                parents.entry(d.clone()).or_default().insert(n.clone());
+                stack.push(d.clone());
+            }
         }
     }
     assert!(seen.len() > 20, "árbol sospechosamente pequeño: {seen:?}");
-    let found: Vec<&str> = NETWORK_CRATES
+    let exempt = |c: &str| {
+        ALLOWED_VIA.iter().any(|(name, ok)| {
+            *name == c
+                && parents
+                    .get(c)
+                    .is_some_and(|ps| ps.iter().all(|p| ok.contains(&p.as_str())))
+        })
+    };
+    let found: Vec<String> = NETWORK_CRATES
         .iter()
         .copied()
-        .filter(|c| seen.contains(*c))
+        .filter(|c| seen.contains(*c) && !exempt(c))
+        .map(|c| format!("{c} (por {:?})", parents.get(c)))
         .collect();
     assert!(
         found.is_empty(),
@@ -402,11 +408,67 @@ fn xcode_tool(tool: &str, args: &[&str]) -> String {
     stdout
 }
 
+/// Funciones de socket que el binario sí importa, cada una por un motivo
+/// revisado. Todas vienen de `signal-hook-mio` (con `crossterm`, T-16): para
+/// despertar el bucle de eventos con una señal (SIGWINCH al redimensionar)
+/// crea un par de sockets locales AF_UNIX con `UnixStream::pair()`
+/// (`socketpair`) y escribe y lee un byte en él (`send`, `recv`); el
+/// código de sockets Unix que arrastra (de `mio` y de la biblioteca
+/// estándar) enlaza además las consultas de dirección (`getsockname`,
+/// `getpeername`). Un par AF_UNIX no sale de la máquina: no
+/// tiene dirección de red ni puede conectarse a otra. `kqueue` y `kevent`
+/// (la espera de `mio`) no son de red y no entran en la familia.
+const LOCAL_SOCKET_IMPORTS: &[&str] = &[
+    "_socketpair",
+    "_send",
+    "_recv",
+    "_getsockname",
+    "_getpeername",
+];
+
+/// Importaciones que no son de red aunque su nombre lo parezca.
+fn not_network(sym: &str) -> bool {
+    sym.starts_with("_objc_msgSend") || sym == "dyld_stub_binder"
+}
+
+/// ¿Es de la familia de sockets o de resolución de nombres? Por fragmentos
+/// del nombre, para que una función nueva de la familia también cuente.
+fn network_family(sym: &str) -> bool {
+    let s = sym.to_ascii_lowercase();
+    [
+        "sock",
+        "connect",
+        "bind",
+        "listen",
+        "accept",
+        "send",
+        "recv",
+        "addrinfo",
+        "gethost",
+        "getnameinfo",
+        "getserv",
+        "getproto",
+        "getnet",
+        "res_",
+        "dns",
+        "peer",
+        "shutdown",
+        "inet",
+        "if_name",
+        "ifaddrs",
+    ]
+    .iter()
+    .any(|f| s.contains(f))
+}
+
 /// Sin red (2/3): el binario enlazado no puede abrir una conexión por sí
-/// mismo. No importa ninguna función de sockets ni de resolución de
-/// nombres, no enlaza los *frameworks* de red y no nombra las clases de red
-/// de Foundation. Afecta a todo `rotten`: si un comando necesita red algún
-/// día (`vulns --online`, v1), esta prueba debe cambiar a propósito.
+/// mismo. De la familia de sockets y de resolución de nombres solo importa,
+/// por nombre, las funciones de socket local de [`LOCAL_SOCKET_IMPORTS`]:
+/// la lista es cerrada, y cualquier otra (`socket`, `connect`, `bind`,
+/// `getaddrinfo`…) la hace fallar. Tampoco enlaza los *frameworks* de red
+/// ni nombra las clases de red de Foundation. Afecta a todo `rotten`: si un
+/// comando necesita red algún día (`vulns --online`, v1), esta prueba debe
+/// cambiar a propósito.
 #[test]
 fn binary_imports_no_network_functions() {
     let bin = assert_cmd::cargo::cargo_bin("rotten");
@@ -417,25 +479,43 @@ fn binary_imports_no_network_functions() {
         symbols.contains("_open"),
         "nm no da lo esperado:\n{imports}"
     );
+    // Nunca, aunque el filtro por familia fallara.
     let forbidden = [
         "_socket",
         "_connect",
         "_connectx",
+        "_bind",
+        "_listen",
+        "_accept",
         "_sendto",
+        "_recvfrom",
         "_sendmsg",
+        "_recvmsg",
+        "_getsockopt",
+        "_setsockopt",
         "_getaddrinfo",
+        "_getnameinfo",
         "_gethostbyname",
         "_gethostbyname2",
+        "_gethostbyaddr",
         "_res_query",
+        "_res_search",
         "_DNSServiceCreateConnection",
+        "_DNSServiceQueryRecord",
     ];
-    let found: Vec<&str> = forbidden
-        .into_iter()
-        .filter(|s| symbols.contains(s))
+    for f in forbidden {
+        assert!(network_family(f), "{f} debería ser de la familia");
+        assert!(!LOCAL_SOCKET_IMPORTS.contains(&f), "{f} no se admite");
+    }
+    let found: Vec<&str> = symbols
+        .iter()
+        .copied()
+        .filter(|s| forbidden.contains(s) || network_family(s))
+        .filter(|s| !not_network(s) && !LOCAL_SOCKET_IMPORTS.contains(s))
         .collect();
     assert!(
         found.is_empty(),
-        "rotten importa funciones de red: {found:?}"
+        "rotten importa funciones de red que no están en la lista cerrada: {found:?}"
     );
 
     let libs = xcode_tool("otool", &["-L", bin]);
