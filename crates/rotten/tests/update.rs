@@ -8,7 +8,7 @@
 //!
 //! Sin red, en tres capas:
 //! - `Cargo.lock`: ningún crate de red en el árbol de dependencias de
-//!   `rotten`.
+//!   `rotten` (salvo `mio`, solo a través de `crossterm`: T-16).
 //! - El binario enlazado no importa `socket`, `connect` ni la resolución de
 //!   nombres, ni enlaza `CFNetwork` o `Network.framework`.
 //! - En ejecución: con `PATH` lleno de trampas (`curl`, `wget`, `git`, `nc`,
@@ -326,8 +326,18 @@ const NETWORK_CRATES: &[&str] = &[
     "hickory-resolver",
 ];
 
+/// Crates de [`NETWORK_CRATES`] que se aceptan solo a través de estos
+/// padres, revisados a propósito. `mio` entra con el menú interactivo
+/// (T-16): `crossterm` lo usa para esperar teclas de la terminal y
+/// señales. Se compila con su feature `net` (la activa `signal-hook-mio`),
+/// pero nada de `rotten` la usa: la prueba 2/3 comprueba que el binario no
+/// importa funciones de sockets ni de resolución de nombres. Si otro crate
+/// trae `mio`, falla.
+const ALLOWED_VIA: &[(&str, &[&str])] = &[("mio", &["crossterm", "signal-hook-mio"])];
+
 /// Sin red (1/3): ningún crate de red en el árbol de dependencias de
-/// `rotten` según `Cargo.lock` (incluye las de desarrollo: más estricto).
+/// `rotten` según `Cargo.lock` (incluye las de desarrollo: más estricto),
+/// salvo los de [`ALLOWED_VIA`] por los padres revisados.
 #[test]
 fn no_network_crates_in_the_dependency_tree() {
     let lock = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock");
@@ -350,7 +360,18 @@ fn no_network_crates_in_the_dependency_tree() {
     let mut stack = vec!["rotten".to_owned()];
     while let Some(n) = stack.pop() {
         if seen.insert(n.clone()) {
-            stack.extend(deps.get(&n).into_iter().flatten().cloned());
+            let allowed = |d: &String| {
+                ALLOWED_VIA
+                    .iter()
+                    .any(|(c, parents)| d == c && parents.contains(&n.as_str()))
+            };
+            stack.extend(
+                deps.get(&n)
+                    .into_iter()
+                    .flatten()
+                    .filter(|d| !allowed(d))
+                    .cloned(),
+            );
         }
     }
     assert!(seen.len() > 20, "árbol sospechosamente pequeño: {seen:?}");

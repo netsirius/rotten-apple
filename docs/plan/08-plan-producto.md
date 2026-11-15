@@ -121,7 +121,7 @@ Qué cumple ya el código de PR #2 y qué falta. «Hecho» quiere decir implemen
 | `config get\|set\|path` | Hecho (2026-11-09) | T-13 |
 | `completion zsh\|bash\|fish` | Hecho (2026-11-09) | T-14 |
 | `update` | Hecho (2026-11-09; Sparkle con H-7) | T-15 |
-| `rotten` (menú interactivo) | Pendiente | T-16 |
+| `rotten` (menú interactivo) | Hecho (2026-11-15) | T-16 |
 | `analyze [ruta]` (lista) | Pendiente | T-19 |
 | `installer` | Pendiente | T-20 |
 | `uninstall` | Pendiente | T-21, T-22 |
@@ -141,7 +141,7 @@ D-11 promete **todos los comandos de Mole como mínimo** para el producto, pero 
 
 | Mole | Rotten Apple | Fase (07) | Tarea | Estado |
 |---|---|---|---|---|
-| `mo` (menú) | `rotten` | MVP | T-16 | Pendiente |
+| `mo` (menú) | `rotten` | MVP | T-16 | Hecho (2026-11-15): solo con terminal; sin ella, la ayuda y `2` |
 | `mo clean` | `rotten clean` | MVP | Hecho; más categorías en T-93 y T-95 | Hecho con 4 categorías (tabla siguiente) |
 | `mo clean --whitelist` | `rotten exclude` | MVP | — | Hecho |
 | `mo uninstall` · `--list` `--with-data` `--permanent` | `rotten uninstall` | MVP | T-21, T-22 | Pendiente |
@@ -157,7 +157,7 @@ D-11 promete **todos los comandos de Mole como mínimo** para el producto, pero 
 | `mo update` | `rotten update` | MVP | T-15 | Hecho (Homebrew; Sparkle con H-7) |
 | `mo remove` | `rotten remove` | **v1** | T-108 | Pendiente |
 | `mo --version` · `--help` | `rotten --version` · `--help` · `help <cmd>` | MVP | — | Hecho |
-| Teclas de `status`, `uninstall` y `purge` | Las mismas, más `u` | MVP (las de `status`, con `status`) | T-16, T-22, T-27, T-99 | Pendiente |
+| Teclas de `status`, `uninstall` y `purge` | Las mismas, más `u` | MVP (las de `status`, con `status`) | T-16, T-22, T-27, T-99 | Las del menú (flechas, `hjkl`, Intro, `q`/Esc y `u`), hechas con T-16 (2026-11-15); las de `uninstall`, `purge` y `status`, pendientes |
 | `~/.config/mole/` | `config.toml` con enlace en `~/.config/rotten/` | MVP | T-13 | Hecho |
 | `operations.log` | Journal | MVP | — | Hecho |
 | `MO_LAUNCHER_APP` · Raycast y Alfred | `ROTTEN_TERMINAL` · `rotten launchers install` | v1 | T-107 | Pendiente |
@@ -329,6 +329,8 @@ T-13, T-14 y T-15 pasaron una revisión crítica. Ya corregido tras la revisión
 | Heurística de exclusiones (T-13) | Una sección desconocida cuyo nombre contiene `exclu` (`[exclusion]`, `[exclusiones]`…) da la configuración por corrupta, para no dejar exclusiones mal escritas sin aplicar; el resto de claves desconocidas se toleran. Puede pillar un nombre legítimo que no sea una errata | Confirmar con el autor la heurística o cambiarla por una lista cerrada de erratas |
 | Colores y fish (T-14) | La tarea nocturna de colores aún no ha corrido; el script de fish no se ha probado en un fish real | Primera nocturna; probar a mano con fish |
 | Reloj que retrocede en mitad de un borrado | La detección de una carpeta a medio borrar compara las fechas de cambio de sus subcarpetas con la hora de la intención; si el reloj retrocede entre la intención y el borrado, puede no verlo | Junto a «Relojes en volúmenes de red»: guardar en la intención una huella de las subcarpetas si se mide un caso real |
+| Menú interactivo en una terminal real (T-16) | Las teclas y el dibujo se prueban con el *backend* de pruebas de `ratatui`, y «sin terminal → ayuda y `2`» con el binario. El sandbox bloquea un pty, así que no se ha probado lo que solo pasa en una terminal real: modo raw, pantalla alternativa, volver al menú tras una acción con confirmación, Ctrl-C, redimensionar y restaurar la terminal tras un panic | Probarlo a mano en Terminal.app e iTerm2 antes de la beta (T-29) |
+| Decisiones del menú (T-16) | Sin subcomando: `--json` da el error `subcommand_required` (`2`, `schemas/menu.v2.schema.json`); sin terminal, la ayuda por stderr y `2`. En el menú no se aplican `--yes` ni `--quiet` (con `--quiet`, una confirmación saldría sin el plan delante). Tras cada acción, una tecla vuelve al menú (`q` sale) y el código de salida es el de la última acción. «Liberar ahora» libera la última operación que aún tiene algo en la Papelera (la misma que `undo` deshace por defecto). `crossterm` trae `mio` para esperar teclas y señales, compilado con su feature `net` (la activa `signal-hook-mio`). La prueba «sin red» de `Cargo.lock` lo acepta solo a través de `crossterm`, y la del binario sigue sin ver funciones de sockets ni de resolución de nombres. El menú no se desplaza: en una terminal de menos de unas 18 filas, la opción elegida puede quedar fuera de la vista | Confirmar con el autor o ajustar |
 | `update` (T-15) | Nombres del *tap* y de la fórmula provisionales; sin Sparkle hasta H-7; la salida de `brew` se resume en `brew_failed` con su código en `message` | Decisiones del autor antes de publicar (§2, D-08) |
 
 ---
@@ -426,7 +428,7 @@ El orden de v1 es una propuesta: el autor lo secuencia después de la beta, con 
 | T-13 | `rotten config` y enlace en `~/.config/rotten/` | H-1 | S | — | Hecho (2026-11-09) |
 | T-14 | `completion`, `--debug`, `--no-color` y log técnico | H-1 | S | — | Hecho (2026-11-09) |
 | T-15 | `rotten update` | H-1 | S | — | Hecho (2026-11-09) |
-| T-16 | Menú interactivo | H-1 | M | T-11 a T-15 | Pendiente |
+| T-16 | Menú interactivo | H-1 | M | T-11 a T-15 | Hecho (2026-11-15); sin probar en una terminal real (§2.4) |
 | T-17 | Preflight de permisos por módulo | H-2 | M | — | Pendiente |
 | T-18 | Corpus sintético y *benchmarks* | H-3 | M | — | Pendiente |
 | T-19 | `ra-fs` y `rotten analyze` | H-3 | L | T-10, T-18 | Pendiente |

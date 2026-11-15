@@ -38,8 +38,9 @@ pub struct Cli {
     /// Permitir ejecutar como root (RF-CLI-06).
     #[arg(long, global = true)]
     pub allow_root: bool,
+    // Sin subcomando, el menú interactivo (T-16, `cmd::menu`).
     #[command(subcommand)]
-    pub cmd: Cmd,
+    pub cmd: Option<Cmd>,
 }
 
 #[derive(Debug, Subcommand)]

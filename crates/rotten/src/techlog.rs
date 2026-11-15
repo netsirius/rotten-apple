@@ -30,7 +30,9 @@
 //!
 //! `operation` e `item` solo salen cuando una operación se ejecuta (`clean`,
 //! `undo`, `free`, `trash put`, `trash empty`); las simulaciones
-//! (`--dry-run`) dejan solo `start` y `end`.
+//! (`--dry-run`) dejan solo `start` y `end`. En el menú interactivo
+//! (`rotten` sin subcomando, T-16) el comando es `menu`, y su `start` y su
+//! `end` envuelven los de cada acción que se elige (`scan`, `clean`…).
 //!
 //! **Qué no se registra, nunca.** Ningún texto libre: ni los mensajes de
 //! error ni los detalles de los motivos de omisión, porque pueden llevar lo

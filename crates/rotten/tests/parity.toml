@@ -39,9 +39,11 @@ cli = "rotten"
 mole = "mo"
 source = "07 §2"
 phase = "mvp"
-status = "pending"
+status = "done"
 task = "T-16"
-note = "Menú interactivo; sin --json."
+run = ["--json"]
+exit = 2
+note = "Menú interactivo, solo con terminal (sus teclas se prueban con el backend de pruebas de ratatui). Sin JSON: con --json sale el error `subcommand_required` (2), que es lo que valida esta prueba; sin terminal, la ayuda por stderr y 2."
 
 [[command]]
 id = "clean"

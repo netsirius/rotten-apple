@@ -39,8 +39,8 @@ fn schemas_are_valid_and_match_their_file_name() {
     assert_eq!(
         commands,
         [
-            "clean", "config", "doctor", "exclude", "free", "history", "scan", "trash", "undo",
-            "update"
+            "clean", "config", "doctor", "exclude", "free", "history", "menu", "scan", "trash",
+            "undo", "update"
         ]
     );
     for ((command, version), (path, schema)) in &files {
@@ -573,6 +573,14 @@ fn update() {
     check(&fx, "update_other", &["update", "--json"], 0);
 }
 
+/// `rotten --json` sin subcomando (T-16): el menú no tiene salida JSON.
+#[test]
+fn menu() {
+    let fx = fixture();
+    check(&fx, "menu_error_no_subcommand", &["--json"], 2);
+    check(&fx, "menu_error_no_subcommand", &["--json", "--yes"], 2);
+}
+
 /// Un documento de cada forma: éxito y error de cada comando.
 fn sample_documents() -> Vec<Value> {
     let mut fx = fixture();
@@ -623,6 +631,7 @@ fn sample_documents() -> Vec<Value> {
     docs.push(fx.run(&["update", "--json"]).1);
     fx.use_install(Install::App);
     docs.push(fx.run(&["update", "--json"]).1);
+    docs.push(fx.run(&["--json"]).1);
     docs
 }
 

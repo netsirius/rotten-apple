@@ -1,0 +1,13 @@
+---
+source: crates/rotten/tests/schemas.rs
+expression: "redact(fx, &doc)"
+---
+{
+  "command": "menu",
+  "error": {
+    "code": "subcommand_required",
+    "exit_code": 2,
+    "message": "without a subcommand, rotten opens the interactive menu, which needs a terminal and has no JSON output: give a command (rotten --help)"
+  },
+  "schema_version": 2
+}

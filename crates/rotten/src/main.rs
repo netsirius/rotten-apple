@@ -8,6 +8,10 @@
 //! en el idioma del usuario (`i18n`). `ROTTEN_HUMAN=1` fuerza el texto
 //! aunque stdout no sea una terminal (`rotten scan | less`, pruebas).
 //!
+//! Sin subcomando: el menú interactivo si stdin y stdout son una terminal;
+//! si no, la ayuda por stderr y `2`; con `--json`, el error JSON
+//! `subcommand_required` y `2` (`cmd::menu`, T-16).
+//!
 //! Colores: solo en una terminal, sin `--json`, `--no-color` ni `NO_COLOR`
 //! (`style`). Log técnico local y rotado en `~/Library/Logs/<bundle-id>/`
 //! (`techlog`); `--debug` lo detalla y lo copia a stderr.
@@ -215,49 +219,77 @@ fn main() -> ExitCode {
     if args::no_color_flag(&lossy) || no_color_env.as_deref().is_some_and(|v| !v.is_empty()) {
         definition = definition.color(clap::ColorChoice::Never);
     }
-    let matches = definition.get_matches_from(argv);
+    let matches = definition
+        .try_get_matches_from_mut(argv)
+        .unwrap_or_else(|e| e.exit());
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     // Antes que nada más: no necesita la carpeta personal ni el núcleo, y
     // su salida es el script aunque vaya a una tubería.
-    if let Cmd::Completion { shell } = cli.cmd {
+    if let Some(Cmd::Completion { shell }) = cli.cmd {
         return cmd::completion::run(shell, &i18n).into();
+    }
+
+    let piped = !io::stdout().is_terminal();
+    // Sin subcomando, el menú (T-16) solo con terminal. Sin ella, la ayuda
+    // por stderr y `2`, como un error de uso de clap (sin log técnico).
+    let bare = cli
+        .cmd
+        .is_none()
+        .then(|| cmd::menu::bare(cli.json, io::stdin().is_terminal(), !piped));
+    if bare == Some(cmd::menu::Bare::Help) {
+        // Sin `eprintln!`: con stderr cerrado no hay a quién avisar.
+        let _ = writeln!(io::stderr(), "{}", definition.render_help());
+        return Exit::Usage.into();
     }
 
     let started = Instant::now();
     techlog::init(cli.debug);
-    let piped = !io::stdout().is_terminal();
     let force_human = std::env::var_os(HUMAN_ENV).is_some_and(|v| v == "1");
     let json = cli.json || (piped && !force_human);
+    // El menú descarta `--yes` y `--quiet`: cada acción enseña su plan y pregunta.
+    let (yes, quiet) = cmd::menu::flags(cli.yes, cli.quiet, cli.cmd.is_some());
     let colors =
         |terminal: bool| style::enabled(terminal, json, cli.no_color, no_color_env.as_deref());
     let ui = Ui {
         json,
         interactive: !json && io::stdin().is_terminal(),
-        yes: cli.yes,
-        quiet: cli.quiet,
+        yes,
+        quiet,
         i18n,
         home: PathBuf::new(),
         color_out: colors(!piped),
         color_err: colors(io::stderr().is_terminal()),
     };
+    // `--json` sin subcomando: el menú no tiene salida JSON (error de uso).
+    if bare == Some(cmd::menu::Bare::JsonError) {
+        return ui
+            .fail_with(
+                cmd::menu::COMMAND,
+                Exit::Usage,
+                "subcommand_required",
+                "menu-needs-subcommand",
+            )
+            .into();
+    }
     let command = match &cli.cmd {
-        Cmd::Scan { .. } => "scan",
-        Cmd::Clean { .. } => "clean",
-        Cmd::History => "history",
-        Cmd::Undo { .. } => "undo",
-        Cmd::Free { .. } => "free",
-        Cmd::Doctor => "doctor",
-        Cmd::Exclude { .. } => "exclude",
-        Cmd::Trash { .. } => "trash",
-        Cmd::Config { .. } => "config",
-        Cmd::Update { .. } => "update",
-        Cmd::Completion { .. } => "completion",
+        None => cmd::menu::COMMAND,
+        Some(Cmd::Scan { .. }) => "scan",
+        Some(Cmd::Clean { .. }) => "clean",
+        Some(Cmd::History) => "history",
+        Some(Cmd::Undo { .. }) => "undo",
+        Some(Cmd::Free { .. }) => "free",
+        Some(Cmd::Doctor) => "doctor",
+        Some(Cmd::Exclude { .. }) => "exclude",
+        Some(Cmd::Trash { .. }) => "trash",
+        Some(Cmd::Config { .. }) => "config",
+        Some(Cmd::Update { .. }) => "update",
+        Some(Cmd::Completion { .. }) => "completion",
     };
     let config_key = match &cli.cmd {
-        Cmd::Config {
+        Some(Cmd::Config {
             action: ConfigCmd::Get { key } | ConfigCmd::Set { key, .. },
-        } => Some(key.as_str()),
+        }) => Some(key.as_str()),
         _ => None,
     };
     techlog::start(command, config_key);
@@ -286,14 +318,17 @@ fn run(mut ui: Ui, cli: Cli, command: &str) -> Exit {
     techlog::set_home(&env.home);
     techlog::env(&env, ui.i18n.lang().code(), ui.json);
     // `update` no usa el estado de la app (T-15).
-    if let Cmd::Update { dry_run } = cli.cmd {
+    if let Some(Cmd::Update { dry_run }) = cli.cmd {
         return cmd::update::run(&ui, dry_run);
     }
     let core = match Core::new(env) {
         Ok(c) => c,
         Err(e) => return ui.core_error(command, &e),
     };
-    match cli.cmd {
+    let Some(sub) = cli.cmd else {
+        return cmd::menu::run(&ui, &core);
+    };
+    match sub {
         Cmd::Scan { categories } => scan(&ui, &core, categories),
         Cmd::Clean {
             dry_run,
