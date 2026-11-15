@@ -43,10 +43,14 @@
 //! (`Ui::confirm`, `tcflush`).
 //!
 //! **Señales.** Con el menú abierto (la lista o la espera tras una acción),
-//! SIGTERM y SIGHUP marcan una bandera que el bucle mira cada [`TICK`]; se
-//! sale por el camino normal, que restaura la terminal. Durante una acción
-//! hacen lo de siempre, como con el subcomando: terminan el proceso
-//! ([`Signals`]).
+//! SIGTERM marca una bandera que el bucle mira cada [`TICK`]: no se
+//! ejecuta ninguna acción más, se restaura la terminal y el proceso
+//! termina como muerto por SIGTERM. Durante una acción, SIGTERM hace lo de
+//! siempre, como con el subcomando: termina el proceso ([`Signals`]).
+//! SIGHUP no se intercepta: al colgar la terminal no hay nada que
+//! restaurar, y el bucle de lectura de crossterm no sale ante el fin de la
+//! entrada ni ante `EIO`, así que esperar a la bandera podría dejar el
+//! proceso huérfano y girando.
 //!
 //! **Altura.** Si la terminal es baja, primero se quita la descripción y
 //! luego la lista se desplaza para que la opción elegida siempre se vea
@@ -78,6 +82,7 @@ use ratatui::style::{Color, Modifier, Style as Look};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
+use signal_hook::consts::SIGTERM;
 
 use crate::args::{ConfigCmd, ExcludeCmd, TrashCmd};
 use crate::i18n::{I18n, Lang, tr};
@@ -392,15 +397,16 @@ fn install_panic_hook() {
 }
 
 /// Cada cuánto se mira, mientras se espera una tecla, si ha llegado
-/// SIGTERM o SIGHUP.
+/// SIGTERM.
 const TICK: Duration = Duration::from_millis(200);
 
-/// SIGTERM y SIGHUP. Con el menú abierto marcan `stop`, que el bucle mira
-/// cada [`TICK`] para salir por el camino normal (y restaurar la
-/// terminal). Mientras se ejecuta una acción (`acting`), la señal hace lo
-/// que haría sin el menú: terminar el proceso. La terminal ya no está en
-/// modo raw, y así una acción que se queda esperando no se vuelve sorda a
-/// SIGTERM.
+/// SIGTERM. Con el menú abierto marca `stop`, que el bucle mira cada
+/// [`TICK`] para restaurar la terminal y terminar ([`die_of_sigterm`]).
+/// Mientras se ejecuta una acción (`acting`), la señal hace lo que haría
+/// sin el menú: terminar el proceso. La terminal ya no está en modo raw, y
+/// así una acción que se queda esperando no se vuelve sorda a SIGTERM.
+/// SIGHUP conserva su acción por defecto (ver la documentación del
+/// módulo).
 struct Signals {
     stop: Arc<AtomicBool>,
     acting: Arc<AtomicBool>,
@@ -412,12 +418,10 @@ impl Signals {
             stop: Arc::default(),
             acting: Arc::default(),
         };
-        for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGHUP] {
-            // El orden importa: primero la acción por defecto (si se está
-            // ejecutando una acción) y después la bandera.
-            signal_hook::flag::register_conditional_default(sig, Arc::clone(&signals.acting))?;
-            signal_hook::flag::register(sig, Arc::clone(&signals.stop))?;
-        }
+        // El orden importa: primero la acción por defecto (si se está
+        // ejecutando una acción) y después la bandera.
+        signal_hook::flag::register_conditional_default(SIGTERM, Arc::clone(&signals.acting))?;
+        signal_hook::flag::register(SIGTERM, Arc::clone(&signals.stop))?;
         Ok(signals)
     }
 
@@ -426,8 +430,7 @@ impl Signals {
     }
 }
 
-/// El siguiente evento de la terminal, o `None` si ha llegado SIGTERM o
-/// SIGHUP.
+/// El siguiente evento de la terminal, o `None` si ha llegado SIGTERM.
 fn next_event(signals: &Signals) -> io::Result<Option<Event>> {
     loop {
         if signals.stopped() {
@@ -500,7 +503,7 @@ fn pause(ui: &Ui, signals: &Signals) -> io::Result<bool> {
             }
         }
     };
-    // Tras SIGHUP no hay terminal: el salto de línea ya no importa.
+    // Si la terminal ya no está, el salto de línea no importa.
     let _ = writeln!(out);
     Ok(back)
 }
@@ -564,6 +567,15 @@ fn may_open(ui: &Ui) -> bool {
     !(ui.yes || ui.quiet || ui.json || !ui.interactive)
 }
 
+/// Tras un SIGTERM con el menú abierto: restaura la terminal y termina
+/// como muerto por la señal (no con el código de la última acción). Solo
+/// devuelve `last` si no se puede emular la acción por defecto.
+fn die_of_sigterm(last: Exit) -> Exit {
+    restore();
+    let _ = signal_hook::low_level::emulate_default_handler(SIGTERM);
+    last
+}
+
 /// El menú: elegir, ejecutar fuera de la terminal del menú, esperar una
 /// tecla y volver. Devuelve el código de la última acción (0 si ninguna).
 ///
@@ -584,7 +596,12 @@ pub fn run(ui: &Ui, core: &Core) -> Exit {
     let mut menu = Menu::default();
     let mut last = Exit::Ok;
     loop {
-        let item = match choose(&mut menu, ui, &signals) {
+        let chosen = choose(&mut menu, ui, &signals);
+        // SIGTERM pudo llegar mientras se elegía: ninguna acción más.
+        if signals.stopped() {
+            return die_of_sigterm(last);
+        }
+        let item = match chosen {
             Ok(Some(item)) => item,
             Ok(None) => return last,
             Err(e) => return terminal_error(ui, &e),
@@ -595,7 +612,11 @@ pub fn run(ui: &Ui, core: &Core) -> Exit {
         last = act(ui, core, item);
         signals.acting.store(false, Ordering::SeqCst);
         techlog::finish(item.command(), last as u8, started);
-        match pause(ui, &signals) {
+        let back = pause(ui, &signals);
+        if signals.stopped() {
+            return die_of_sigterm(last);
+        }
+        match back {
             Ok(true) => {}
             Ok(false) => return last,
             Err(e) => return terminal_error(ui, &e),
