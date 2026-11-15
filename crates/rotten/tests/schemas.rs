@@ -130,6 +130,19 @@ fn clean_with_exclusion_lock_and_corrupt_config() {
         .expect("lock");
     lock.try_lock().expect("tomar el cerrojo");
     check(&fx, "clean_error_locked", &["clean", "--yes", "--json"], 6);
+    // Los escritores de la configuración dan el mismo error.
+    check(
+        &fx,
+        "config_error_locked",
+        &["config", "set", "language", "es", "--json"],
+        6,
+    );
+    check(
+        &fx,
+        "exclude_error_locked",
+        &["exclude", "add", "~/Library/Logs/new-app", "--json"],
+        6,
+    );
     drop(lock);
 
     write_corrupt_config(&fx);
@@ -138,6 +151,23 @@ fn clean_with_exclusion_lock_and_corrupt_config() {
         "clean_error_config_corrupt",
         &["clean", "--dry-run", "--json"],
         5,
+    );
+}
+
+/// Claves desconocidas en la configuración: `clean` lo avisa en `warnings`.
+#[test]
+fn clean_warns_about_unknown_config_keys() {
+    let fx = fixture();
+    fs::write(
+        fx.state.join("config.toml"),
+        "schema_version = 1\nexclude_backups_note = \"x\"\ntheme = \"dark\"\n",
+    )
+    .expect("write");
+    check(
+        &fx,
+        "clean_dry_run_unknown_keys",
+        &["clean", "--dry-run", "--category", "CAT-10", "--json"],
+        0,
     );
 }
 
@@ -247,6 +277,26 @@ fn trash_put() {
         &fx,
         "trash_put_executed",
         &["trash", "put", cache, "--yes", "--json"],
+        0,
+    );
+}
+
+/// `trash put` aplica las exclusiones del usuario: como `clean`, avisa de
+/// las claves desconocidas de la configuración en `warnings`.
+#[test]
+fn trash_put_warns_about_unknown_config_keys() {
+    let fx = fixture();
+    fs::write(
+        fx.state.join("config.toml"),
+        "schema_version = 1\nexclude_backups_note = \"x\"\ntheme = \"dark\"\n",
+    )
+    .expect("write");
+    let cache = fx.p("Library/Caches/com.example.editor");
+    let cache = cache.to_str().expect("ruta UTF-8");
+    check(
+        &fx,
+        "trash_put_dry_run_unknown_keys",
+        &["trash", "put", cache, "--dry-run", "--json"],
         0,
     );
 }
