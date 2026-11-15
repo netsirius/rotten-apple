@@ -138,17 +138,12 @@ impl Core {
     /// Sin `dry_run` toma el cerrojo de ejecución antes de leer (otro
     /// ejecutor en marcha: [`CoreError::Locked`], 6, sin cambiar nada), así
     /// que dos `set` a la vez no pierden ninguno de los dos cambios. Con el
-    /// cerrojo tomado borra los temporales que dejó una escritura cortada.
+    /// cerrojo tomado, y si la clave y el valor son válidos, borra los
+    /// temporales que dejó una escritura cortada.
     /// `dry_run` no escribe y no lo toma.
     pub fn config_set(&self, key: &str, raw: &str, dry_run: bool) -> Result<ConfigSet, CoreError> {
         let env = self.env();
-        let _lock = if dry_run {
-            None
-        } else {
-            let lock = self.lock()?;
-            Config::remove_stale_temps(&env.config_path);
-            Some(lock)
-        };
+        let _lock = if dry_run { None } else { Some(self.lock()?) };
         let mut config = self.writable_config()?;
         let before = config.clone();
         let value = config.set(key, raw)?;
@@ -160,6 +155,10 @@ impl Core {
         let mut link_created = false;
         let mut link_error = None;
         if !dry_run {
+            // Con el cerrojo tomado ningún otro escritor está a medias: lo
+            // que quede es de una escritura cortada. Solo si se va a poder
+            // escribir (una negativa no cambia nada) y aunque no cambie.
+            Config::remove_stale_temps(&env.config_path);
             if changed {
                 config.save(&env.config_path)?;
             }

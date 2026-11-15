@@ -652,14 +652,23 @@ fn the_next_set_removes_an_orphan_temp_but_never_follows_links() {
     let precious = fx.p("Documents/precious.txt");
     fs::create_dir_all(precious.parent().expect("padre")).expect("mkdir");
     fs::write(&precious, "no tocar").expect("write");
+    // Un enlace con la forma exacta de temporal y otro que solo empieza por
+    // `.config.toml.`: los dos se dejan, y su destino también.
     let trap = fx.state.join(".config.toml.7.1.tmp");
     symlink(&precious, &trap).expect("ln");
+    let trap_x = fx.state.join(".config.toml.x");
+    symlink(&precious, &trap_x).expect("ln");
     let swap = fx.state.join(".config.toml.swp");
     fs::write(&swap, "vim").expect("write");
 
     // `--dry-run` no limpia: no toma el cerrojo.
     let (code, doc) = fx.run(&["config", "set", "language", "es", "--dry-run", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
+    assert!(describe(&orphan).is_some());
+
+    // Una negativa (clave desconocida, 2) no cambia nada: tampoco limpia.
+    let (code, doc) = fx.run(&["config", "set", "nope", "1", "--json"]);
+    assert_eq!(code, 2, "{doc:#}");
     assert!(describe(&orphan).is_some());
 
     // Se limpia aunque el valor no cambie.
@@ -671,6 +680,7 @@ fn the_next_set_removes_an_orphan_temp_but_never_follows_links() {
         "el temporal huérfano sigue ahí"
     );
     assert_eq!(fs::read_link(&trap).expect("el enlace sigue"), precious);
+    assert_eq!(fs::read_link(&trap_x).expect("el enlace sigue"), precious);
     assert_eq!(fs::read_to_string(&precious).expect("read"), "no tocar");
     assert_eq!(fs::read_to_string(&swap).expect("read"), "vim");
     let text = fs::read_to_string(config(&fx)).expect("read");

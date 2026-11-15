@@ -344,8 +344,8 @@ fn new_temp(dir: &Path) -> io::Result<(PathBuf, fs::File)> {
 /// El resto (`exclude_backups_note`, `exclude-notes`, `theme`…) es una clave
 /// desconocida más: se tolera y se avisa. Falsos positivos aceptados a
 /// sabiendas, porque fallar cerrado aquí solo obliga a revisar el fichero:
-/// `inclusions` (2), `extensions`, `expansions`, `executions` y
-/// `conclusions` (3) se dan por erratas.
+/// `inclusions` (2), `exceptions`, `extensions`, `expansions`, `executions`
+/// y `conclusions` (3) se dan por erratas.
 fn looks_like_exclusions(key: &str) -> bool {
     const TARGET: &str = "exclusions";
     let key = key.to_lowercase();
@@ -632,6 +632,7 @@ mod tests {
             "excluir",
             // Falsos positivos aceptados.
             "inclusions",
+            "exceptions",
             "extensions",
             "expansions",
             "executions",
