@@ -35,7 +35,7 @@ pub struct Cli {
     /// Idioma de la salida para personas (es o en).
     #[arg(long, global = true, value_parser = ["es", "en"], hide_possible_values = true)]
     pub lang: Option<String>,
-    /// Permitir ejecutar como root (RF-CLI-06).
+    /// Permitir ejecutar como root.
     #[arg(long, global = true)]
     pub allow_root: bool,
     // Sin subcomando, el menú interactivo (T-16, `cmd::menu`).

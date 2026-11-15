@@ -423,7 +423,7 @@ cli-arg-quiet = Menos texto
 cli-arg-no_color = Sin colores (también con NO_COLOR)
 cli-arg-debug = Log técnico detallado, también por la salida de errores
 cli-arg-lang = Idioma de la salida para personas (es o en)
-cli-arg-allow_root = Permitir ejecutar como root (RF-CLI-06)
+cli-arg-allow_root = Permitir ejecutar como root
 cli-arg-help = Muestra la ayuda
 cli-arg-version = Muestra la versión
 cli-cmd-help = Muestra esta ayuda o la de los subcomandos indicados
@@ -483,7 +483,7 @@ menu-clean-desc = Revisa el plan y mueve a la Papelera lo preseleccionado, tras 
 menu-undo = Deshacer la última operación
 menu-undo-desc = Devuelve a su sitio lo que mandó a la Papelera la última operación, tras confirmar. Equivale a «rotten undo».
 menu-free = Liberar ahora
-menu-free-desc = Borra para siempre de la Papelera lo que mandó allí la última operación, tras revisarlo y confirmar. Equivale a «rotten free <operación>».
+menu-free-desc = Borra para siempre lo que mandó a la Papelera la última operación que aún tiene algo en la Papelera, tras revisarlo y confirmar. Equivale a «rotten free <operación>».
 menu-history = Historial
 menu-history-desc = Operaciones anteriores y si aún se pueden deshacer. Equivale a «rotten history».
 menu-trash = Ver la Papelera
@@ -494,12 +494,19 @@ menu-exclude = Exclusiones
 menu-exclude-desc = Lo que nunca se toca. Equivale a «rotten exclude list».
 menu-doctor = Diagnóstico
 menu-doctor-desc = Permisos, plataforma, configuración e integridad del journal. Equivale a «rotten doctor».
-menu-config = Configuración
-menu-config-desc = Dónde está la configuración y su enlace en ~/.config/rotten/. Equivale a «rotten config path».
+menu-config = Dónde está la configuración
+menu-config-desc = La ruta del fichero de configuración y su enlace en ~/.config/rotten/. Equivale a «rotten config path».
 menu-quit = Salir
 menu-quit-desc = Cierra el menú (también con q o Esc).
 menu-keys = ↑↓ o j/k: moverse · Intro: elegir · u: deshacer · q: salir
 menu-pause = Intro: volver al menú · q: salir
 menu-free-nothing = No hay ninguna operación con elementos en la Papelera que liberar.
+menu-free-which = Operación: { $op }  { $date }  { $kind ->
+    [clean] limpieza
+    [trash_put] a la Papelera
+    [free] liberar
+    [trash_empty] vaciar la Papelera
+   *[undo] deshacer
+}
 menu-needs-subcommand = sin subcomando, rotten abre el menú interactivo, que necesita una terminal y no tiene salida JSON: indica un comando (rotten --help)
 menu-terminal-error = no se ha podido preparar la terminal para el menú: { $detail }

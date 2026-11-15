@@ -423,7 +423,7 @@ cli-arg-quiet = Less text
 cli-arg-no_color = No colours (also with NO_COLOR)
 cli-arg-debug = Detailed technical log, also on standard error
 cli-arg-lang = Language of the output for people (es or en)
-cli-arg-allow_root = Allow running as root (RF-CLI-06)
+cli-arg-allow_root = Allow running as root
 cli-arg-help = Print help
 cli-arg-version = Print version
 cli-cmd-help = Print this message or the help of the given subcommand(s)
@@ -433,8 +433,8 @@ cli-cmd-scan-arg-categories = Only these categories (CAT-01, CAT-03, CAT-08, CAT
 cli-cmd-clean = Moves the selection to the Trash after reviewing it
 cli-cmd-clean-arg-dry_run = Shows the exact plan without changing anything
 cli-cmd-clean-arg-permanent = Deletes without the Trash (irreversible; requires --yes)
-cli-cmd-clean-arg-categories = Everything «Safe» in these categories, not only the preselection
-cli-cmd-clean-arg-include_review = Also includes what is not «Safe» in those categories
+cli-cmd-clean-arg-categories = Everything “Safe” in these categories, not only the preselection
+cli-cmd-clean-arg-include_review = Also includes what is not “Safe” in those categories
 cli-cmd-history = Previous operations and whether they can still be undone
 cli-cmd-undo = Puts back what an operation sent to the Trash
 cli-cmd-undo-arg-op_id = Operation (by default, the last one that can be undone)
@@ -483,7 +483,7 @@ menu-clean-desc = Reviews the plan and moves what is preselected to the Trash, a
 menu-undo = Undo the last operation
 menu-undo-desc = Puts back what the last operation sent to the Trash, after you confirm. Same as «rotten undo».
 menu-free = Free up now
-menu-free-desc = Deletes from the Trash, for good, what the last operation sent there, after you review and confirm. Same as «rotten free <operation>».
+menu-free-desc = Deletes from the Trash, for good, what the last operation that still has something in the Trash sent there, after you review and confirm. Same as «rotten free <operation>».
 menu-history = History
 menu-history-desc = Past operations and whether they can still be undone. Same as «rotten history».
 menu-trash = Show the Trash
@@ -494,12 +494,19 @@ menu-exclude = Exclusions
 menu-exclude-desc = What is never touched. Same as «rotten exclude list».
 menu-doctor = Diagnostics
 menu-doctor-desc = Permissions, platform, configuration and journal integrity. Same as «rotten doctor».
-menu-config = Configuration
-menu-config-desc = Where the configuration is and its link in ~/.config/rotten/. Same as «rotten config path».
+menu-config = Where the configuration is
+menu-config-desc = The path of the configuration file and its link in ~/.config/rotten/. Same as «rotten config path».
 menu-quit = Quit
 menu-quit-desc = Closes the menu (also with q or Esc).
 menu-keys = ↑↓ or j/k: move · Enter: choose · u: undo · q: quit
 menu-pause = Enter: back to the menu · q: quit
 menu-free-nothing = No operation has items in the Trash to free up.
+menu-free-which = Operation: { $op }  { $date }  { $kind ->
+    [clean] clean
+    [trash_put] trash put
+    [free] free
+    [trash_empty] empty Trash
+   *[undo] undo
+}
 menu-needs-subcommand = without a subcommand, rotten opens the interactive menu, which needs a terminal and has no JSON output: give a command (rotten --help)
 menu-terminal-error = could not set up the terminal for the menu: { $detail }

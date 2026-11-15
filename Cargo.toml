@@ -52,6 +52,9 @@ ratatui = { version = "0.30", default-features = false, features = ["crossterm"]
 rustix = { version = "1.0", features = ["fs", "process"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# SIGTERM y SIGHUP con el menú interactivo abierto (T-16; MIT o Apache-2.0).
+# Ya venía con `crossterm`: la misma versión.
+signal-hook = "0.3"
 thiserror = "2.0"
 toml = "0.9"
 unic-langid = "0.9"

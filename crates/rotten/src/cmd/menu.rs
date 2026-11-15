@@ -14,23 +14,43 @@
 //! list`, `doctor` y `config path`. Las que cambian algo (`clean`, `undo`,
 //! `free`, `trash empty`) enseñan su plan y piden confirmación como el
 //! subcomando. En el menú no se aplican `--yes` ni `--quiet` ([`flags`]):
-//! nunca hay un «sí» implícito ni una confirmación sin el plan delante. Lo que necesita argumentos (`exclude
-//! add`, `config set`, `trash put`) o no limpia (`update`, `completion`)
-//! se queda en la línea de órdenes.
+//! nunca hay un «sí» implícito ni una confirmación sin el plan delante, y
+//! [`run`] se niega a abrirse (`terminal_error`) si aun así le llegan, o
+//! sin terminal. «Liberar ahora» dice antes del plan qué operación es (id,
+//! fecha y tipo). Lo que necesita argumentos (`exclude add`, `config set`,
+//! `trash put`) o no limpia (`update`, `completion`) se queda en la línea
+//! de órdenes.
 //!
 //! **Teclas.** Flechas y `hjkl` recorren la lista (las cuatro direcciones,
 //! en círculo), Intro elige, `u` deshace la última operación (lo mismo que
-//! la opción «Deshacer») y `q`, Esc o Ctrl-C salen. En modo raw, Ctrl-C
-//! llega como tecla y no como señal.
+//! la opción «Deshacer») y `q`, Esc o Ctrl-C salen. Las letras valen
+//! también en mayúsculas (con Bloq Mayús). En modo raw, Ctrl-C llega como
+//! tecla y no como señal.
 //!
 //! **Terminal.** El menú se dibuja en la pantalla alternativa y en modo
 //! raw. Antes de ejecutar una acción se sale de los dos ([`choose`] solo
 //! devuelve la opción después de soltar la sesión), así que la acción
 //! escribe y pregunta como en la línea de órdenes. Al terminar, su salida
-//! queda a la vista hasta pulsar una tecla: Intro (u otra) vuelve al menú;
-//! `q`, Esc o Ctrl-C salen. La terminal se restaura siempre: con un guard
-//! que la restaura al soltarse ([`Session`]) y con un *panic hook* que lo
-//! hace antes de imprimir el panic.
+//! queda a la vista hasta pulsar Intro (vuelve al menú) o `q`, Esc o
+//! Ctrl-C (salen); las demás teclas no hacen nada. La terminal se restaura
+//! siempre: con un guard que la restaura al soltarse ([`Session`]) y con
+//! un *panic hook* que lo hace antes de imprimir el panic.
+//!
+//! **Teclas de antemano.** Lo tecleado antes de tiempo no elige ni
+//! contesta nada: se descarta la cola de eventos de crossterm antes de
+//! ejecutar la acción y antes de esperar tras ella ([`drain`]), y la
+//! entrada pendiente de la terminal justo antes de cada confirmación
+//! (`Ui::confirm`, `tcflush`).
+//!
+//! **Señales.** Con el menú abierto (la lista o la espera tras una acción),
+//! SIGTERM y SIGHUP marcan una bandera que el bucle mira cada [`TICK`]; se
+//! sale por el camino normal, que restaura la terminal. Durante una acción
+//! hacen lo de siempre, como con el subcomando: terminan el proceso
+//! ([`Signals`]).
+//!
+//! **Altura.** Si la terminal es baja, primero se quita la descripción y
+//! luego la lista se desplaza para que la opción elegida siempre se vea
+//! ([`draw`]).
 //!
 //! **Código de salida.** El de la última acción ejecutada (0 si no se
 //! ejecutó ninguna): `rotten; echo $?` dice cómo acabó lo último que se
@@ -45,24 +65,24 @@
 //! no hay ningún estilo: la opción elegida se ve por la marca `›`.
 
 use std::io::{self, Write};
-use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::sync::{Arc, Once};
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::{cursor, execute, terminal};
-use ra_core::{Core, UndoState};
+use ra_core::Core;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style as Look};
-use ratatui::text::{Line, Span};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 
 use crate::args::{ConfigCmd, ExcludeCmd, TrashCmd};
 use crate::i18n::{I18n, Lang, tr};
 use crate::style::Style;
-use crate::{Exit, Ui, cmd, techlog};
+use crate::{Exit, Ui, cmd, history_kind, techlog};
 
 /// Nombre del comando en el JSON de error y en el log técnico.
 pub const COMMAND: &str = "menu";
@@ -203,12 +223,12 @@ impl Menu {
             };
         }
         match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => Step::Quit,
-            KeyCode::Up | KeyCode::Left | KeyCode::Char('k' | 'h') => {
+            KeyCode::Char('q' | 'Q') | KeyCode::Esc => Step::Quit,
+            KeyCode::Up | KeyCode::Left | KeyCode::Char('k' | 'h' | 'K' | 'H') => {
                 self.step_by(-1);
                 Step::Stay
             }
-            KeyCode::Down | KeyCode::Right | KeyCode::Char('j' | 'l') => {
+            KeyCode::Down | KeyCode::Right | KeyCode::Char('j' | 'l' | 'J' | 'L') => {
                 self.step_by(1);
                 Step::Stay
             }
@@ -216,24 +236,56 @@ impl Menu {
                 Item::Quit => Step::Quit,
                 item => Step::Run(item),
             },
-            KeyCode::Char('u') => Step::Run(Item::Undo),
+            KeyCode::Char('u' | 'U') => Step::Run(Item::Undo),
             _ => Step::Stay,
         }
     }
 }
 
-/// Tras una acción: `Some(true)` vuelve al menú, `Some(false)` sale y
-/// `None` sigue esperando (una tecla que se suelta).
+/// Tras una acción: Intro (`Some(true)`) vuelve al menú; `q`, Esc o
+/// Ctrl-C (`Some(false)`) salen. Cualquier otra tecla, o soltar una, sigue
+/// esperando (`None`): una tecla perdida no vuelve a la lista.
 pub fn after_action(key: KeyEvent) -> Option<bool> {
     if key.kind != KeyEventKind::Press {
         return None;
     }
-    let ctrl_c = key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c');
-    let quit = ctrl_c || matches!(key.code, KeyCode::Char('q') | KeyCode::Esc);
-    Some(!quit)
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return (key.code == KeyCode::Char('c')).then_some(false);
+    }
+    match key.code {
+        KeyCode::Enter => Some(true),
+        KeyCode::Char('q' | 'Q') | KeyCode::Esc => Some(false),
+        _ => None,
+    }
 }
 
-/// Dibuja el menú en `frame`.
+/// Filas que ocupa `text` partido por palabras en `width` columnas, para
+/// reservarle sitio. Cuenta caracteres, no anchos (los textos del catálogo
+/// no llevan caracteres dobles).
+fn wrapped_rows(text: &str, width: u16) -> u16 {
+    let w = usize::from(width.max(1));
+    let (mut rows, mut col) = (1usize, 0usize);
+    for word in text.split_whitespace() {
+        let len = word.chars().count();
+        if col > 0 && col + 1 + len <= w {
+            col += 1 + len;
+            continue;
+        }
+        if col > 0 {
+            rows += 1;
+        }
+        // Una palabra más larga que la fila se parte en varias.
+        rows += len.saturating_sub(1) / w;
+        col = (len.saturating_sub(1) % w) + 1;
+    }
+    u16::try_from(rows).unwrap_or(u16::MAX)
+}
+
+/// Dibuja el menú en `frame`: la lista, una línea en blanco, la
+/// descripción de la opción elegida, otra en blanco y las teclas. Si no
+/// cabe todo, primero sobra la descripción; si tampoco cabe la lista, se
+/// desplaza para que la opción elegida se vea siempre, con las teclas
+/// debajo mientras quede al menos una fila para la lista.
 pub fn draw(frame: &mut Frame, menu: &Menu, i18n: &I18n, color: bool) {
     let look = |l: Look| if color { l } else { Look::default() };
     let title =
@@ -243,26 +295,48 @@ pub fn draw(frame: &mut Frame, menu: &Menu, i18n: &I18n, color: bool) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let mut lines: Vec<Line> = Vec::with_capacity(ITEMS.len() + 4);
-    for (i, item) in ITEMS.iter().enumerate() {
-        let chosen = i == menu.selected;
-        let marker = if chosen { "› " } else { "  " };
-        let label = i18n.tr(item.messages().0, None);
-        let style = if chosen {
-            look(Look::new().fg(Color::Green).add_modifier(Modifier::BOLD))
-        } else {
-            Look::default()
-        };
-        lines.push(Line::from(vec![
-            Span::raw(marker),
-            Span::styled(label, style),
-        ]));
+    let desc = i18n.tr(menu.selected().messages().1, None);
+    let keys = tr!(i18n, "menu-keys");
+    let n = ITEMS.len() as u16;
+    let h = inner.height;
+    let keys_rows = wrapped_rows(&keys, inner.width);
+    let desc_rows = wrapped_rows(&desc, inner.width);
+    let keys_h = if h > keys_rows { keys_rows } else { 0 };
+    let gap = u16::from(h > n + keys_h);
+    let list_h = (h - keys_h - gap).min(n);
+    let show_desc = h >= n + 1 + desc_rows + 1 + keys_h;
+
+    // La ventana de la lista que contiene la opción elegida.
+    let first = (menu.selected + 1).saturating_sub(usize::from(list_h));
+    let lines: Vec<Line> = ITEMS
+        .iter()
+        .enumerate()
+        .skip(first)
+        .take(usize::from(list_h))
+        .map(|(i, item)| {
+            let chosen = i == menu.selected;
+            let marker = if chosen { "› " } else { "  " };
+            let label = i18n.tr(item.messages().0, None);
+            let style = if chosen {
+                look(Look::new().fg(Color::Green).add_modifier(Modifier::BOLD))
+            } else {
+                Look::default()
+            };
+            Line::from(vec![Span::raw(marker), Span::styled(label, style)])
+        })
+        .collect();
+    let row = |y: u16, height: u16| Rect::new(inner.x, inner.y + y, inner.width, height);
+    frame.render_widget(Paragraph::new(lines), row(0, list_h));
+    let mut y = list_h + gap;
+    if show_desc {
+        let text = Paragraph::new(Text::from(desc)).wrap(Wrap { trim: false });
+        frame.render_widget(text, row(y, desc_rows));
+        y += desc_rows + 1;
     }
-    lines.push(Line::default());
-    lines.push(Line::from(i18n.tr(menu.selected().messages().1, None)));
-    lines.push(Line::default());
-    lines.push(Line::from(tr!(i18n, "menu-keys")));
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    if keys_h > 0 {
+        let text = Paragraph::new(Text::from(keys)).wrap(Wrap { trim: false });
+        frame.render_widget(text, row(y, keys_h));
+    }
 }
 
 /// ¿Está la terminal en la pantalla alternativa? Para que el *panic hook*
@@ -317,35 +391,107 @@ fn install_panic_hook() {
     });
 }
 
+/// Cada cuánto se mira, mientras se espera una tecla, si ha llegado
+/// SIGTERM o SIGHUP.
+const TICK: Duration = Duration::from_millis(200);
+
+/// SIGTERM y SIGHUP. Con el menú abierto marcan `stop`, que el bucle mira
+/// cada [`TICK`] para salir por el camino normal (y restaurar la
+/// terminal). Mientras se ejecuta una acción (`acting`), la señal hace lo
+/// que haría sin el menú: terminar el proceso. La terminal ya no está en
+/// modo raw, y así una acción que se queda esperando no se vuelve sorda a
+/// SIGTERM.
+struct Signals {
+    stop: Arc<AtomicBool>,
+    acting: Arc<AtomicBool>,
+}
+
+impl Signals {
+    fn register() -> io::Result<Signals> {
+        let signals = Signals {
+            stop: Arc::default(),
+            acting: Arc::default(),
+        };
+        for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGHUP] {
+            // El orden importa: primero la acción por defecto (si se está
+            // ejecutando una acción) y después la bandera.
+            signal_hook::flag::register_conditional_default(sig, Arc::clone(&signals.acting))?;
+            signal_hook::flag::register(sig, Arc::clone(&signals.stop))?;
+        }
+        Ok(signals)
+    }
+
+    fn stopped(&self) -> bool {
+        self.stop.load(Ordering::SeqCst)
+    }
+}
+
+/// El siguiente evento de la terminal, o `None` si ha llegado SIGTERM o
+/// SIGHUP.
+fn next_event(signals: &Signals) -> io::Result<Option<Event>> {
+    loop {
+        if signals.stopped() {
+            return Ok(None);
+        }
+        match event::poll(TICK) {
+            Ok(true) => return event::read().map(Some),
+            Ok(false) => {}
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Descarta los eventos que ya esperan en la cola de crossterm: lo
+/// tecleado de antemano no elige ni contesta nada.
+fn drain() -> io::Result<()> {
+    while event::poll(Duration::ZERO)? {
+        event::read()?;
+    }
+    Ok(())
+}
+
 /// El menú hasta que la persona elige algo: `None` si sale. La sesión de
 /// la terminal se suelta antes de devolver, así que nunca se ejecuta una
 /// acción en modo raw.
-fn choose(menu: &mut Menu, ui: &Ui) -> io::Result<Option<Item>> {
+fn choose(menu: &mut Menu, ui: &Ui, signals: &Signals) -> io::Result<Option<Item>> {
     let _session = Session::start(true)?;
     let mut term = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     loop {
         term.draw(|f| draw(f, menu, &ui.i18n, ui.color_out))?;
-        if let Event::Key(key) = event::read()? {
+        let Some(event) = next_event(signals)? else {
+            return Ok(None);
+        };
+        if let Event::Key(key) = event {
             match menu.on_key(key) {
                 Step::Stay => {}
-                Step::Run(item) => return Ok(Some(item)),
+                Step::Run(item) => {
+                    drain()?;
+                    return Ok(Some(item));
+                }
                 Step::Quit => return Ok(None),
             }
         }
     }
 }
 
-/// Tras una acción, su salida queda a la vista hasta pulsar una tecla:
-/// `true` para volver al menú. No pasa por `Ui::say`: con `--quiet`
-/// también hay que saber cómo seguir.
-fn pause(ui: &Ui) -> io::Result<bool> {
+/// Tras una acción, su salida queda a la vista hasta pulsar Intro (`true`,
+/// volver al menú) o `q`, Esc o Ctrl-C (`false`, salir). No pasa por
+/// `Ui::say`: con `--quiet` también hay que saber cómo seguir.
+fn pause(ui: &Ui, signals: &Signals) -> io::Result<bool> {
     println!();
     print!("{} ", ui.paint(Style::Bold, tr!(ui, "menu-pause")));
     io::stdout().flush()?;
     let back = {
         let _session = Session::start(false)?;
+        // Lo tecleado durante la acción no vuelve al menú ni sale.
+        ra_core::discard_pending_input();
+        drain()?;
         loop {
-            if let Event::Key(key) = event::read()?
+            let Some(event) = next_event(signals)? else {
+                break false;
+            };
+            if let Event::Key(key) = event
                 && let Some(back) = after_action(key)
             {
                 break back;
@@ -376,19 +522,23 @@ fn act(ui: &Ui, core: &Core, item: Item) -> Exit {
 }
 
 /// «Liberar ahora» de la última operación que aún tiene algo en la
-/// Papelera: la misma que `rotten undo` deshace por defecto. El plan, la
+/// Papelera (`Core::last_restorable`: la misma que `rotten undo` deshace
+/// por defecto). Antes del plan, qué operación es; el plan, la
 /// confirmación y los códigos son los de `rotten free <operación>`.
 fn free_last(ui: &Ui, core: &Core) -> Exit {
-    let ops = match core.history() {
-        Ok((ops, _)) => ops,
-        Err(e) => return ui.core_error("free", &e),
-    };
-    let last = ops
-        .into_iter()
-        .find(|o| matches!(o.undo_state, UndoState::Restorable | UndoState::Partial));
-    match last {
-        Some(op) => cmd::free::run(ui, core, &[op.op_id], false),
-        None => {
+    match core.last_restorable() {
+        Err(e) => ui.core_error("free", &e),
+        Ok(Some(op)) => {
+            ui.say(tr!(
+                ui,
+                "menu-free-which",
+                op = op.op_id.as_str(),
+                date = ui.i18n.date(&op.started_at),
+                kind = history_kind(op.kind)
+            ));
+            cmd::free::run(ui, core, &[op.op_id], false)
+        }
+        Ok(None) => {
             ui.say(tr!(ui, "menu-free-nothing"));
             Exit::Ok
         }
@@ -408,21 +558,36 @@ fn terminal_error(ui: &Ui, e: &io::Error) -> Exit {
 
 /// El menú: elegir, ejecutar fuera de la terminal del menú, esperar una
 /// tecla y volver. Devuelve el código de la última acción (0 si ninguna).
+///
+/// Invariante: el menú siempre enseña el plan y pregunta, así que nunca se
+/// abre con `--yes`, `--quiet` o `--json` ni sin terminal. `bare` y
+/// `flags` ya lo evitan; si aun así llega, falla cerrado.
 pub fn run(ui: &Ui, core: &Core) -> Exit {
+    if ui.yes || ui.quiet || ui.json || !ui.interactive {
+        let e =
+            io::Error::other("the menu always asks: a terminal, without --yes, --quiet or --json");
+        return terminal_error(ui, &e);
+    }
     install_panic_hook();
+    let signals = match Signals::register() {
+        Ok(s) => s,
+        Err(e) => return terminal_error(ui, &e),
+    };
     let mut menu = Menu::default();
     let mut last = Exit::Ok;
     loop {
-        let item = match choose(&mut menu, ui) {
+        let item = match choose(&mut menu, ui, &signals) {
             Ok(Some(item)) => item,
             Ok(None) => return last,
             Err(e) => return terminal_error(ui, &e),
         };
         let started = Instant::now();
         techlog::start(item.command(), None);
+        signals.acting.store(true, Ordering::SeqCst);
         last = act(ui, core, item);
+        signals.acting.store(false, Ordering::SeqCst);
         techlog::finish(item.command(), last as u8, started);
-        match pause(ui) {
+        match pause(ui, &signals) {
             Ok(true) => {}
             Ok(false) => return last,
             Err(e) => return terminal_error(ui, &e),
@@ -508,16 +673,46 @@ mod tests {
     }
 
     #[test]
-    fn after_an_action_any_key_goes_back_and_q_quits() {
+    fn after_an_action_only_enter_goes_back_and_q_quits() {
         assert_eq!(after_action(key(KeyCode::Enter)), Some(true));
-        assert_eq!(after_action(key(KeyCode::Char(' '))), Some(true));
-        assert_eq!(after_action(key(KeyCode::Char('q'))), Some(false));
+        for c in ['q', 'Q'] {
+            assert_eq!(after_action(key(KeyCode::Char(c))), Some(false));
+        }
         assert_eq!(after_action(key(KeyCode::Esc)), Some(false));
         let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
         assert_eq!(after_action(ctrl_c), Some(false));
+        // Cualquier otra tecla sigue esperando.
+        for code in [
+            KeyCode::Char(' '),
+            KeyCode::Char('s'),
+            KeyCode::Char('y'),
+            KeyCode::Char('u'),
+            KeyCode::Down,
+            KeyCode::Tab,
+        ] {
+            assert_eq!(after_action(key(code)), None, "{code:?}");
+        }
+        let ctrl_q = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
+        assert_eq!(after_action(ctrl_q), None);
         let mut release = key(KeyCode::Enter);
         release.kind = KeyEventKind::Release;
         assert_eq!(after_action(release), None);
+    }
+
+    /// Con Bloq Mayús las letras llegan en mayúsculas y hacen lo mismo.
+    #[test]
+    fn capital_letters_do_the_same() {
+        let shift = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+        let mut m = Menu::default();
+        m.on_key(shift('J'));
+        assert_eq!(m.selected(), Item::Clean);
+        m.on_key(shift('L'));
+        assert_eq!(m.selected(), Item::Undo);
+        m.on_key(shift('K'));
+        m.on_key(shift('H'));
+        assert_eq!(m.selected(), Item::Scan);
+        assert_eq!(m.on_key(key(KeyCode::Char('U'))), Step::Run(Item::Undo));
+        assert_eq!(m.on_key(shift('Q')), Step::Quit);
     }
 
     #[test]
@@ -540,7 +735,11 @@ mod tests {
     }
 
     fn render(menu: &Menu, i18n: &I18n, color: bool, width: u16) -> Buffer {
-        let mut t = Terminal::new(TestBackend::new(width, 20)).expect("terminal");
+        render_sized(menu, i18n, color, width, 20)
+    }
+
+    fn render_sized(menu: &Menu, i18n: &I18n, color: bool, width: u16, height: u16) -> Buffer {
+        let mut t = Terminal::new(TestBackend::new(width, height)).expect("terminal");
         t.draw(|f| draw(f, menu, i18n, color)).expect("draw");
         t.backend().buffer().clone()
     }
@@ -585,7 +784,7 @@ mod tests {
     fn pseudo_locale_finds_no_loose_text_in_the_menu() {
         let i18n = I18n::with(Lang::Es, true);
         for i in 0..ITEMS.len() {
-            for row in rows(&render(&Menu { selected: i }, &i18n, false, 160)) {
+            for row in rows(&render(&Menu { selected: i }, &i18n, false, 240)) {
                 let row = row.trim_start_matches(['›', ' ']);
                 if row.is_empty() {
                     continue;
@@ -627,5 +826,144 @@ mod tests {
         let i18n = I18n::with(Lang::Es, false);
         let text = rows(&render(&Menu { selected: 1 }, &i18n, false, 30)).join("\n");
         assert!(text.contains("› Limpiar"), "{text}");
+    }
+
+    /// En una terminal de 10 filas (8 dentro del marco) no cabe la lista
+    /// entera: sobra la descripción, la lista se desplaza y la opción
+    /// elegida se ve siempre, con las teclas debajo.
+    #[test]
+    fn a_short_terminal_scrolls_to_the_selected_option() {
+        for lang in [Lang::Es, Lang::En] {
+            let i18n = I18n::with(lang, false);
+            let keys = tr!(i18n, "menu-keys");
+            for (i, item) in ITEMS.iter().enumerate() {
+                let text = rows(&render_sized(&Menu { selected: i }, &i18n, false, 80, 10));
+                let label = i18n.tr(item.messages().0, None);
+                assert!(
+                    text.iter().any(|r| *r == format!("› {label}")),
+                    "{item:?}: {text:#?}"
+                );
+                assert!(text.iter().any(|r| *r == keys), "{item:?}: {text:#?}");
+                let desc: String = i18n.tr(item.messages().1, None).chars().take(16).collect();
+                assert!(
+                    !text.iter().any(|r| r.contains(&desc)),
+                    "{item:?}: {text:#?}"
+                );
+            }
+        }
+    }
+
+    /// Una terminal de 20 filas sí tiene sitio para la descripción.
+    #[test]
+    fn the_description_shows_when_it_fits() {
+        let i18n = I18n::with(Lang::Es, false);
+        for (i, item) in ITEMS.iter().enumerate() {
+            let text = rows(&render(&Menu { selected: i }, &i18n, false, 240));
+            let desc = i18n.tr(item.messages().1, None);
+            assert!(text.iter().any(|r| *r == desc), "{item:?}: {text:#?}");
+        }
+    }
+
+    /// `wrapped_rows` reserva al menos las filas que usa ratatui.
+    #[test]
+    fn wrapped_rows_is_never_short() {
+        let i18n = I18n::with(Lang::Es, false);
+        for width in [20u16, 30, 41, 60, 80] {
+            for item in ITEMS {
+                let desc = i18n.tr(item.messages().1, None);
+                let mut t = Terminal::new(TestBackend::new(width, 40)).expect("terminal");
+                t.draw(|f| {
+                    let p = Paragraph::new(Text::from(desc.clone())).wrap(Wrap { trim: false });
+                    f.render_widget(p, f.area());
+                })
+                .expect("draw");
+                let b = t.backend().buffer();
+                let used = |y: u16| (0..width).any(|x| b[(x, y)].symbol() != " ");
+                let want = (0..40u16)
+                    .rev()
+                    .find(|y| used(*y))
+                    .map_or(0, |y| usize::from(y) + 1);
+                let got = usize::from(wrapped_rows(&desc, width));
+                assert!(got >= want, "{width} {item:?}: {got} < {want}");
+            }
+        }
+    }
+
+    /// Sin terminal (`interactive: false`) y sin `--yes`, las opciones que
+    /// cambian algo enseñan el plan y acaban en `needs_yes` (2) sin tocar
+    /// la carpeta personal ni la Papelera: nunca hay un «sí» implícito.
+    #[test]
+    fn changing_options_never_proceed_without_an_answer() {
+        use ra_catalog::fixture::{Entry, materialize};
+        use ra_core::{Env, TrashBackend};
+        use std::collections::{BTreeMap, BTreeSet};
+        use std::path::{Path, PathBuf};
+        use std::time::SystemTime;
+
+        fn snapshot(root: &Path) -> BTreeMap<PathBuf, (bool, u64, Option<SystemTime>)> {
+            let mut out = BTreeMap::new();
+            let mut stack = vec![root.to_path_buf()];
+            while let Some(dir) = stack.pop() {
+                for e in std::fs::read_dir(&dir).expect("read_dir") {
+                    let p = e.expect("entry").path();
+                    let m = std::fs::symlink_metadata(&p).expect("meta");
+                    if m.is_dir() {
+                        stack.push(p.clone());
+                    }
+                    out.insert(p, (m.is_dir(), m.len(), m.modified().ok()));
+                }
+            }
+            out
+        }
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = std::fs::canonicalize(tmp.path()).expect("canon");
+        let (home, trash, state) = (root.join("home"), root.join("trash"), root.join("state"));
+        for d in [&home, &trash, &state] {
+            std::fs::create_dir_all(d).expect("mkdir");
+        }
+        let entries = [
+            // CAT-03, preseleccionado: lo que haría `clean`.
+            ("Library/Logs/old-app/app.log", 3000, 30),
+            ("Library/Logs/install.log", 800, 20),
+            // Lo que se manda a la Papelera para `undo`, `free` y `trash empty`.
+            ("Documents/borrador.txt", 500, 1),
+        ]
+        .map(|(path, size, age_days)| Entry {
+            path: path.into(),
+            size,
+            age_days,
+            dir: false,
+        });
+        materialize(&home, &entries, &[], SystemTime::now()).expect("materializar");
+        let core = Core::with_apps(
+            Env::new(home.clone(), state, TrashBackend::Dir(trash.clone())),
+            Box::new(BTreeSet::<String>::new()),
+        )
+        .expect("core");
+        let put = core
+            .plan_selection(&[home.join("Documents/borrador.txt")])
+            .expect("plan");
+        let hash = put.plan.plan_hash().to_owned();
+        let r = core.execute(put.plan, &hash, "test").expect("trash put");
+        assert_eq!(r.done, 1);
+        assert!(core.last_restorable().expect("historial").is_some());
+
+        let ui = Ui {
+            json: false,
+            interactive: false,
+            yes: false,
+            quiet: false,
+            i18n: I18n::with(Lang::Es, false),
+            home: home.clone(),
+            color_out: false,
+            color_err: false,
+        };
+        let before = (snapshot(&home), snapshot(&trash));
+        assert!(!before.1.is_empty(), "la Papelera tiene algo que vaciar");
+        for item in [Item::Clean, Item::Undo, Item::Free, Item::TrashEmpty] {
+            assert_eq!(act(&ui, &core, item), Exit::Usage, "{item:?}");
+            assert_eq!((snapshot(&home), snapshot(&trash)), before, "{item:?}");
+        }
     }
 }

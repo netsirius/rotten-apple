@@ -187,6 +187,8 @@ impl Ui {
         if !self.interactive {
             return Err(self.fail_with(command, Exit::Usage, "needs_yes", "needs-yes"));
         }
+        // Lo tecleado antes de ver la pregunta no la contesta (T-16).
+        ra_core::discard_pending_input();
         print!("{} ", tr!(self, "confirm-prompt", question = question));
         let _ = io::stdout().flush();
         let mut line = String::new();
@@ -725,6 +727,17 @@ fn clean(
     exec_exit(&report)
 }
 
+/// El tipo de una operación del historial, para los mensajes.
+fn history_kind(k: HistoryKind) -> &'static str {
+    match k {
+        HistoryKind::Clean => "clean",
+        HistoryKind::TrashPut => "trash_put",
+        HistoryKind::Undo => "undo",
+        HistoryKind::Free => "free",
+        HistoryKind::TrashEmpty => "trash_empty",
+    }
+}
+
 fn history(ui: &Ui, core: &Core) -> Exit {
     let (ops, problems) = match core.history() {
         Ok(h) => h,
@@ -749,19 +762,12 @@ fn history(ui: &Ui, core: &Core) -> Exit {
             UndoState::PartlyRestored => "partly_restored",
             UndoState::NotApplicable => "not_applicable",
         };
-        let kind = match o.kind {
-            HistoryKind::Clean => "clean",
-            HistoryKind::TrashPut => "trash_put",
-            HistoryKind::Undo => "undo",
-            HistoryKind::Free => "free",
-            HistoryKind::TrashEmpty => "trash_empty",
-        };
         ui.say(tr!(
             ui,
             "history-op",
             op = o.op_id.as_str(),
             date = ui.i18n.date(&o.started_at),
-            kind = kind,
+            kind = history_kind(o.kind),
             of = o.undo_of.as_deref().unwrap_or_default(),
             count = o.items_done,
             size = ui.size(o.bytes_done),

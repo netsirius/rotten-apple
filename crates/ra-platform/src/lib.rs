@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 pub mod attrs;
 pub mod files;
 pub mod iopolicy;
+pub mod tty;
 
 /// Rutas de los ejecutables de todos los procesos visibles para el usuario.
 ///
