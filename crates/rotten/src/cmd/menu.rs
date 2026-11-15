@@ -479,9 +479,11 @@ fn choose(menu: &mut Menu, ui: &Ui, signals: &Signals) -> io::Result<Option<Item
 /// volver al menú) o `q`, Esc o Ctrl-C (`false`, salir). No pasa por
 /// `Ui::say`: con `--quiet` también hay que saber cómo seguir.
 fn pause(ui: &Ui, signals: &Signals) -> io::Result<bool> {
-    println!();
-    print!("{} ", ui.paint(Style::Bold, tr!(ui, "menu-pause")));
-    io::stdout().flush()?;
+    // Sin `println!`, que hace `panic!` si la terminal ya no está.
+    let mut out = io::stdout();
+    writeln!(out)?;
+    write!(out, "{} ", ui.paint(Style::Bold, tr!(ui, "menu-pause")))?;
+    out.flush()?;
     let back = {
         let _session = Session::start(false)?;
         // Lo tecleado durante la acción no vuelve al menú ni sale.
@@ -498,7 +500,8 @@ fn pause(ui: &Ui, signals: &Signals) -> io::Result<bool> {
             }
         }
     };
-    println!();
+    // Tras SIGHUP no hay terminal: el salto de línea ya no importa.
+    let _ = writeln!(out);
     Ok(back)
 }
 
@@ -556,6 +559,11 @@ fn terminal_error(ui: &Ui, e: &io::Error) -> Exit {
     ui.fail(COMMAND, Exit::Error, "terminal_error", &english, &human)
 }
 
+/// El invariante de [`run`]: terminal, sin `--yes`, `--quiet` ni `--json`.
+fn may_open(ui: &Ui) -> bool {
+    !(ui.yes || ui.quiet || ui.json || !ui.interactive)
+}
+
 /// El menú: elegir, ejecutar fuera de la terminal del menú, esperar una
 /// tecla y volver. Devuelve el código de la última acción (0 si ninguna).
 ///
@@ -563,7 +571,7 @@ fn terminal_error(ui: &Ui, e: &io::Error) -> Exit {
 /// abre con `--yes`, `--quiet` o `--json` ni sin terminal. `bare` y
 /// `flags` ya lo evitan; si aun así llega, falla cerrado.
 pub fn run(ui: &Ui, core: &Core) -> Exit {
-    if ui.yes || ui.quiet || ui.json || !ui.interactive {
+    if !may_open(ui) {
         let e =
             io::Error::other("the menu always asks: a terminal, without --yes, --quiet or --json");
         return terminal_error(ui, &e);
@@ -843,7 +851,7 @@ mod tests {
                     text.iter().any(|r| *r == format!("› {label}")),
                     "{item:?}: {text:#?}"
                 );
-                assert!(text.iter().any(|r| *r == keys), "{item:?}: {text:#?}");
+                assert!(text.contains(&keys), "{item:?}: {text:#?}");
                 let desc: String = i18n.tr(item.messages().1, None).chars().take(16).collect();
                 assert!(
                     !text.iter().any(|r| r.contains(&desc)),
@@ -860,7 +868,7 @@ mod tests {
         for (i, item) in ITEMS.iter().enumerate() {
             let text = rows(&render(&Menu { selected: i }, &i18n, false, 240));
             let desc = i18n.tr(item.messages().1, None);
-            assert!(text.iter().any(|r| *r == desc), "{item:?}: {text:#?}");
+            assert!(text.contains(&desc), "{item:?}: {text:#?}");
         }
     }
 
@@ -886,6 +894,32 @@ mod tests {
                 let got = usize::from(wrapped_rows(&desc, width));
                 assert!(got >= want, "{width} {item:?}: {got} < {want}");
             }
+        }
+    }
+
+    /// `run` falla cerrado, antes de tocar la terminal, si le llega `--yes`,
+    /// `--quiet` o `--json`, o sin terminal. (Se prueba la condición y no
+    /// `run`: sin ella, `run` abriría la terminal de verdad.)
+    #[test]
+    fn the_menu_refuses_to_open_without_its_invariant() {
+        let ui = |yes, quiet, json, interactive| Ui {
+            json,
+            interactive,
+            yes,
+            quiet,
+            i18n: I18n::with(Lang::Es, false),
+            home: std::path::PathBuf::new(),
+            color_out: false,
+            color_err: false,
+        };
+        assert!(may_open(&ui(false, false, false, true)));
+        for (name, ui) in [
+            ("--yes", ui(true, false, false, true)),
+            ("--quiet", ui(false, true, false, true)),
+            ("--json", ui(false, false, true, true)),
+            ("sin terminal", ui(false, false, false, false)),
+        ] {
+            assert!(!may_open(&ui), "{name}");
         }
     }
 
