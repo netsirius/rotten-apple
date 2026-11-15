@@ -16,6 +16,8 @@ use ra_safety::config_link;
 use ra_safety::{Config, ConfigState, LinkState, SettingValue};
 use serde::Serialize;
 
+use ra_exec::ExecLock;
+
 use crate::{Core, CoreError};
 
 /// Por qué el enlace no aplica con `ROTTEN_STATE_DIR` (código estable).
@@ -124,6 +126,39 @@ impl Core {
         Ok(config)
     }
 
+    /// Valida `config set` solo leyendo, en el orden de los códigos: clave y
+    /// valor (2), configuración y enlace (5) y la configuración resultante.
+    /// Devuelve la nueva, la de antes y el valor guardado.
+    fn prepare_set(
+        &self,
+        key: &str,
+        raw: &str,
+    ) -> Result<(Config, Config, SettingValue), CoreError> {
+        // La clave y el valor no dependen de lo que haya guardado.
+        Config::default().set(key, raw)?;
+        let mut config = self.writable_config()?;
+        let before = config.clone();
+        let value = config.set(key, raw)?;
+        // Las mismas reglas que al cargar: lo que se escribe se podrá leer.
+        config.validate(&self.env().home).map_err(|reason| {
+            CoreError::Other(format!("the new configuration is invalid: {reason}"))
+        })?;
+        Ok((config, before, value))
+    }
+
+    /// Borra los temporales que dejó una escritura de la configuración
+    /// cortada a medias. Exige el cerrojo de ejecución como testigo: todos
+    /// los escritores de `config.toml` (`config set`, `exclude add|remove`)
+    /// lo toman, así que ninguno está a medias y lo que queda es huérfano.
+    /// De mejor esfuerzo. `remove_file` no sigue un enlace: aunque alguien
+    /// cambie un temporal por un enlace entre listar y borrar, su destino no
+    /// se toca.
+    pub(crate) fn remove_stale_temps(&self, _lock: &ExecLock) {
+        for tmp in Config::stale_temps(&self.env().config_path) {
+            let _ = fs::remove_file(tmp);
+        }
+    }
+
     /// `config get <clave>`: el valor guardado o el que se aplica por
     /// defecto. Con la configuración corrupta no se puede saber (5).
     pub fn config_get(&self, key: &str) -> Result<SettingValue, CoreError> {
@@ -135,30 +170,35 @@ impl Core {
     /// nada. Con la configuración corrupta o con otra cosa en la ruta del
     /// enlace no cambia nada (5).
     ///
-    /// Sin `dry_run` toma el cerrojo de ejecución antes de leer (otro
-    /// ejecutor en marcha: [`CoreError::Locked`], 6, sin cambiar nada), así
-    /// que dos `set` a la vez no pierden ninguno de los dos cambios. Con el
-    /// cerrojo tomado, y si la clave y el valor son válidos, borra los
-    /// temporales que dejó una escritura cortada.
+    /// Orden de los códigos, como en `clean`: 2 > 5 > 6. Primero se valida
+    /// todo solo leyendo (clave y valor, estado de la configuración y
+    /// enlace), así que una negativa con 2 o 5 no crea `exec.lock` ni la
+    /// carpeta de estado. Después, sin `dry_run`, se toma el cerrojo de
+    /// ejecución (no espera: con otro ejecutor en marcha sale con
+    /// [`CoreError::Locked`], 6, sin cambiar nada, y hay que repetirlo) y se
+    /// relee y valida de nuevo antes de escribir: dos `set` a la vez nunca
+    /// pisan el cambio del otro, pero uno de los dos puede salir con 6. Con
+    /// el cerrojo tomado borra los temporales que dejó una escritura cortada.
     /// `dry_run` no escribe y no lo toma.
     pub fn config_set(&self, key: &str, raw: &str, dry_run: bool) -> Result<ConfigSet, CoreError> {
         let env = self.env();
-        let _lock = if dry_run { None } else { Some(self.lock()?) };
-        let mut config = self.writable_config()?;
-        let before = config.clone();
-        let value = config.set(key, raw)?;
-        // Las mismas reglas que al cargar: lo que se escribe se podrá leer.
-        config.validate(&env.home).map_err(|reason| {
-            CoreError::Other(format!("the new configuration is invalid: {reason}"))
-        })?;
+        let (mut config, mut before, mut value) = self.prepare_set(key, raw)?;
+        let lock = if dry_run {
+            None
+        } else {
+            let lock = self.lock()?;
+            (config, before, value) = self.prepare_set(key, raw)?;
+            Some(lock)
+        };
         let changed = config != before;
         let mut link_created = false;
         let mut link_error = None;
         if !dry_run {
-            // Con el cerrojo tomado ningún otro escritor está a medias: lo
-            // que quede es de una escritura cortada. Solo si se va a poder
-            // escribir (una negativa no cambia nada) y aunque no cambie.
-            Config::remove_stale_temps(&env.config_path);
+            // Solo si se va a poder escribir (una negativa no cambia nada) y
+            // aunque el valor no cambie.
+            if let Some(lock) = &lock {
+                self.remove_stale_temps(lock);
+            }
             if changed {
                 config.save(&env.config_path)?;
             }
@@ -176,6 +216,7 @@ impl Core {
                 }
             }
         }
+        drop(lock);
         Ok(ConfigSet {
             value,
             changed,

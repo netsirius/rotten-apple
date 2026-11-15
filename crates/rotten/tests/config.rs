@@ -539,8 +539,19 @@ fn unknown_keys_outside_exclusions_are_tolerated_and_warned() {
         warnings.contains("exclude_backups_note, journal, theme"),
         "{doc:#}"
     );
+    // `clean` también avisa: quien limpia tiene que ver que algo se ignora.
     let (code, doc) = fx.run(&["clean", "--dry-run", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
+    let warnings = doc["warnings"].to_string();
+    assert!(
+        warnings.contains("exclude_backups_note, journal, theme"),
+        "{doc:#}"
+    );
+    let (_, text) = human(&fx, "en_US.UTF-8", &["clean", "--dry-run"]);
+    assert!(
+        text.contains("exclude_backups_note, journal, theme"),
+        "{text}"
+    );
 
     let (code, doc) = fx.run(&["config", "set", "language", "es", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
@@ -548,20 +559,36 @@ fn unknown_keys_outside_exclusions_are_tolerated_and_warned() {
     assert!(text.contains("theme = \"dark\""), "{text}");
     assert!(text.contains("retention_days = 30"), "{text}");
 
-    // Fail-closed: una exclusión en una sección mal escrita no se ignora.
+    // Sin claves desconocidas, `clean` no lleva `warnings`.
+    fs::write(config(&fx), "schema_version = 1\n").expect("write");
+    let (_, doc) = fx.run(&["clean", "--dry-run", "--json"]);
+    assert!(doc.get("warnings").is_none(), "{doc:#}");
+
+    // Fail-closed: una exclusión con un nombre mal escrito no se ignora.
     // Una clave con tilde va entre comillas en TOML.
-    for section in ["exclusion", "\"exclusión\"", "exclude"] {
-        fs::write(
-            config(&fx),
-            format!("[{section}]\npaths = [\"~/Library/Logs\"]\n"),
-        )
-        .expect("write");
+    for (toml_text, corrupt) in [
+        ("[exclusion]\npaths = [\"~/Library/Logs\"]\n", true),
+        ("[\"exclusión\"]\npaths = [\"~/Library/Logs\"]\n", true),
+        ("[exclude]\npaths = [\"~/Library/Logs\"]\n", true),
+        // Con separadores, decide la forma del valor.
+        ("exclude_paths = [\"~/Library/Logs\"]\n", true),
+        ("excluded_paths = [\"~/Library/Logs\"]\n", true),
+        ("exclusion_list = [\"~/Library/Logs\"]\n", true),
+        ("user_exclusions = [\"~/Library/Logs\"]\n", true),
+        ("exclude_backups_note = \"x\"\n", false),
+    ] {
+        fs::write(config(&fx), toml_text).expect("write");
         let (code, doc) = fx.run(&["clean", "--dry-run", "--json"]);
-        assert_eq!(
-            (code, &doc["error"]["code"]),
-            (5, &json!("config_corrupt")),
-            "{section}"
-        );
+        if corrupt {
+            assert_eq!(
+                (code, &doc["error"]["code"]),
+                (5, &json!("config_corrupt")),
+                "{toml_text}"
+            );
+        } else {
+            assert_eq!(code, 0, "{toml_text}: {doc:#}");
+            assert!(doc["warnings"].to_string().contains("exclude_backups_note"));
+        }
     }
 }
 
@@ -578,13 +605,16 @@ fn hold_exec_lock(fx: &Fx) -> fs::File {
 }
 
 /// Con otro ejecutor en marcha, `config set` y `exclude add|remove` salen
-/// con `6` (el mismo error que `clean`) y no cambian nada: así dos
-/// escrituras a la vez no pierden una de las dos. `--dry-run` no escribe y
-/// no necesita el cerrojo.
+/// con `6` (el mismo error que `clean`) y no cambian nada: el cerrojo no
+/// espera, así que una de dos escrituras a la vez sale con 6 y hay que
+/// repetirla, pero ninguna pisa a la otra. Orden de los códigos: 2 > 5 > 6.
+/// `--dry-run` no escribe y no necesita el cerrojo.
 #[test]
 fn set_refuses_while_another_executor_runs() {
     let fx = fixture();
     let (code, doc) = fx.run(&["config", "set", "language", "en", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    let (code, doc) = fx.run(&["exclude", "add", "~/Library/Logs/old-app", "--json"]);
     assert_eq!(code, 0, "{doc:#}");
     let orphan = fx.state.join(".config.toml.4242.0.tmp");
     fs::write(&orphan, "a medias").expect("write");
@@ -592,9 +622,31 @@ fn set_refuses_while_another_executor_runs() {
     let link_before = describe(&link(&fx));
 
     let lock = hold_exec_lock(&fx);
+    // 2 > 6: una clave, un valor o una exclusión inválidos se dicen antes.
+    for (args, code_str) in [
+        (
+            &["config", "set", "nope", "1", "--json"][..],
+            "unknown_config_key",
+        ),
+        (
+            &["config", "set", "language", "fr", "--json"],
+            "invalid_config_value",
+        ),
+        (
+            &["exclude", "add", "relativa/x", "--json"],
+            "invalid_exclusion",
+        ),
+    ] {
+        let (code, doc) = fx.run(args);
+        assert_eq!(
+            (code, &doc["error"]["code"]),
+            (2, &json!(code_str)),
+            "{args:?}"
+        );
+    }
     for args in [
         &["config", "set", "language", "es", "--json"][..],
-        &["exclude", "add", "~/Library/Logs/old-app", "--json"],
+        &["exclude", "add", "~/Library/Logs/new-app", "--json"],
         &["exclude", "remove", "~/Library/Logs/old-app", "--json"],
     ] {
         let (code, doc) = fx.run(args);
@@ -614,7 +666,7 @@ fn set_refuses_while_another_executor_runs() {
         &[
             "exclude",
             "add",
-            "~/Library/Logs/old-app",
+            "~/Library/Logs/new-app",
             "--dry-run",
             "--json",
         ],
@@ -625,6 +677,25 @@ fn set_refuses_while_another_executor_runs() {
         assert_eq!(doc["changed"], true, "{args:?}");
         assert_eq!(tree(&fx.state), before, "{args:?}: algo cambió");
     }
+    // Sin cambios no hay nada que escribir: no hace falta el cerrojo.
+    let (code, doc) = fx.run(&["exclude", "add", "~/Library/Logs/old-app", "--json"]);
+    assert_eq!((code, &doc["changed"]), (0, &json!(false)), "{doc:#}");
+
+    // 5 > 6: con la configuración corrupta, 5 aunque el cerrojo esté ocupado.
+    let good = fs::read(config(&fx)).expect("read");
+    fs::write(config(&fx), "[exclusions\n").expect("write");
+    for args in [
+        &["config", "set", "language", "es", "--json"][..],
+        &["exclude", "add", "~/Library/Logs/new-app", "--json"],
+    ] {
+        let (code, doc) = fx.run(args);
+        assert_eq!(
+            (code, &doc["error"]["code"]),
+            (5, &json!("config_corrupt")),
+            "{args:?}"
+        );
+    }
+    fs::write(config(&fx), good).expect("write");
     drop(lock);
 
     let (code, doc) = fx.run(&["config", "set", "language", "es", "--json"]);
@@ -635,6 +706,79 @@ fn set_refuses_while_another_executor_runs() {
         describe(&orphan).is_none(),
         "el temporal huérfano sigue ahí"
     );
+}
+
+/// Una negativa con 2 o 5 se decide solo leyendo: en una carpeta personal
+/// virgen no crea `exec.lock` ni la carpeta de estado.
+#[test]
+fn a_refused_write_creates_no_lock_nor_state_folder() {
+    let fx = fixture();
+    fs::remove_dir(&fx.state).expect("carpeta de estado vacía");
+    for (args, code) in [
+        (&["config", "set", "nope", "1", "--json"][..], 2),
+        (&["config", "set", "language", "fr", "--json"], 2),
+        (&["exclude", "add", "relativa/x", "--json"], 2),
+    ] {
+        let (got, doc) = fx.run(args);
+        assert_eq!(got, code, "{args:?}: {doc:#}");
+        assert!(
+            describe(&fx.state).is_none(),
+            "{args:?}: creó {:?}",
+            fx.state
+        );
+    }
+    // 5: otra cosa en la ruta del enlace.
+    fs::create_dir_all(link(&fx).parent().expect("padre")).expect("mkdir");
+    fs::write(link(&fx), "language = \"en\"\n").expect("write");
+    for args in [
+        &["config", "set", "language", "es", "--json"][..],
+        &["exclude", "add", "~/Library/Logs/new-app", "--json"],
+    ] {
+        let (code, doc) = fx.run(args);
+        assert_eq!(
+            (code, &doc["error"]["code"]),
+            (5, &json!("config_link_conflict")),
+            "{args:?}"
+        );
+        assert!(
+            describe(&fx.state).is_none(),
+            "{args:?}: creó {:?}",
+            fx.state
+        );
+    }
+}
+
+/// N `exclude add` distintos a la vez, que repiten ante un 6 como haría un
+/// script: al final están las N (ninguna escritura pisa a otra).
+#[test]
+fn concurrent_exclude_adds_all_land() {
+    const N: usize = 8;
+    let fx = fixture();
+    std::thread::scope(|s| {
+        for i in 0..N {
+            let fx = &fx;
+            s.spawn(move || {
+                let value = format!("~/Library/Logs/app-{i}");
+                for _ in 0..500 {
+                    let (code, doc) = fx.run(&["exclude", "add", &value, "--json"]);
+                    match code {
+                        0 => return,
+                        6 => std::thread::sleep(std::time::Duration::from_millis(10)),
+                        _ => panic!("{value}: {doc:#}"),
+                    }
+                }
+                panic!("{value}: el cerrojo no quedó libre");
+            });
+        }
+    });
+    let (code, doc) = fx.run(&["exclude", "list", "--json"]);
+    assert_eq!(code, 0, "{doc:#}");
+    let list = doc["exclusions"].as_array().expect("lista");
+    for i in 0..N {
+        let want = json!(format!("~/Library/Logs/app-{i}"));
+        assert!(list.contains(&want), "falta {want}: {doc:#}");
+    }
+    assert_eq!(list.len(), N, "{doc:#}");
 }
 
 /// Un corte deja un temporal `.config.toml.<pid>.<n>.tmp`; el siguiente
@@ -685,6 +829,16 @@ fn the_next_set_removes_an_orphan_temp_but_never_follows_links() {
     assert_eq!(fs::read_to_string(&swap).expect("read"), "vim");
     let text = fs::read_to_string(config(&fx)).expect("read");
     assert!(text.contains("language = \"en\""), "{text}");
+
+    // `exclude add|remove` también limpia, si va a escribir.
+    fs::write(&orphan, "a medias").expect("write");
+    let (code, doc) = fx.run(&["exclude", "add", "~/Library/Logs/old-app", "--json"]);
+    assert_eq!((code, &doc["changed"]), (0, &json!(true)), "{doc:#}");
+    assert!(
+        describe(&orphan).is_none(),
+        "el temporal huérfano sigue ahí"
+    );
+    assert_eq!(fs::read_to_string(&precious).expect("read"), "no tocar");
 }
 
 /// M1: con la configuración corrupta, el mensaje del JSON es una línea; el

@@ -86,10 +86,19 @@ pub fn scan_notes(ui: &Ui, core: &Core) {
     if matches!(link.state, LinkState::Conflict { .. }) {
         ui.say(link_line(ui, &link, config_path));
     }
+    unknown_keys_note(ui, core);
+}
+
+/// El aviso de claves desconocidas, si las hay (`scan` y `clean`).
+pub fn unknown_keys_note(ui: &Ui, core: &Core) {
     if let ConfigState::Loaded(c) = core.config_state()
         && !c.unknown.is_empty()
     {
-        ui.say(unknown_keys_line(ui, config_path, &c.unknown_keys()));
+        ui.say(unknown_keys_line(
+            ui,
+            &core.env().config_path,
+            &c.unknown_keys(),
+        ));
     }
 }
 
